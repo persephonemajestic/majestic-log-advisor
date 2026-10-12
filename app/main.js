@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, clipboard, Menu, shell, net, native
 const fs = require('fs');
 const path = require('path');
 
-const SHELL_VERSION = '2026-10-12.17';
+const SHELL_VERSION = '2026-10-12.18';
 const APPDIR = global.APP_DIR || __dirname;
 const bundled = () => path.join(APPDIR, 'index.html');
 const overrideFile = () => path.join(app.getPath('userData'), 'index-override.html');
@@ -302,7 +302,7 @@ async function extHandle(req, res) {
   const name = String(b.name || decodeURIComponent(u.pathname.split('/').pop() || '')).replace(/[\\/:*?"<>|]+/g, '_').slice(0, 120);
   if (u.protocol !== 'https:' || !EXT_HOST.test(u.hostname) || !/^\/attachments\//.test(u.pathname)) return send(400, { ok: false, error: 'host' });
   if (!EXT_FILE.test(name)) return send(400, { ok: false, error: 'type' });
-  const key = u.pathname, now = Date.now(); for (const [k, t] of extSeen) if (now - t > 3600000) extSeen.delete(k);
+  const key = u.pathname, now = Date.now(); for (const [k, t] of extSeen) if (now - t > 8000) extSeen.delete(k);
   if (extSeen.has(key)) return send(200, { ok: true, dup: true });
   try {
     const r = await net.fetch(u.toString(), { redirect: 'follow' });
@@ -322,7 +322,7 @@ async function extUpload(req, res, send) {
   const name = String(meta.name || '').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 120);
   if (!EXT_FILE.test(name)) return send(400, { ok: false, error: 'type' });
   const key = String(meta.url || '').replace(/[?#].*$/, '') || ('upload:' + name + ':' + (req.headers['content-length'] || '')), now = Date.now();
-  for (const [k, t] of extSeen) if (now - t > 3600000) extSeen.delete(k);
+  for (const [k, t] of extSeen) if (now - t > 8000) extSeen.delete(k);
   if (extSeen.has(key)) { req.resume(); return send(200, { ok: true, dup: true }); }
   const parts = []; let size = 0;
   for await (const ch of req) { size += ch.length; if (size > 250 * 1048576) return send(413, { ok: false, error: 'size' }); parts.push(ch); }

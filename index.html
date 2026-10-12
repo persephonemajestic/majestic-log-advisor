@@ -622,7 +622,8 @@ body:not(.dnd) .arc-empty { display: none !important; }
 .side .zone { position: relative; border: 0; border-radius: 10px; padding: 4px 0; min-height: 0; gap: 2px; background: none; }
 .side .zone + .zone { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); border-radius: 0; }
 .side .zone-h { display: grid; gap: 4px; padding: 2px 6px 4px; }
-.side .zone-h .zt { display: flex; align-items: center; gap: 7px; }
+.side .zone-h .zt { display: flex; align-items: center; gap: 7px; white-space: nowrap; min-width: 0; }
+.side .zundo { font-size: 14px; line-height: 1; padding: 2px 8px; }
 .zmenu { position: relative; } .zmenu summary { list-style: none; cursor: pointer; width: 24px; height: 22px; border-radius: 6px; display: grid; place-items: center; color: var(--muted); font-weight: 700; } .zmenu summary::-webkit-details-marker { display: none; } .zmenu summary:hover, .zmenu[open] summary { background: var(--line); color: var(--ink); }
 .zmenu-b { position: absolute; right: 0; top: 26px; z-index: 9; display: grid; gap: 4px; min-width: 190px; padding: 8px; border: 1px solid var(--line2); border-radius: 10px; background: var(--surface); box-shadow: 0 10px 28px -12px rgba(0, 0, 0, .45); }
 .zmenu-b .clrz { text-align: left; }
@@ -3045,7 +3046,7 @@ var STRU = { ok: 'Успех', bad: 'Сбой', warn: 'Внимание', unk: '
 var SRCRU = { guide: 'из руководства', obs: 'по наблюдению в логах', infer: 'вывод, в руководстве нет', web: 'по открытым источникам', user: 'ваше правило', team: 'правило команды' };
 var SRCTIP = { team: 'Общее правило команды из файла rules.json в репозитории проекта', user: 'Правило, которое добавили вы или коллега через «Добавить решение»', guide: 'Правило взято из документа «Руководство по диагностике ошибок и работе с логами»', obs: 'Строка встречается в успешных заходах загруженных логов, поэтому считается шумом', web: 'Случая нет в руководстве. Объяснение собрано по справкам Rockstar, форумам RAGE и cfx.re и реальным логам. Проверяйте его', infer: 'Этого случая нет в руководстве. Объяснение построено по логам и общим признакам, проверяйте его' };
 var PSTEPS_UI = [['admin', 'Администратор'], ['pirate', 'Очистка файлов'], ['backup', 'Резервная копия'], ['patch', 'Патч игры'], ['job', 'Процесс игры'], ['inject', 'Внедрение'], ['injected', 'Клиент внедрён'], ['entry', 'Запуск клиента'], ['finished', 'Готово'], ['window', 'Окно игры']];
-var SAMPLE = null, APP_VERSION = '2026-10-12.112';
+var SAMPLE = null, APP_VERSION = '2026-10-12.113';
 var ROW = 20, KBKEY = 'majestic-log-advisor.kb.v1';
 
 var $ = function (s) { return document.querySelector(s); };
@@ -3080,6 +3081,11 @@ function niceName(n) { return n.replace(/^[0-9a-f]{8}-/i, ''); }
 function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ'; }
 /* ---------- Версия 13: отчёты, все логи, окно загрузки, команда, слежение ---------- */
 var CHANGELOG = [
+  { v: '2026-10-12.113', items: [
+    'Плагин Discord: повторное нажатие «В анализатор» снова открывает файл, даже если вы его здесь уже закрыли. Если лог ещё открыт — просто переходит к нему.',
+    'Дампы (.dmp) и журналы событий (.evtx) из тикета открываются сразу: привязываются к логу этого же тикета, а если логов тикета нет — открываются в окне «Только дамп».',
+    'Кнопка «Отменить» в панели логов стала компактной (↶) и не ломает шапку на узкой панели.'
+  ] },
   { v: '2026-10-12.112', items: [
     'ERR_FAILED_TO_LAUNCH_PLATFORM: решение теперь — переустановить платформу поверх (Steam, Rockstar Games Launcher или Epic Games, игра и библиотека остаются), перезагрузиться и один раз открыть платформу самому. Так же в отчётах и в ответе игроку.',
     'Исправлено: у находки про commandline.txt не показывался источник.'
@@ -3817,6 +3823,7 @@ async function addTextsRun(items, meta) {
     if (mt) { var arcd = (S.kb.settings.arcHashes || {})[mt.hash] ? 'arc' : 'act'; touched.filter(function (x, i) { return x !== mt && touched.indexOf(x) === i; }).forEach(function (x) { mergeLogs(x, mt, arcd); }); }
   }
   if (added) { var withSys = newF.filter(function (x) { return x.sys; })[0]; S.active = (withSys || S.files[S.files.length - 1]).id; }
+  else if (touched.length && !meta.restore) { var tf = touched[touched.length - 1], tg = groupOf(tf); S.active = tf.id; if (tg) S.open[tg.id] = 1; }
   else if (!S.files.some(function (f) { return f.id === S.active; }) && S.files.length) S.active = S.files[0].id;
   var gnm = newF.length > 1 && newF.every(function (x) { return x.group && x.group.id === newF[0].group.id; }) ? (caseG ? ' в папку «' + caseG.name + '». Логи после попытки решения добавляйте в неё кнопкой «+ Добавить логи» или перетащите файлы на папку' : ' (папка «' + newF[0].group.name + '», нажмите на её плитку в начале списка)') : (caseG && newF.length === 1 ? ' в папку «' + caseG.name + '»' : '');
   if (!meta.restore) status((added ? 'Добавлено файлов: ' + added + gnm + '. ' : '') + (skipped.length ? 'Пропущены дубликаты: ' + skipped.join(', ') + '.' : ''));
@@ -4096,7 +4103,7 @@ function renderList() {
   });
   S.files.filter(function (f) { return !S.pins[f.id] && !inF[f.id] && sideMatch(f, q); }).sort(byNew).forEach(function (f) { put(isAct(f), fileCard(f)); });
   var gn = $('#gName'); if (gn && !gn.dataset.f) { gn.dataset.f = 1; gn.focus(); gn.select(); }
-  var ah = $('#actHd'); if (ah) ah.innerHTML = '<div class="zt"><i class="sd"></i><b>В работе</b><span class="zc">' + na + '</span><span class="side-sp"></span>' + (S.undo ? '<button type="button" class="clrz soft" data-act="undo" title="Отменить: ' + esc(S.undo.label) + '">↶ Отменить</button>' : '') + '<details class="zmenu"' + (S.zmenu || clrArm ? ' open' : '') + '><summary title="Действия со списком" aria-label="Действия со списком">⋯</summary><div class="zmenu-b">' + (na > 1 ? '<button type="button" class="clrz soft" data-act="allArc" title="Убрать всё в архив, кроме открытого и закреплённых">Всё в архив</button>' : '') + clrBtn('act', na) + (nr ? clrBtn('arc', nr, 'arcClr') : '') + clrBtn('all', S.files.length) + '</div></details></div>';
+  var ah = $('#actHd'); if (ah) ah.innerHTML = '<div class="zt"><i class="sd"></i><b>В работе</b><span class="zc">' + na + '</span><span class="side-sp"></span>' + (S.undo ? '<button type="button" class="clrz soft zundo" data-act="undo" title="Отменить: ' + esc(S.undo.label) + '" aria-label="Отменить последнее действие">↶</button>' : '') + '<details class="zmenu"' + (S.zmenu || clrArm ? ' open' : '') + '><summary title="Действия со списком" aria-label="Действия со списком">⋯</summary><div class="zmenu-b">' + (na > 1 ? '<button type="button" class="clrz soft" data-act="allArc" title="Убрать всё в архив, кроме открытого и закреплённых">Всё в архив</button>' : '') + clrBtn('act', na) + (nr ? clrBtn('arc', nr, 'arcClr') : '') + clrBtn('all', S.files.length) + '</div></details></div>';
   $('#flist').innerHTML = A || '<li class="hint side-empty">' + (q ? 'Ничего не найдено.' : 'Логов пока нет. Перетащите файлы вниз панели или нажмите «Добавить логи».') + '</li>';
   var gn2 = $('#gName'); if (gn2 && !gn2.dataset.f) { gn2.dataset.f = 1; gn2.focus(); gn2.select(); }
   var aw = $('#arcWrap'); if (aw) {
@@ -6408,8 +6415,15 @@ async function flushExt() {
     /* игрок дела — тот, чьих файлов больше (саппорт мог приложить свой файл в ту же ветку) */
     var cnt = {}, pl = null, best = 0; items.forEach(function (x) { if (!x.player) return; var k = x.player.id || x.player.nick || '?'; cnt[k] = (cnt[k] || 0) + 1; if (cnt[k] > best) { best = cnt[k]; pl = x.player; } });
     var files = items.map(function (x) { return new File([x.data], x.name, { lastModified: Date.now() }); });
+    /* дампы и журналы событий открываются отдельно: к логу этого же тикета, а если логов тикета нет — в окне «Только дамп» */
+    var sysF = files.filter(function (x) { return /\.(dmp|mdmp|evtx)$/i.test(x.name); }); files = files.filter(function (x) { return sysF.indexOf(x) < 0; });
     var before = {}; S.files.forEach(function (f) { before[f.id] = 1; });
-    await readFiles(files, false, { forceGroup: { id: gid, name: name, type: 'case' } });
+    if (files.length) await readFiles(files, false, { forceGroup: { id: gid, name: name, type: 'case' } });
+    if (sysF.length) {
+      var inCase = S.files.filter(function (f) { return f.group && f.group.id === gid && !f.sample; });
+      if (inCase.length && !sysOnlyOn()) { var tgt = inCase.filter(function (f) { return f.sc.kind === 'client'; }).pop() || inCase[inCase.length - 1]; S.active = tgt.id; S.open[gid] = 1; await ingestSys(sysF, []); }
+      else { if (!sysOnlyOn()) openSysOnly(); await ingestSys(sysF, []); }
+    }
     S.files.forEach(function (f) { if (!before[f.id] && f.group && f.group.id === gid && !S.kb.tags[f.hash]) S.kb.tags[f.hash] = name; });
     savePlayer(gid, name, pl, S.files.filter(function (f) { return f.group && f.group.id === gid; }).map(function (f) { return f.hash; })); saveKB();
     status('Из Discord (' + name + '): ' + items.map(function (x) { return x.name; }).join(', ') + '.');

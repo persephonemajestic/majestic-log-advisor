@@ -1,6 +1,6 @@
 /**
  * @name MajesticLogImport
- * @version 1.3.0
+ * @version 1.3.1
  * @description Кнопка «В анализатор» на логах и дампах в ваших тикетах: файл и данные игрока уходят в Majestic Log Advisor.
  * @author persephonemajestic
  * @source https://github.com/persephonemajestic/majestic-log-advisor/tree/main/plugins/betterdiscord
@@ -12,7 +12,7 @@
    Если приложение закрыто, отправка встаёт в очередь и уйдёт, когда приложение запустится.
    Плагин сам проверяет обновления раз в 6 часов и ставит новую версию из репозитория. */
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.3.0";
+const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.3.1";
 const UPDATE_URL = "https://raw.githubusercontent.com/persephonemajestic/majestic-log-advisor/main/plugins/betterdiscord/MajesticLogImport.plugin.js";
 
 /* Данные игрока из текста: подписанные поля («Ник:», «Статик:», «Сервер:») и ник вида Имя_Фамилия.
@@ -178,7 +178,7 @@ module.exports = class MajesticLogImport {
         if (btn) { btn.disabled = true; btn.textContent = "Отправляю…"; }
         try {
             const j = await this.post(body);
-            if (btn) btn.textContent = j.dup ? "✓ Уже в анализаторе" : "✓ В анализаторе";
+            if (btn) { btn.textContent = j.dup ? "✓ Уже в анализаторе" : "✓ В анализаторе"; btn.disabled = false; btn.title = "Нажмите ещё раз, чтобы открыть файл в анализаторе снова"; }
             this.toast((j.dup ? "Уже в анализаторе: " : "Отправлено в анализатор: ") + name, "success");
         } catch (e) {
             if (String(e.message) === "token") { if (btn) { btn.disabled = false; btn.textContent = "В анализатор"; } if (!this.retried && await this.pair()) { this.retried = true; try { return await this.send(channelId, messageId, url, name, btn); } finally { this.retried = false; } } return; }
@@ -202,7 +202,7 @@ module.exports = class MajesticLogImport {
                 this.enqueue(body); queued++;
             }
         }
-        if (btn) btn.textContent = queued ? "⏳ В очереди: " + queued : "✓ Все в анализаторе";
+        if (btn) { btn.textContent = queued ? "⏳ В очереди: " + queued : "✓ Все в анализаторе"; btn.disabled = false; }
         this.toast("Файлы тикета: отправлено " + sent + (dup ? ", уже были " + dup : "") + (queued ? ", в очереди " + queued + " (приложение не отвечает)" : "") + (failed ? ", не приняты " + failed : ""), queued || failed ? "warning" : "success");
     }
 

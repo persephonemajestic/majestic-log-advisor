@@ -13,7 +13,7 @@ import { cmpVer, extractPlayer } from "./extract";
 const Native = VencordNative.pluginHelpers.MajesticLogImport as PluginNative<typeof import("./native")>;
 
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.3.0";
+const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.3.1";
 
 const settings = definePluginSettings({
     token: { type: OptionType.STRING, description: "Ключ из Majestic Log Advisor («Настройки» → «Плагин Discord»)", default: "" },
@@ -89,7 +89,7 @@ async function send(channelId: string, messageId: string, url: string, name: str
     const body: Body = { url, name, ...playerOf(channelId, messageId) };
     btn.disabled = true; btn.textContent = "Отправляю…";
     const r = await post(body);
-    if (r.ok) { btn.textContent = r.dup ? "✓ Уже в анализаторе" : "✓ В анализаторе"; showToast((r.dup ? "Уже в анализаторе: " : "Отправлено в анализатор: ") + name, "success"); return; }
+    if (r.ok) { btn.textContent = r.dup ? "✓ Уже в анализаторе" : "✓ В анализаторе"; btn.disabled = false; btn.title = "Нажмите ещё раз, чтобы открыть файл в анализаторе снова"; showToast((r.dup ? "Уже в анализаторе: " : "Отправлено в анализатор: ") + name, "success"); return; }
     if (r.status === 401 || r.error === "token") { btn.disabled = false; btn.textContent = "В анализатор"; showToast("Вставьте ключ из «Настроек» Majestic Log Advisor в настройки плагина", "failure"); return; }
     if (r.status === 0) {
         enqueue(body);
@@ -112,7 +112,7 @@ async function sendAll(channelId: string, btn: HTMLButtonElement) {
         if (r.status === 401 || r.error === "token") { btn.disabled = false; btn.textContent = "Все файлы тикета (" + list.length + ")"; showToast("Вставьте ключ из «Настроек» Majestic Log Advisor в настройки плагина", "failure"); return; }
         if (r.status === 0) { enqueue(body); queued++; } else failed++;
     }
-    btn.textContent = queued ? "⏳ В очереди: " + queued : "✓ Все в анализаторе";
+    btn.textContent = queued ? "⏳ В очереди: " + queued : "✓ Все в анализаторе"; btn.disabled = false;
     showToast("Файлы тикета: отправлено " + sent + (dup ? ", уже были " + dup : "") + (queued ? ", в очереди " + queued + " (приложение не отвечает)" : "") + (failed ? ", не приняты " + failed : ""), queued || failed ? "message" : "success");
 }
 

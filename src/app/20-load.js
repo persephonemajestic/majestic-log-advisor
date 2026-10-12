@@ -54,6 +54,7 @@ async function addTextsRun(items, meta) {
     if (mt) { var arcd = (S.kb.settings.arcHashes || {})[mt.hash] ? 'arc' : 'act'; touched.filter(function (x, i) { return x !== mt && touched.indexOf(x) === i; }).forEach(function (x) { mergeLogs(x, mt, arcd); }); }
   }
   if (added) { var withSys = newF.filter(function (x) { return x.sys; })[0]; S.active = (withSys || S.files[S.files.length - 1]).id; }
+  else if (touched.length && !meta.restore) { var tf = touched[touched.length - 1], tg = groupOf(tf); S.active = tf.id; if (tg) S.open[tg.id] = 1; }
   else if (!S.files.some(function (f) { return f.id === S.active; }) && S.files.length) S.active = S.files[0].id;
   var gnm = newF.length > 1 && newF.every(function (x) { return x.group && x.group.id === newF[0].group.id; }) ? (caseG ? ' в папку «' + caseG.name + '». Логи после попытки решения добавляйте в неё кнопкой «+ Добавить логи» или перетащите файлы на папку' : ' (папка «' + newF[0].group.name + '», нажмите на её плитку в начале списка)') : (caseG && newF.length === 1 ? ' в папку «' + caseG.name + '»' : '');
   if (!meta.restore) status((added ? 'Добавлено файлов: ' + added + gnm + '. ' : '') + (skipped.length ? 'Пропущены дубликаты: ' + skipped.join(', ') + '.' : ''));
