@@ -94,6 +94,11 @@ const EXCASES = [
       await p.evaluate(() => { window.__toasts = []; window.__newSrc = 'alert(1) // @version 9.9.10'; return window.__p.checkUpdate(); });
       ok(await p.evaluate(() => !window.__toasts.length), kind + ': чужой файл вместо плагина не принимается');
     }
+    if (kind === 'BetterDiscord') {
+      const sv = await p.evaluate(() => { const el = window.__p.getSettingsPanel(); document.body.appendChild(el); const k = el.querySelector('.mla-key'); const vis = k.getBoundingClientRect().height > 20 && getComputedStyle(k).borderTopWidth !== '0px'; k.value = 'pasted-key'; k.dispatchEvent(new Event('input')); el.remove(); return [vis, window.__p.cfg().token]; });
+      ok(sv[0] && sv[1] === 'pasted-key', kind + ': поле для ключа видно и ключ сохраняется сразу при вставке');
+      await p.evaluate(() => window.__setTok('secret'));
+    }
     if (kind === 'BetterDiscord') ok(await p.evaluate(() => window.__dl > 0 && window.__bytes === 3), kind + ': файл скачан сетью Discord и передан приложению целиком');
     else {
       await p.evaluate(() => { window.__toasts = []; return window.__p.settings.def.check.component().p.onClick(); }); await p.waitForTimeout(100);

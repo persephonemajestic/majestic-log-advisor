@@ -1,6 +1,6 @@
 /**
  * @name MajesticLogImport
- * @version 1.2.0
+ * @version 1.2.1
  * @description Кнопка «В анализатор» на логах и дампах в ваших тикетах: файл и данные игрока уходят в Majestic Log Advisor.
  * @author persephonemajestic
  * @source https://github.com/persephonemajestic/majestic-log-advisor/tree/main/plugins/betterdiscord
@@ -12,7 +12,7 @@
    Если приложение закрыто, отправка встаёт в очередь и уйдёт, когда приложение запустится.
    Плагин сам проверяет обновления раз в 6 часов и ставит новую версию из репозитория. */
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.2.0";
+const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.2.1";
 const UPDATE_URL = "https://raw.githubusercontent.com/persephonemajestic/majestic-log-advisor/main/plugins/betterdiscord/MajesticLogImport.plugin.js";
 
 /* Данные игрока из текста: подписанные поля («Ник:», «Статик:», «Сервер:») и ник вида Имя_Фамилия.
@@ -236,12 +236,13 @@ module.exports = class MajesticLogImport {
 
     getSettingsPanel() {
         const c = this.cfg(), el = document.createElement("div");
-        el.style.cssText = "display:grid;gap:10px;color:var(--text-normal);padding:4px 0";
-        el.innerHTML = '<div>Ключ из Majestic Log Advisor («Настройки» → «Плагин Discord»):</div><input type="text" class="mla-key" style="padding:8px;border-radius:4px;border:1px solid var(--background-modifier-accent);background:var(--input-background);color:var(--text-normal)"><div>Порт (обычно 47615):</div><input type="number" class="mla-port" style="padding:8px;width:120px;border-radius:4px;border:1px solid var(--background-modifier-accent);background:var(--input-background);color:var(--text-normal)"><button class="mla-btn mla-test" type="button" style="justify-self:start;margin:0">Проверить связь с анализатором</button>';
+        el.style.cssText = "display:grid;gap:10px;color:var(--text-normal, #dbdee1);padding:4px 0";
+        const inp = "width:100%;box-sizing:border-box;padding:9px 10px;border-radius:6px;border:1px solid var(--input-border, rgba(255,255,255,.18));background:var(--input-background, rgba(0,0,0,.28));color:var(--text-normal, #dbdee1);font-size:14px;outline:none";
+        el.innerHTML = '<div>Ключ из Majestic Log Advisor («Настройки» → «Плагин Discord» → «Скопировать ключ»):</div><input type="text" class="mla-key" placeholder="Вставьте ключ сюда (Ctrl+V)" spellcheck="false" style="' + inp + '"><div>Порт (обычно 47615):</div><input type="number" class="mla-port" style="' + inp + ';width:140px"><button class="mla-btn mla-test" type="button" style="justify-self:start;margin:0">Проверить связь с анализатором</button>';
         const k = el.querySelector(".mla-key"), p = el.querySelector(".mla-port");
         k.value = c.token; p.value = c.port;
         const save = () => this.setCfg({ token: k.value.trim(), port: parseInt(p.value, 10) || 47615 });
-        k.addEventListener("change", save); p.addEventListener("change", save);
+        ["input", "change"].forEach((ev) => { k.addEventListener(ev, save); p.addEventListener(ev, save); });
         el.querySelector(".mla-test").addEventListener("click", async () => {
             save();
             const base = "http://127.0.0.1:" + (parseInt(p.value, 10) || 47615);
