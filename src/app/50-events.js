@@ -207,7 +207,8 @@ document.addEventListener('input', function (ev) {
   else if (t.id === 'aiAutoBox') { S.kb.settings.aiAuto = !!t.checked; saveKB(); }
   else if (t.getAttribute && t.getAttribute('data-act') === 'tplPick') { var pf = active(), pv2 = t.value; if (pf) { if (!pv2) fillReply(pf); else { var src = pv2[0] === 'b' ? QTPL[+pv2.slice(1)] : myTpls()[+pv2.slice(1)]; if (src) $('#panelTa').value = M(expandTpl(src.t, pf)); } } }
   else if (t.getAttribute && t.getAttribute('data-act') === 'rstyle') { var f = active(), rs = RSTYLES[t.value] || RSTYLES.std, st9 = S.kb.settings; st9.replyStyle = t.value; st9.hello = rs.hello; st9.bye = rs.bye; st9.replyShort = rs.short; saveKB(); if ($('#rpHello')) { $('#rpHello').value = rs.hello; $('#rpBye').value = rs.bye; } if ($('#panelTa') && f) fillReply(f); var pv9 = $('#replyPv'); if (pv9 && f) pv9.textContent = replyText(f, ''); }
-  else if (t.id === 'autoUpd') { S.kb.settings.autoUpdate = !!t.checked; saveKB(); }
+  else if (t.id === 'autoUpd') { S.kb.settings.autoUpdate = !!t.checked; saveKB(); var aa = $('#autoApply'); if (aa) aa.disabled = !t.checked; }
+  else if (t.id === 'autoApply') { S.kb.settings.autoApply = !!t.checked; saveKB(); if (!t.checked) clearInterval(aaTimer); else if (S.pendingUpd) aaWatch(S.pendingUpd, false); }
 });
 $('#btnAdd').addEventListener('click', function () { $('#fileIn').click(); });
 $('#btnDir').addEventListener('click', function () { $('#dirIn').click(); });

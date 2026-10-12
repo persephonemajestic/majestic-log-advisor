@@ -2838,7 +2838,7 @@ var STRU = { ok: 'Успех', bad: 'Сбой', warn: 'Внимание', unk: '
 var SRCRU = { guide: 'из руководства', obs: 'по наблюдению в логах', infer: 'вывод, в руководстве нет', web: 'по открытым источникам', user: 'ваше правило', team: 'правило команды' };
 var SRCTIP = { team: 'Общее правило команды из файла rules.json в репозитории проекта', user: 'Правило, которое добавили вы или коллега через «Добавить решение»', guide: 'Правило взято из документа «Руководство по диагностике ошибок и работе с логами»', obs: 'Строка встречается в успешных заходах загруженных логов, поэтому считается шумом', web: 'Случая нет в руководстве. Объяснение собрано по справкам Rockstar, форумам RAGE и cfx.re и реальным логам. Проверяйте его', infer: 'Этого случая нет в руководстве. Объяснение построено по логам и общим признакам, проверяйте его' };
 var PSTEPS_UI = [['admin', 'Администратор'], ['pirate', 'Очистка файлов'], ['backup', 'Резервная копия'], ['patch', 'Патч игры'], ['job', 'Процесс игры'], ['inject', 'Внедрение'], ['injected', 'Клиент внедрён'], ['entry', 'Запуск клиента'], ['finished', 'Готово'], ['window', 'Окно игры']];
-var SAMPLE = null, APP_VERSION = '2026-10-12.104';
+var SAMPLE = null, APP_VERSION = '2026-10-12.105';
 var ROW = 20, KBKEY = 'majestic-log-advisor.kb.v1';
 
 var $ = function (s) { return document.querySelector(s); };
@@ -2871,6 +2871,11 @@ function niceName(n) { return n.replace(/^[0-9a-f]{8}-/i, ''); }
 function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ'; }
 /* ---------- Версия 13: отчёты, все логи, окно загрузки, команда, слежение ---------- */
 var CHANGELOG = [
+  { v: '2026-10-12.105', items: [
+    'Обновления применяются сами, когда вы не работаете в приложении: окно свёрнуто 2 минуты или 5 минут без действий, ни одно окно не открыто и курсор не в поле ввода. Пока вы работаете, обновление ждёт.',
+    'После такого обновления приложение возвращает вас туда же: тот же лог, вкладка, поиск, фильтры, раскрытые папки и прокрутка.',
+    'Выключить можно в «Настройках» → «Обновления»; тогда новая версия применяется при следующем запуске, как раньше.'
+  ] },
   { v: '2026-10-12.104', items: [
     'Светлая тема теперь в тёплых бумажных тонах, как у Claude, чуть темнее: не режет глаз. Окно при запуске и экран «Доступ» в тех же цветах.',
     'Запуск быстрее: сохранённые логи восстанавливаются порциями, свежие появляются сразу. 80 сохранённых логов загружаются примерно за 1 секунду вместо 3,5.',
@@ -4672,7 +4677,7 @@ function openSettings() {
   var h = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" aria-label="Настройки"><b>Настройки</b><h4 style="margin:6px 0 2px">Горячие клавиши</h4><p class="hint" style="margin:0">Нажмите на кнопку справа и затем на нужную клавишу. Одна клавиша без Ctrl и Alt; в полях ввода они не работают. Дополнительно без настройки: J и K листают логи, R копирует ответ игроку, E открывает закрытие дела.</p><div style="display:grid;gap:4px">';
   h += Object.keys(KEYDEF).map(function (k) { var on = S.bind === k; return '<div class="lt"><span style="flex:1">' + KEYNAME[k] + '</span><button class="btn sm' + (on ? ' primary' : '') + '" data-act="keyBind" data-k="' + k + '" style="min-width:120px">' + (on ? 'Нажмите клавишу…' : esc(codeLabel(K[k]))) + '</button><button class="btn sm ghost" data-act="keyClear" data-k="' + k + '" title="Убрать клавишу" aria-label="Убрать клавишу">×</button></div>'; }).join('');
   h += '</div><div class="row-actions"><button class="btn sm" data-act="keyReset">Сбросить к стандартным</button></div>';
-  if (window.nativeApp && window.nativeApp.updateCheck) h += '<h4 style="margin:10px 0 2px">Обновления</h4><label class="tgl"><input type="checkbox" id="autoUpd"' + (auto ? ' checked' : '') + '> Обновляться автоматически: скачивать в фоне и применять при следующем запуске (иначе приложение только предложит)</label>';
+  if (window.nativeApp && window.nativeApp.updateCheck) h += '<h4 style="margin:10px 0 2px">Обновления</h4><label class="tgl"><input type="checkbox" id="autoUpd"' + (auto ? ' checked' : '') + '> Скачивать обновления в фоне (иначе приложение только предложит)</label><label class="tgl"><input type="checkbox" id="autoApply"' + (S.kb.settings.autoApply !== false ? ' checked' : '') + (auto ? '' : ' disabled') + '> Применять сами, когда вы не работаете в приложении: окно свёрнуто 2 минуты или 5 минут без действий. Открытый лог, вкладка и прокрутка сохраняются</label>';
   if (srvOn()) h += '<h4 style="margin:10px 0 2px">Резервная копия базы знаний</h4><p class="hint" style="margin:0">Копия хранится на сервере и делается сама раз в сутки. Её можно вернуть после переустановки Windows. ' + (S.kb.settings.backupAt ? 'Последняя копия: ' + esc(fmtDT(S.kb.settings.backupAt)) + '.' : 'Копии ещё не было.') + '</p><div class="row-actions"><button class="btn sm" data-act="bkNow">Сделать копию сейчас</button><button class="btn sm" data-act="bkRestore">Восстановить из копии</button></div>';
   if (srvOn()) h += '<h4 style="margin:10px 0 2px">Массовые проблемы</h4><p class="hint" style="margin:0">Когда одинаковых проблем в логах команды больше порога, приложение покажет уведомление с быстрым решением.</p><div class="lt"><label class="nl inl">За день<input type="number" min="2" id="massDay" value="' + massTh().day + '" style="width:90px"></label><label class="nl inl">За неделю<input type="number" min="2" id="massWeek" value="' + massTh().week + '" style="width:90px"></label></div>';
   h += '<h4 style="margin:10px 0 2px">Вид</h4><div class="lt"><label class="nl inl">Масштаб<select class="sel" id="uiScale">' + [90, 100, 110, 125, 150].map(function (z) { return '<option value="' + z + '"' + ((+S.kb.settings.uiScale || 100) === z ? ' selected' : '') + '>' + z + '%</option>'; }).join('') + '</select></label><label class="nl inl">Плотность<select class="sel" id="density"><option value="normal"' + (S.kb.settings.density === 'compact' ? '' : ' selected') + '>Обычная</option><option value="compact"' + (S.kb.settings.density === 'compact' ? ' selected' : '') + '>Компактная</option></select></label></div>';
@@ -4840,19 +4845,20 @@ async function checkUpdates(manual, srvShell) {
   try {
     var info = await na.updateInfo(), sp = na.shellPending ? await na.shellPending(srvShell) : '';
     var auto = S.kb.settings.autoUpdate !== false;
-    if (sp) { if (auto && !manual) notePending(sp); else showUpdate(sp, 'ready', true); return; }
+    if (sp) { if (auto && !manual) notePending(sp, true); else showUpdate(sp, 'ready', true); return; }
     if (info && info.version && info.version !== APP_VERSION) { if (auto && !manual) notePending(info.version); else showUpdate(info.version, 'ready', false); return; }
     var r = await na.updateCheck(null, { dry: !auto });
     if (r && r.has) { if (auto && !manual) notePending(r.version); else showUpdate(r.version, auto ? 'ready' : 'avail', false); return; }
     if (manual) status(r && r.msg || 'Обновлений нет.');
   } catch (e) {}
 }
-/* тихие обновления: скачиваются сами, применяются при следующем запуске, приложение само не перезагружается */
-function notePending(ver) {
+/* тихие обновления: скачиваются сами; применяются автоматически в незаметный момент (44-autoapply.js) или при следующем запуске */
+function notePending(ver, shell) {
   if (S.pendingUpd === ver) return; S.pendingUpd = ver;
-  var b = $('#btnUpd'); if (b) { b.classList.add('has-upd'); b.title = 'Версия ' + ver + ' скачана и применится при следующем запуске. Нажмите, чтобы применить сейчас.'; }
-  var ul = $('#updLine'); if (ul) { ul.hidden = false; ul.title = 'Версия ' + ver + ' скачана. Применится при следующем запуске, или нажмите, чтобы применить сейчас.'; }
-  status('Обновление ' + ver + ' скачано и применится при следующем запуске приложения.');
+  var when = typeof autoApplyOn === 'function' && autoApplyOn() ? 'применится само, когда вы отойдёте от приложения (или при следующем запуске)' : 'применится при следующем запуске';
+  var b = $('#btnUpd'); if (b) { b.classList.add('has-upd'); b.title = 'Версия ' + ver + ' скачана и ' + when + '. Нажмите, чтобы применить сейчас.'; }
+  var ul = $('#updLine'); if (ul) { ul.hidden = false; ul.title = 'Версия ' + ver + ' скачана и ' + when + '. Нажмите, чтобы применить сейчас.'; }
+  if (typeof aaWatch === 'function') aaWatch(ver, !!shell);
 }
 function updatedNotice() {
   var st = S.kb.settings, prev = st.lastVer; if (prev === APP_VERSION) return; st.lastVer = APP_VERSION; saveKB();
@@ -5989,6 +5995,62 @@ async function extSettingsHtml() {
   return '<h4 style="margin:10px 0 2px">Плагин Discord</h4><p class="hint" style="margin:0">Кнопка «В анализатор» на вложениях в ваших тикетах отправляет файлы сюда. Вставьте этот ключ в настройки плагина (BetterDiscord или Vencord).' + (i.on ? ' Приёмник работает, порт ' + i.port + '.' : ' Приёмник не запустился.') + '</p><div class="lt"><code class="mono" id="extKey" style="flex:1;overflow-wrap:anywhere">' + esc(i.token) + '</code><button class="btn sm" data-act="extCopy">Скопировать ключ</button><button class="btn sm ghost" data-act="extReset" title="Старый ключ перестанет работать">Новый ключ</button></div>';
 }
 if (window.nativeApp && window.nativeApp.onExtImport) { window.nativeApp.onExtImport(onExtImport); try { window.nativeApp.extReady(); } catch (e) {} }
+/* ---------- Умное автообновление ----------
+   Скачанная версия применяется сама, но только в незаметный момент: окно не в фокусе 2 минуты или 5 минут без действий,
+   ни одно окно не открыто, курсор не в поле ввода, ничего не перетаскивается и не загружается.
+   Перед перезагрузкой сохраняется состояние (лог, вкладка, фильтры, прокрутка, раскрытые папки), после — восстанавливается.
+   Выключается в «Настройках»; тогда версия применяется при следующем запуске, как раньше. */
+var AA_FAST = !!window.__aaFast, AA_BLUR = AA_FAST ? 300 : 2 * 60000, AA_IDLE = AA_FAST ? 600 : 5 * 60000, AA_POLL = AA_FAST ? 150 : 15000, AA_RESUME_TTL = 10 * 60000; /* __aaFast — только для тестов */
+var aaAct = Date.now(), aaBlur = document.hasFocus() ? 0 : Date.now(), aaTimer = 0, aaBusy = false;
+function autoApplyOn() { return S.kb.settings.autoUpdate !== false && S.kb.settings.autoApply !== false; }
+['pointerdown', 'keydown', 'wheel', 'input', 'touchstart'].forEach(function (ev) { document.addEventListener(ev, function () { aaAct = Date.now(); }, { capture: true, passive: true }); });
+window.addEventListener('focus', function () { aaBlur = 0; aaAct = Date.now(); });
+window.addEventListener('blur', function () { aaBlur = Date.now(); });
+
+/* сейчас можно перезагрузить незаметно? */
+function aaQuiet(now) {
+  now = now || Date.now();
+  var away = aaBlur && now - aaBlur >= AA_BLUR, idle = now - aaAct >= AA_IDLE;
+  if (!away && !idle) return false;
+  if (typeof popBusy === 'function' && popBusy()) return false;
+  if (document.querySelector('.panel, #upOv, dialog[open]')) return false;
+  var ae = document.activeElement; if (ae && (/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) || ae.isContentEditable)) return false;
+  if (typeof dragSrc !== 'undefined' && dragSrc) return false;
+  if (S.renaming || S.restoring || (extQ && extQ.length)) return false;
+  if (/^(Разбираю|Читаю|Восстанавливаю)/.test((($('#status') || {}).textContent) || '')) return false;
+  if (S.files.some(function (f) { return f.sysBusy || f.diagBusy; })) return false;
+  return true;
+}
+function aaSnapshot() {
+  var f = active(), sc = $('#sc');
+  return { at: Date.now(), from: APP_VERSION, tab: S.tab, hash: f ? f.hash : '', sel: S.sel, q: S.q, mode: S.mode, scope: S.scope, lvl: S.lvl, quiet: S.quiet, ctx: S.ctx,
+    open: Object.keys(S.open || {}), y: window.scrollY || 0, logTop: sc ? sc.scrollTop : 0 };
+}
+function aaApply(shell) {
+  if (aaBusy) return; aaBusy = true;
+  S.kb.settings.resume = aaSnapshot(); saveKB();
+  setTimeout(function () { try { if (shell) window.nativeApp.relaunch(); else window.nativeApp.reloadApp(); } catch (e) { aaBusy = false; } }, 150);
+}
+function aaWatch(ver, shell) {
+  clearInterval(aaTimer);
+  if (!autoApplyOn() || !window.nativeApp || !window.nativeApp.reloadApp) return;
+  aaTimer = setInterval(function () { if (aaQuiet()) { clearInterval(aaTimer); aaApply(shell); } }, AA_POLL);
+}
+/* после перезагрузки: вернуть пользователя туда, где он был */
+function aaResume() {
+  var st = S.kb.settings, r = st.resume; if (!r) return false;
+  delete st.resume; saveKB();
+  if (Date.now() - r.at > AA_RESUME_TTL) return false;
+  var f = r.hash && S.files.find(function (x) { return x.hash === r.hash; });
+  if (f) S.active = f.id;
+  ['tab', 'q', 'mode', 'scope', 'lvl', 'quiet', 'ctx'].forEach(function (k) { if (r[k] !== undefined) S[k] = r[k]; });
+  if (S.scope === 'time') S.scope = 'all';
+  S.sel = typeof r.sel === 'number' ? r.sel : -1; S.open = S.open || {}; (r.open || []).forEach(function (g) { S.open[g] = 1; });
+  render();
+  setTimeout(function () { try { window.scrollTo(0, r.y || 0); var sc = $('#sc'); if (sc && r.logTop) { sc.scrollTop = r.logTop; if (typeof drawRows === 'function') drawRows(); } } catch (e) {} }, 60);
+  if (r.from && r.from !== APP_VERSION) status('Приложение обновилось до версии ' + APP_VERSION + ' и вернуло вас туда же. Что нового — кнопка «Что нового» вверху.');
+  return true;
+}
 /* ---------- События ---------- */
 document.addEventListener('click', function (ev) {
   var t = ev.target.closest('[data-act]'); if (!t) return;
@@ -6198,7 +6260,8 @@ document.addEventListener('input', function (ev) {
   else if (t.id === 'aiAutoBox') { S.kb.settings.aiAuto = !!t.checked; saveKB(); }
   else if (t.getAttribute && t.getAttribute('data-act') === 'tplPick') { var pf = active(), pv2 = t.value; if (pf) { if (!pv2) fillReply(pf); else { var src = pv2[0] === 'b' ? QTPL[+pv2.slice(1)] : myTpls()[+pv2.slice(1)]; if (src) $('#panelTa').value = M(expandTpl(src.t, pf)); } } }
   else if (t.getAttribute && t.getAttribute('data-act') === 'rstyle') { var f = active(), rs = RSTYLES[t.value] || RSTYLES.std, st9 = S.kb.settings; st9.replyStyle = t.value; st9.hello = rs.hello; st9.bye = rs.bye; st9.replyShort = rs.short; saveKB(); if ($('#rpHello')) { $('#rpHello').value = rs.hello; $('#rpBye').value = rs.bye; } if ($('#panelTa') && f) fillReply(f); var pv9 = $('#replyPv'); if (pv9 && f) pv9.textContent = replyText(f, ''); }
-  else if (t.id === 'autoUpd') { S.kb.settings.autoUpdate = !!t.checked; saveKB(); }
+  else if (t.id === 'autoUpd') { S.kb.settings.autoUpdate = !!t.checked; saveKB(); var aa = $('#autoApply'); if (aa) aa.disabled = !t.checked; }
+  else if (t.id === 'autoApply') { S.kb.settings.autoApply = !!t.checked; saveKB(); if (!t.checked) clearInterval(aaTimer); else if (S.pendingUpd) aaWatch(S.pendingUpd, false); }
 });
 $('#btnAdd').addEventListener('click', function () { $('#fileIn').click(); });
 $('#btnDir').addEventListener('click', function () { $('#dirIn').click(); });
@@ -6365,6 +6428,7 @@ S.kb.settings.launches = (S.kb.settings.launches || 0) + 1; saveKB();
 (async function startFiles() {
   var restored = false;
   if (S.kb.settings.keepLogs !== false) { try { restored = await restoreLogs(); } catch (e) {} }
+  try { aaResume(); } catch (e) {}
   if (!restored && !S.kb.settings.hideSamples) addTexts([{ name: 'пример-main.log', size: SAMPLE_MAIN.length, text: SAMPLE_MAIN, sample: true }, { name: 'пример-client.log', size: SAMPLE_CLIENT.length, text: SAMPLE_CLIENT, sample: true }]).then(function () { if (S.files.some(function (f) { return !f.sample; })) return; S.active = S.files[0] ? S.files[0].id : null; status('Показаны примеры. Добавьте свои логи, и примеры исчезнут.'); render(); });
 })();
 render();

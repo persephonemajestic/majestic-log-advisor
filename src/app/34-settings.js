@@ -26,7 +26,7 @@ function openSettings() {
   var h = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" aria-label="Настройки"><b>Настройки</b><h4 style="margin:6px 0 2px">Горячие клавиши</h4><p class="hint" style="margin:0">Нажмите на кнопку справа и затем на нужную клавишу. Одна клавиша без Ctrl и Alt; в полях ввода они не работают. Дополнительно без настройки: J и K листают логи, R копирует ответ игроку, E открывает закрытие дела.</p><div style="display:grid;gap:4px">';
   h += Object.keys(KEYDEF).map(function (k) { var on = S.bind === k; return '<div class="lt"><span style="flex:1">' + KEYNAME[k] + '</span><button class="btn sm' + (on ? ' primary' : '') + '" data-act="keyBind" data-k="' + k + '" style="min-width:120px">' + (on ? 'Нажмите клавишу…' : esc(codeLabel(K[k]))) + '</button><button class="btn sm ghost" data-act="keyClear" data-k="' + k + '" title="Убрать клавишу" aria-label="Убрать клавишу">×</button></div>'; }).join('');
   h += '</div><div class="row-actions"><button class="btn sm" data-act="keyReset">Сбросить к стандартным</button></div>';
-  if (window.nativeApp && window.nativeApp.updateCheck) h += '<h4 style="margin:10px 0 2px">Обновления</h4><label class="tgl"><input type="checkbox" id="autoUpd"' + (auto ? ' checked' : '') + '> Обновляться автоматически: скачивать в фоне и применять при следующем запуске (иначе приложение только предложит)</label>';
+  if (window.nativeApp && window.nativeApp.updateCheck) h += '<h4 style="margin:10px 0 2px">Обновления</h4><label class="tgl"><input type="checkbox" id="autoUpd"' + (auto ? ' checked' : '') + '> Скачивать обновления в фоне (иначе приложение только предложит)</label><label class="tgl"><input type="checkbox" id="autoApply"' + (S.kb.settings.autoApply !== false ? ' checked' : '') + (auto ? '' : ' disabled') + '> Применять сами, когда вы не работаете в приложении: окно свёрнуто 2 минуты или 5 минут без действий. Открытый лог, вкладка и прокрутка сохраняются</label>';
   if (srvOn()) h += '<h4 style="margin:10px 0 2px">Резервная копия базы знаний</h4><p class="hint" style="margin:0">Копия хранится на сервере и делается сама раз в сутки. Её можно вернуть после переустановки Windows. ' + (S.kb.settings.backupAt ? 'Последняя копия: ' + esc(fmtDT(S.kb.settings.backupAt)) + '.' : 'Копии ещё не было.') + '</p><div class="row-actions"><button class="btn sm" data-act="bkNow">Сделать копию сейчас</button><button class="btn sm" data-act="bkRestore">Восстановить из копии</button></div>';
   if (srvOn()) h += '<h4 style="margin:10px 0 2px">Массовые проблемы</h4><p class="hint" style="margin:0">Когда одинаковых проблем в логах команды больше порога, приложение покажет уведомление с быстрым решением.</p><div class="lt"><label class="nl inl">За день<input type="number" min="2" id="massDay" value="' + massTh().day + '" style="width:90px"></label><label class="nl inl">За неделю<input type="number" min="2" id="massWeek" value="' + massTh().week + '" style="width:90px"></label></div>';
   h += '<h4 style="margin:10px 0 2px">Вид</h4><div class="lt"><label class="nl inl">Масштаб<select class="sel" id="uiScale">' + [90, 100, 110, 125, 150].map(function (z) { return '<option value="' + z + '"' + ((+S.kb.settings.uiScale || 100) === z ? ' selected' : '') + '>' + z + '%</option>'; }).join('') + '</select></label><label class="nl inl">Плотность<select class="sel" id="density"><option value="normal"' + (S.kb.settings.density === 'compact' ? '' : ' selected') + '>Обычная</option><option value="compact"' + (S.kb.settings.density === 'compact' ? ' selected' : '') + '>Компактная</option></select></label></div>';
@@ -194,19 +194,20 @@ async function checkUpdates(manual, srvShell) {
   try {
     var info = await na.updateInfo(), sp = na.shellPending ? await na.shellPending(srvShell) : '';
     var auto = S.kb.settings.autoUpdate !== false;
-    if (sp) { if (auto && !manual) notePending(sp); else showUpdate(sp, 'ready', true); return; }
+    if (sp) { if (auto && !manual) notePending(sp, true); else showUpdate(sp, 'ready', true); return; }
     if (info && info.version && info.version !== APP_VERSION) { if (auto && !manual) notePending(info.version); else showUpdate(info.version, 'ready', false); return; }
     var r = await na.updateCheck(null, { dry: !auto });
     if (r && r.has) { if (auto && !manual) notePending(r.version); else showUpdate(r.version, auto ? 'ready' : 'avail', false); return; }
     if (manual) status(r && r.msg || 'Обновлений нет.');
   } catch (e) {}
 }
-/* тихие обновления: скачиваются сами, применяются при следующем запуске, приложение само не перезагружается */
-function notePending(ver) {
+/* тихие обновления: скачиваются сами; применяются автоматически в незаметный момент (44-autoapply.js) или при следующем запуске */
+function notePending(ver, shell) {
   if (S.pendingUpd === ver) return; S.pendingUpd = ver;
-  var b = $('#btnUpd'); if (b) { b.classList.add('has-upd'); b.title = 'Версия ' + ver + ' скачана и применится при следующем запуске. Нажмите, чтобы применить сейчас.'; }
-  var ul = $('#updLine'); if (ul) { ul.hidden = false; ul.title = 'Версия ' + ver + ' скачана. Применится при следующем запуске, или нажмите, чтобы применить сейчас.'; }
-  status('Обновление ' + ver + ' скачано и применится при следующем запуске приложения.');
+  var when = typeof autoApplyOn === 'function' && autoApplyOn() ? 'применится само, когда вы отойдёте от приложения (или при следующем запуске)' : 'применится при следующем запуске';
+  var b = $('#btnUpd'); if (b) { b.classList.add('has-upd'); b.title = 'Версия ' + ver + ' скачана и ' + when + '. Нажмите, чтобы применить сейчас.'; }
+  var ul = $('#updLine'); if (ul) { ul.hidden = false; ul.title = 'Версия ' + ver + ' скачана и ' + when + '. Нажмите, чтобы применить сейчас.'; }
+  if (typeof aaWatch === 'function') aaWatch(ver, !!shell);
 }
 function updatedNotice() {
   var st = S.kb.settings, prev = st.lastVer; if (prev === APP_VERSION) return; st.lastVer = APP_VERSION; saveKB();

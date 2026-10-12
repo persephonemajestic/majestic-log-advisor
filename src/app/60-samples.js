@@ -58,6 +58,7 @@ S.kb.settings.launches = (S.kb.settings.launches || 0) + 1; saveKB();
 (async function startFiles() {
   var restored = false;
   if (S.kb.settings.keepLogs !== false) { try { restored = await restoreLogs(); } catch (e) {} }
+  try { aaResume(); } catch (e) {}
   if (!restored && !S.kb.settings.hideSamples) addTexts([{ name: 'пример-main.log', size: SAMPLE_MAIN.length, text: SAMPLE_MAIN, sample: true }, { name: 'пример-client.log', size: SAMPLE_CLIENT.length, text: SAMPLE_CLIENT, sample: true }]).then(function () { if (S.files.some(function (f) { return !f.sample; })) return; S.active = S.files[0] ? S.files[0].id : null; status('Показаны примеры. Добавьте свои логи, и примеры исчезнут.'); render(); });
 })();
 render();
