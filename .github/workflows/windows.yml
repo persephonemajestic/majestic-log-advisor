@@ -34,6 +34,15 @@ jobs:
           grep -E "INFO|WIN" win.log | sed 's/^/::notice::/' || true
           tail -6 win.log | sed 's/^/::warning::/' || true
           exit $code
+      - name: Установщик плагинов без Node.js и Git в системе
+        shell: bash
+        run: |
+          code=0
+          echo "" | MPI_FORCE_PORTABLE=1 MPI_DATA="$RUNNER_TEMP/mpi data" node plugins/installer/installer.js --setup-tools 2>&1 | tee tools.log || code=$?
+          grep -E "TOOLS|Не удалось|✓" tools.log | sed 's/^/::notice::/' || true
+          grep -q "TOOLS OK v22" tools.log || code=1
+          ls "$RUNNER_TEMP/mpi data/tools" | sed 's/^/::notice::tools: /'
+          exit $code
       - name: Снимки окна
         if: always()
         uses: actions/upload-artifact@v4

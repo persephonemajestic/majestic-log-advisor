@@ -35,7 +35,7 @@ const writeCfg = (c) => { fs.mkdirSync(DATA, { recursive: true }); fs.writeFileS
 function get(url, n) {
   n = n || 0;
   return new Promise((res, rej) => {
-    if (process.env.MPI_LOCAL) { try { return res(fs.readFileSync(path.join(process.env.MPI_LOCAL, url.slice(REPO_RAW.length)))); } catch (e) { return rej(new Error('нет файла ' + url)); } }
+    if (process.env.MPI_LOCAL && url.startsWith(REPO_RAW)) { try { return res(fs.readFileSync(path.join(process.env.MPI_LOCAL, url.slice(REPO_RAW.length)))); } catch (e) { return rej(new Error('нет файла ' + url)); } }
     https.get(url, { headers: { 'User-Agent': 'MajesticPluginInstaller/' + VERSION, 'Cache-Control': 'no-cache' } }, (r) => {
       if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location && n < 5) { r.resume(); return res(get(new URL(r.headers.location, url).toString(), n + 1)); }
       if (r.statusCode !== 200) { r.resume(); return rej(new Error('HTTP ' + r.statusCode + ' ' + url)); }
@@ -66,21 +66,68 @@ async function manifest() {
   catch (e) { say('Не удалось получить список плагинов: ' + e.message); return null; }
 }
 
+/* ---------- Node.js и Git без установки ----------
+   Для сборки Vencord нужны Node.js 22+ и Git. Если их нет, установщик скачивает переносные версии
+   (Node.js с nodejs.org с проверкой SHA-256, MinGit с GitHub) в свою папку: без прав администратора и без MSI. */
+const TOOLS = path.join(DATA, 'tools');
+const NODE_BASE = process.env.MPI_NODE_BASE || 'https://nodejs.org/dist/latest-v22.x/';
+const GIT_API = process.env.MPI_GIT_API || 'https://api.github.com/repos/git-for-windows/git/releases/latest';
+function toolDirs() {
+  const out = [];
+  try { for (const d of fs.readdirSync(TOOLS)) { const p = path.join(TOOLS, d); if (/^node-v\d/.test(d) && exists(path.join(p, WIN ? 'node.exe' : 'bin/node'))) out.push(WIN ? p : path.join(p, 'bin')); } } catch (e) {}
+  const g = path.join(TOOLS, 'git', 'cmd'); if (exists(g)) out.push(g);
+  const n = path.join(TOOLS, 'npm', WIN ? '' : 'bin'); if (exists(n)) out.push(n.replace(/[\\/]$/, ''));
+  return out;
+}
+function usePortable() { const d = toolDirs(); if (d.length) { const cur = (process.env.PATH || '').split(path.delimiter); process.env.PATH = d.filter((x) => cur.indexOf(x) < 0).concat(cur).join(path.delimiter); } return d; }
+function sha256(buf) { return require('crypto').createHash('sha256').update(buf).digest('hex'); }
+function unzip(file, dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  if (cp.spawnSync('tar', ['-xf', file, '-C', dir], { stdio: 'pipe' }).status === 0) return true;
+  if (WIN) return cp.spawnSync('powershell', ['-NoProfile', '-Command', 'Expand-Archive -LiteralPath "' + file + '" -DestinationPath "' + dir + '" -Force'], { stdio: 'pipe' }).status === 0;
+  return cp.spawnSync('unzip', ['-q', '-o', file, '-d', dir], { stdio: 'pipe' }).status === 0;
+}
+async function portableNode() {
+  const sums = (await get(NODE_BASE + 'SHASUMS256.txt')).toString('utf8');
+  const want = WIN ? /^([0-9a-f]{64})\s+(node-v22\.\d+\.\d+-win-x64\.zip)$/m : /^([0-9a-f]{64})\s+(node-v22\.\d+\.\d+-linux-x64\.tar\.gz)$/m;
+  const m = want.exec(sums); if (!m) throw new Error('на nodejs.org не найден архив Node.js 22');
+  say('  Скачиваю ' + m[2] + '…');
+  const buf = await get(NODE_BASE + m[2]); if (sha256(buf) !== m[1]) throw new Error('контрольная сумма Node.js не совпала');
+  const f = path.join(TOOLS, m[2]); fs.mkdirSync(TOOLS, { recursive: true }); fs.writeFileSync(f, buf);
+  if (!unzip(f, TOOLS)) throw new Error('не удалось распаковать Node.js'); fs.rmSync(f, { force: true });
+}
+async function portableGit() {
+  const rel = JSON.parse((await get(GIT_API)).toString('utf8'));
+  const a = (rel.assets || []).find((x) => /^MinGit-[\d.]+(?:\.windows\.\d+)?-64-bit\.zip$/.test(x.name));
+  if (!a) throw new Error('на GitHub не найден архив MinGit');
+  say('  Скачиваю ' + a.name + '…');
+  const buf = await get(a.browser_download_url);
+  if (a.digest && /^sha256:/.test(a.digest) && a.digest.slice(7) !== sha256(buf)) throw new Error('контрольная сумма Git не совпала');
+  const f = path.join(TOOLS, a.name), dir = path.join(TOOLS, 'git'); fs.mkdirSync(TOOLS, { recursive: true }); fs.writeFileSync(f, buf);
+  fs.rmSync(dir, { recursive: true, force: true });
+  if (!unzip(f, dir)) throw new Error('не удалось распаковать Git'); fs.rmSync(f, { force: true });
+}
+function nodeMajorOf() { const v = has('node', ['-v']); return { v, major: parseInt((v.match(/v(\d+)/) || [])[1] || '0', 10) }; }
+
 /* ---------- Vencord ---------- */
 async function checkTools() {
-  const git = has('git'), node = has('node', ['-v']), nodeMajor = parseInt((node.match(/v(\d+)/) || [])[1] || '0', 10);
-  let pnpm = has('pnpm', ['-v']);
-  if (!git || nodeMajor < 22) {
-    say('\nДля сборки Vencord нужны Git и Node.js 22 или новее.' + (!git ? '\n  Git не найден.' : '') + (nodeMajor < 22 ? '\n  Node.js ' + (node || 'не найден') + ', нужна версия 22+.' : ''));
-    if (WIN && !AUTO && await yes('Установить недостающее через winget (встроенный установщик Windows)?', true)) {
-      if (!git) run('winget', ['install', '--id', 'Git.Git', '-e', '--accept-source-agreements', '--accept-package-agreements']);
-      if (nodeMajor < 22) run('winget', ['install', '--id', 'OpenJS.NodeJS.LTS', '-e', '--accept-source-agreements', '--accept-package-agreements']);
-      say('Готово. Закройте это окно и запустите установщик заново, чтобы Windows подхватила новые программы.');
-    } else say('Установите Git (https://git-scm.com) и Node.js LTS (https://nodejs.org), затем запустите установщик снова.');
-    return false;
+  usePortable();
+  let git = has('git'), nd = nodeMajorOf(), force = !!process.env.MPI_FORCE_PORTABLE;
+  if (!git || nd.major < 22 || force) {
+    say('\nДля сборки Vencord нужны Git и Node.js 22 или новее.' + (!git ? '\n  Git не найден.' : '') + (nd.major < 22 ? '\n  Node.js ' + (nd.v || 'не найден') + ', нужна версия 22+.' : ''));
+    if (AUTO) { say('Автообновление Vencord пропущено: запустите установщик вручную.'); return false; }
+    if (!await yes('Скачать переносные Node.js и Git в папку установщика (без установки в Windows и без прав администратора)?', true)) { say('Установите Git (https://git-scm.com) и Node.js 22 (https://nodejs.org), затем запустите установщик снова.'); return false; }
+    try {
+      if (nd.major < 22 || force) await portableNode();
+      if ((!git || force) && WIN) await portableGit();
+    } catch (e) { say('Не удалось скачать: ' + e.message + '. Проверьте интернет или установите Git и Node.js 22 вручную.'); return false; }
+    usePortable(); git = has('git'); nd = nodeMajorOf();
+    if (!git || nd.major < 22) { say('Переносные версии не запустились (Git: ' + (git || 'нет') + ', Node.js: ' + (nd.v || 'нет') + ').'); return false; }
+    say('  ✓ Node.js ' + nd.v + ', ' + git);
   }
+  let pnpm = has('pnpm', ['-v']);
   if (!pnpm && AUTO) { say('pnpm не найден: автообновление Vencord пропущено, запустите установщик вручную.'); return false; }
-  if (!pnpm) { say('\npnpm не найден, ставлю через npm…'); run('npm', ['install', '-g', 'pnpm']); pnpm = has('pnpm', ['-v']); if (!pnpm) { say('Не удалось поставить pnpm. Выполните «npm install -g pnpm» и запустите установщик снова.'); return false; } }
+  if (!pnpm) { say('\npnpm не найден, ставлю в папку установщика…'); run('npm', ['install', '-g', 'pnpm', '--prefix', path.join(TOOLS, 'npm')]); usePortable(); pnpm = has('pnpm', ['-v']); if (!pnpm) { say('Не удалось поставить pnpm. Выполните «npm install -g pnpm» и запустите установщик снова.'); return false; } }
   return true;
 }
 async function findVencord(cfg) {
@@ -186,6 +233,7 @@ async function pick(m, field) {
 }
 async function main() {
   say('Majestic Plugin Installer ' + VERSION + '\nСтавит и обновляет плагины для Vencord и BetterDiscord. Ваши другие плагины не трогает.\n');
+  if (process.argv.includes('--setup-tools')) { const okT = await checkTools(); say(okT ? 'TOOLS OK ' + has('node', ['-v']) + ' | ' + has('git') + ' | pnpm ' + has('pnpm', ['-v']) : 'TOOLS FAIL'); rl.close(); process.exitCode = okT ? 0 : 1; return; }
   const m = await manifest(); if (!m) { await ask('\nНажмите Enter, чтобы закрыть.'); return rl.close(); }
   if (AUTO) { try { await autoUpdate(m); } catch (e) { say('Ошибка: ' + (e && e.message || e)); } return rl.close(); }
   for (;;) {
