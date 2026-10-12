@@ -1,6 +1,6 @@
 /**
  * @name MajesticLogImport
- * @version 1.2.1
+ * @version 1.2.2
  * @description Кнопка «В анализатор» на логах и дампах в ваших тикетах: файл и данные игрока уходят в Majestic Log Advisor.
  * @author persephonemajestic
  * @source https://github.com/persephonemajestic/majestic-log-advisor/tree/main/plugins/betterdiscord
@@ -12,7 +12,7 @@
    Если приложение закрыто, отправка встаёт в очередь и уйдёт, когда приложение запустится.
    Плагин сам проверяет обновления раз в 6 часов и ставит новую версию из репозитория. */
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.2.1";
+const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.2.2";
 const UPDATE_URL = "https://raw.githubusercontent.com/persephonemajestic/majestic-log-advisor/main/plugins/betterdiscord/MajesticLogImport.plugin.js";
 
 /* Данные игрока из текста: подписанные поля («Ник:», «Статик:», «Сервер:») и ник вида Имя_Фамилия.
@@ -234,24 +234,56 @@ module.exports = class MajesticLogImport {
         } catch (e) {}
     }
 
+    /* Проверка связи: приложение запущено и ключ подходит */
+    async checkLink() {
+        const c = this.cfg(), base = "http://127.0.0.1:" + (c.port || 47615);
+        try { const r = await this.fetch(base + "/v1/ping"); const j = await r.json(); if (!j.ok) return this.toast("Анализатор не ответил", "error"); }
+        catch (e) { return this.toast("Анализатор не запущен или порт неверный", "error"); }
+        if (!c.token) return this.toast("Связь есть, но ключ не вставлен: «Настройки» приложения → «Плагин Discord» → «Скопировать ключ»", "warning");
+        try { const r = await this.fetch(base + "/v1/import", { method: "POST", headers: { "content-type": "application/json", "x-mla-token": c.token }, body: "{}" }); this.toast(r.status === 401 ? "Ключ не подходит: скопируйте его заново в «Настройках» приложения" : "Связь с анализатором есть, ключ подходит", r.status === 401 ? "error" : "success"); }
+        catch (e) { this.toast("Анализатор не отвечает", "error"); }
+    }
+    /* Вставить ключ из буфера обмена одной кнопкой: работает, даже если поле ввода в окне настроек недоступно */
+    async pasteKey(after) {
+        let s = "";
+        try { if (window.DiscordNative && DiscordNative.clipboard && DiscordNative.clipboard.read) s = String(DiscordNative.clipboard.read() || ""); } catch (e) {}
+        if (!s) { try { s = await navigator.clipboard.readText(); } catch (e) {} }
+        s = String(s || "").trim();
+        if (!/^[0-9a-f]{32}$/i.test(s)) return this.toast("В буфере нет ключа: в приложении нажмите «Настройки» → «Плагин Discord» → «Скопировать ключ»", "error");
+        this.setCfg(Object.assign(this.cfg(), { token: s })); this.toast("Ключ вставлен", "success"); if (after) after(s);
+        this.checkLink();
+    }
+
     getSettingsPanel() {
-        const c = this.cfg(), el = document.createElement("div");
+        const c = this.cfg();
+        /* В новых версиях BetterDiscord — его собственные поля настроек (с ними работают клик и ввод в окне Discord) */
+        if (BdApi.UI && typeof BdApi.UI.buildSettingsPanel === "function") {
+            try {
+                return BdApi.UI.buildSettingsPanel({
+                    settings: [
+                        { type: "text", id: "token", name: "Ключ из Majestic Log Advisor", note: "В приложении: «Настройки» → «Плагин Discord» → «Скопировать ключ», затем вставьте сюда (Ctrl+V) или нажмите кнопку ниже.", value: c.token, placeholder: "Вставьте ключ сюда" },
+                        { type: "number", id: "port", name: "Порт", note: "Обычно 47615", value: c.port || 47615 },
+                        { type: "button", id: "paste", name: "Вставить ключ из буфера", note: "Берёт скопированный в приложении ключ и сразу проверяет связь", children: "Вставить ключ из буфера", onClick: () => this.pasteKey() },
+                        { type: "button", id: "check", name: "Проверить связь с анализатором", note: "Приложение запущено и ключ подходит", children: "Проверить связь", onClick: () => this.checkLink() }
+                    ],
+                    onChange: (cat, id, value) => { const n = this.cfg(); if (id === "token") n.token = String(value || "").trim(); else if (id === "port") n.port = parseInt(value, 10) || 47615; this.setCfg(n); }
+                });
+            } catch (e) {}
+        }
+        /* Старые версии BetterDiscord: обычная форма */
+        const el = document.createElement("div");
         el.style.cssText = "display:grid;gap:10px;color:var(--text-normal, #dbdee1);padding:4px 0";
-        const inp = "width:100%;box-sizing:border-box;padding:9px 10px;border-radius:6px;border:1px solid var(--input-border, rgba(255,255,255,.18));background:var(--input-background, rgba(0,0,0,.28));color:var(--text-normal, #dbdee1);font-size:14px;outline:none";
-        el.innerHTML = '<label style="display:grid;gap:6px"><span>Ключ из Majestic Log Advisor («Настройки» → «Плагин Discord» → «Скопировать ключ»):</span><input type="text" class="mla-key" placeholder="Вставьте ключ сюда (Ctrl+V)" spellcheck="false" autocomplete="off" style="box-sizing:border-box;width:100%;height:38px;padding:0 10px;border-radius:6px;border:1px solid #4e5058;background:#1e1f22;color:#f2f3f5;font-size:14px;outline:none"></label><label style="display:grid;gap:6px"><span>Порт (обычно 47615):</span><input type="number" class="mla-port" style="box-sizing:border-box;width:100%;height:38px;padding:0 10px;border-radius:6px;border:1px solid #4e5058;background:#1e1f22;color:#f2f3f5;font-size:14px;outline:none;width:140px"></label><button class="mla-btn mla-test" type="button" style="justify-self:start;margin:0;padding:6px 12px;font-size:13px">Проверить связь с анализатором</button>';
+        const inp = "box-sizing:border-box;width:100%;height:38px;padding:0 10px;border-radius:6px;border:1px solid #4e5058;background:#1e1f22;color:#f2f3f5;font-size:14px;outline:none;pointer-events:auto;user-select:text";
+        el.innerHTML = '<label style="display:grid;gap:6px"><span>Ключ из Majestic Log Advisor («Настройки» → «Плагин Discord» → «Скопировать ключ»):</span><input type="text" class="mla-key" placeholder="Вставьте ключ сюда (Ctrl+V)" spellcheck="false" autocomplete="off" style="' + inp + '"></label>' +
+            '<label style="display:grid;gap:6px"><span>Порт (обычно 47615):</span><input type="number" class="mla-port" style="' + inp + ';width:140px"></label>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="mla-btn mla-paste" type="button" style="margin:0;padding:6px 12px;font-size:13px">Вставить ключ из буфера</button><button class="mla-btn mla-test" type="button" style="margin:0;padding:6px 12px;font-size:13px">Проверить связь с анализатором</button></div>';
         const k = el.querySelector(".mla-key"), p = el.querySelector(".mla-port");
         k.value = c.token; p.value = c.port;
         const save = () => this.setCfg({ token: k.value.trim(), port: parseInt(p.value, 10) || 47615 });
         ["input", "change"].forEach((ev) => { k.addEventListener(ev, save); p.addEventListener(ev, save); });
-        el.querySelector(".mla-test").addEventListener("click", async () => {
-            save();
-            const base = "http://127.0.0.1:" + (parseInt(p.value, 10) || 47615);
-            try { const r = await this.fetch(base + "/v1/ping"); const j = await r.json(); if (!j.ok) return this.toast("Анализатор не ответил", "error"); }
-            catch (e) { return this.toast("Анализатор не запущен или порт неверный", "error"); }
-            if (!k.value.trim()) return this.toast("Связь есть, но ключ не вставлен: «Настройки» приложения → «Плагин Discord»", "warning");
-            try { const r = await this.fetch(base + "/v1/import", { method: "POST", headers: { "content-type": "application/json", "x-mla-token": k.value.trim() }, body: "{}" }); this.toast(r.status === 401 ? "Ключ не подходит: скопируйте его заново в «Настройках» приложения" : "Связь с анализатором есть, ключ подходит", r.status === 401 ? "error" : "success"); }
-            catch (e) { this.toast("Анализатор не отвечает", "error"); }
-        });
+        [k, p].forEach((x) => { x.addEventListener("mousedown", (e) => e.stopPropagation()); x.addEventListener("keydown", (e) => e.stopPropagation()); });
+        el.querySelector(".mla-paste").addEventListener("click", () => this.pasteKey((s) => { k.value = s; }));
+        el.querySelector(".mla-test").addEventListener("click", () => { save(); this.checkLink(); });
         return el;
     }
 };

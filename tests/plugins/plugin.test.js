@@ -104,6 +104,21 @@ const EXCASES = [
       await p.evaluate(() => { window.__toasts = []; return window.__p.settings.def.check.component().p.onClick(); }); await p.waitForTimeout(100);
       ok(await p.evaluate(() => window.__toasts.some(t => /ключ подходит/.test(t[0]))), kind + ': в настройках есть «Проверить связь с анализатором»');
     }
+    if (kind === 'BetterDiscord') {
+      const r = await p.evaluate(async () => {
+        let spec = null; BdApi.UI.buildSettingsPanel = (o) => { spec = o; return document.createElement('div'); };
+        window.__p.getSettingsPanel(); const ids = spec.settings.map((s) => s.id).join(',');
+        spec.onChange(null, 'token', '  abcabcabcabcabcabcabcabcabcabcab  '); const saved = BdApi.Data.load('MajesticLogImport', 'settings').token;
+        delete BdApi.UI.buildSettingsPanel; spec.onChange(null, 'token', 'secret');
+        Object.defineProperty(navigator, 'clipboard', { value: { readText: async () => '0123456789abcdef0123456789abcdef' }, configurable: true });
+        const el = window.__p.getSettingsPanel(); document.body.appendChild(el); el.querySelector('.mla-paste').click(); await new Promise((r) => setTimeout(r, 50));
+        const pasted = BdApi.Data.load('MajesticLogImport', 'settings').token, inField = el.querySelector('.mla-key').value; el.remove();
+        BdApi.Data.save('MajesticLogImport', 'settings', { token: 'secret', port: 47615 });
+        return { ids, saved, pasted, inField };
+      });
+      ok(r.ids === 'token,port,paste,check' && r.saved === 'abcabcabcabcabcabcabcabcabcabcab', kind + ': настройки на полях BetterDiscord, ключ сохраняется (' + r.ids + ')');
+      ok(r.pasted === '0123456789abcdef0123456789abcdef' && r.inField === r.pasted, kind + ': «Вставить ключ из буфера» сохраняет ключ');
+    }
     ok(/Все файлы тикета \(2\)/.test(await p.textContent('.mla-all').catch(() => '')) && await p.locator('.mla-all').count() === 1, kind + ': одна кнопка «Все файлы тикета (2)»');
     await p.evaluate(() => { window.__posts = []; window.__toasts = []; });
     await p.click('.mla-all'); await p.waitForTimeout(300);
