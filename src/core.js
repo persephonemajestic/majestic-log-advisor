@@ -154,7 +154,7 @@ R({ id: 'm-sac', kind: 'main', kw: ['Failed to get handle', 'ReadProcessMemory']
 
 /* commandline.txt — файл параметров запуска GTA, а не мод: патчер его замечает, но сам по себе запуск он обычно не ломает.
    Чаще всего остаётся от графических сборок (Redux и похожих). Отдельное правило стоит раньше «мода», чтобы не путать. */
-R({ id: 'm-cmdline', kind: 'main', kw: 'commandline', re: /Detected commandline\.txt but not disabled/i, sev: 'warn', src: 'ours',
+R({ id: 'm-cmdline', kind: 'main', kw: 'commandline', re: /Detected commandline\.txt but not disabled/i, sev: 'warn', src: 'team',
   title: 'В папке игры лежит commandline.txt (это не мод)',
   detail: function (m, t) { var p = /\(([A-Za-z]:\\[^)]+)\)/.exec(t); return p ? p[1] : ''; },
   cause: 'commandline.txt — файл с параметрами запуска GTA V. Это не мод вроде ReShade, ENB или OpenIV, и сам по себе запуск он обычно не останавливает. Чаще всего он остаётся после графической сборки (Redux и похожих) или его создают вручную; лишние параметры в нём могут мешать запуску и графике.',
@@ -174,10 +174,13 @@ R({ id: 'm-blockmod', kind: 'main', kw: 'MAJESTIC:', re: /Detected (.+?) but not
     'Проверить папку игры: если в логе source: rockstar, а папка называется не Grand Theft Auto V Legacy (GTA MODES, GTAV), это копия игры под моды. Копию нужно удалить, путь указать на настоящую установку.'],
   tpl: ['Решение проблемы с ReShade / ENB / Commandline', 'Проблемы с модами Majestic', TPL_MODS] });
 
-R({ id: 'm-platform', kind: 'main', kw: 'ERR_FAILED_TO_LAUNCH_PLATFORM', re: /ERR_FAILED_TO_LAUNCH_PLATFORM/, sev: 'crit', src: 'infer',
-  title: 'Лаунчер не смог запустить платформу (ERR_FAILED_TO_LAUNCH_PLATFORM)',
-  cause: 'Патчер не смог поднять платформу, на которой куплена игра (Rockstar Games Launcher, Steam или Epic), и завершил запуск («Critical error corrupted, exiting game»). Отдельного разбора этого кода в руководстве нет, по смыслу это та же ситуация, что «Вечная загрузка»: платформа не стартует. В руководстве прямо сказано, что способ с полной выдачей прав на папки при этом коде не применяется.',
-  fix: ['Уточнить: запускается ли платформа сама, без Majestic; открывается ли после «Играть»; работает ли обычная GTA V Online.', 'Снять галку «Запускать от имени администратора» у платформы и у GTA5.exe, закрыть зависшие процессы платформы в диспетчере задач, повторить запуск.', 'Если платформа не открывается сама по себе, чинить надо её (переустановка).'], tpl: ['Ошибка инициализации данных / RGL', TPL_INJ] });
+/* ERR_FAILED_TO_LAUNCH_PLATFORM: на практике лечится переустановкой платформы поверх (Steam, Rockstar Games Launcher, Epic) — подтверждено саппортом */
+R({ id: 'm-platform', kind: 'main', kw: 'ERR_FAILED_TO_LAUNCH_PLATFORM', re: /ERR_FAILED_TO_LAUNCH_PLATFORM/, sev: 'crit', top: true, src: 'team',
+  title: 'Лаунчер не смог запустить платформу игры (ERR_FAILED_TO_LAUNCH_PLATFORM)',
+  cause: 'Majestic не смог запустить платформу, на которой куплена игра: Steam, Rockstar Games Launcher (RGL) или Epic Games. Почти всегда повреждена установка самой платформы. Решение — переустановить платформу поверх текущей: игра и библиотека при этом не удаляются.',
+  fix: ['Переустановить платформу поверх, ничего не удаляя: скачать установщик с официального сайта и установить в ту же папку. Steam — store.steampowered.com/about; Rockstar Games Launcher — rockstargames.com/downloads; Epic Games — store.epicgames.com/download. Игра и библиотека останутся.',
+    'После установки перезагрузить компьютер, открыть платформу один раз самостоятельно (войти в аккаунт, дождаться обновлений), затем запускать игру через Majestic.',
+    'Если не помогло: снять «Запускать от имени администратора» у платформы и у GTA5.exe, закрыть зависшие процессы платформы в диспетчере задач и повторить.'] });
 
 R({ id: 'm-patchmod', kind: 'main', kw: ['majestic-patcher.node', 'specified module could not be found'], re: /majestic-patcher\.node|The specified module could not be found/, sev: 'crit', src: 'infer',
   title: 'Не найден модуль патчера (majestic-patcher.node)',
@@ -1244,7 +1247,7 @@ function setCustomRules(list) {
 var STAFF = /^(Уточнить|Попросить|Передать|Отправить шаблон|Смотреть|Прочитать|При передаче|При повторении|Предупредить|Сказать|Открыть client\.log|Если решения нет|Если не помогло: передать|Файл GTA V:|Файл Majestic:)/;
 var REPLY = {
   'm-timeout': ['Откройте Rockstar Games Launcher (или Steam/Epic) вручную и дождитесь полной загрузки, потом нажмите «Играть» в Majestic.', 'Снимите галку «Запускать от имени администратора» у платформы и у GTA5.exe (свойства файла → Совместимость).', 'Закройте зависшие процессы платформы в диспетчере задач (Rockstar Games Launcher, RockstarService.exe, SocialClubHelper.exe, GTA5.exe) и повторите запуск.'],
-  'm-platform': ['Запустите платформу, на которой куплена игра (Rockstar Games Launcher, Steam или Epic), вручную и убедитесь, что она открывается сама.', 'Снимите галку «Запускать от имени администратора» у платформы и у GTA5.exe.', 'Закройте зависшие процессы платформы в диспетчере задач и повторите запуск.'],
+  'm-platform': ['Переустановите платформу, на которой куплена игра (Steam, Rockstar Games Launcher или Epic Games), поверх текущей — ничего не удаляя: скачайте установщик с официального сайта и установите в ту же папку. Игра и библиотека останутся на месте.', 'Перезагрузите компьютер, откройте платформу один раз сами (войдите в аккаунт и дождитесь обновлений), затем запустите игру через лаунчер Majestic.'],
   'm-busy': ['Закройте в диспетчере задач Rockstar Games Launcher, RockstarService.exe, GTA5.exe и SocialClubHelper.exe.', 'Запустите Majestic от имени администратора и нажмите «Играть».'],
   'm-patchmod': ['Добавьте папку лаунчера (AppData\\Local\\MajesticLauncher) в исключения антивируса и Защитника Windows, проверьте карантин антивируса.', 'Удалите папку лаунчера и установите лаунчер заново с официального сайта.'],
   'm-patcherr': null,
