@@ -618,7 +618,7 @@ body:not(.dnd) .arc-empty { display: none !important; }
 .side-q svg { position: absolute; left: 9px; top: 50%; width: 15px; height: 15px; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 .side-q input { width: 100%; height: 30px; padding: 0 10px 0 30px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12.5px; outline: none; }
 .side-q input:focus { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
-.side-sc { flex: 1; min-height: 0; overflow: auto; padding: 2px 8px 10px; scrollbar-width: thin; }
+.side-sc { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 2px 8px 10px; scrollbar-width: thin; }
 .side .zone { position: relative; border: 0; border-radius: 10px; padding: 4px 0; min-height: 0; gap: 2px; background: none; }
 .side .zone + .zone { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); border-radius: 0; }
 .side .zone-h { display: grid; gap: 4px; padding: 2px 6px 4px; }
@@ -634,8 +634,7 @@ body:not(.dnd) .arc-empty { display: none !important; }
 .side .arc-h { display: flex; align-items: center; gap: 7px; width: 100%; padding: 2px 6px 4px; border: 0; background: none; text-align: left; cursor: pointer; color: var(--muted); font-size: 12px; }
 .side .arc-h .zh { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
 .side .arc-h em { font-style: normal; font-size: 11px; text-decoration: underline; text-underline-offset: 2px; }
-.side .zone.arcwrap > #arcClr { top: 12px; right: 74px; font-size: 10.5px; padding: 0 6px; }
-.side .arc-h .zh { margin-right: 84px; }
+.side .arc-h em { flex: none; }
 /* строки дерева */
 .side .fi { display: flex; align-items: center; gap: 9px; padding: 5px 8px; border: 1px solid transparent; border-radius: 8px; background: none; box-shadow: none; transform: none; font-size: 12.5px; min-height: 42px; }
 .side .fi:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); border-color: transparent; transform: none; }
@@ -3044,7 +3043,7 @@ var STRU = { ok: 'Успех', bad: 'Сбой', warn: 'Внимание', unk: '
 var SRCRU = { guide: 'из руководства', obs: 'по наблюдению в логах', infer: 'вывод, в руководстве нет', web: 'по открытым источникам', user: 'ваше правило', team: 'правило команды' };
 var SRCTIP = { team: 'Общее правило команды из файла rules.json в репозитории проекта', user: 'Правило, которое добавили вы или коллега через «Добавить решение»', guide: 'Правило взято из документа «Руководство по диагностике ошибок и работе с логами»', obs: 'Строка встречается в успешных заходах загруженных логов, поэтому считается шумом', web: 'Случая нет в руководстве. Объяснение собрано по справкам Rockstar, форумам RAGE и cfx.re и реальным логам. Проверяйте его', infer: 'Этого случая нет в руководстве. Объяснение построено по логам и общим признакам, проверяйте его' };
 var PSTEPS_UI = [['admin', 'Администратор'], ['pirate', 'Очистка файлов'], ['backup', 'Резервная копия'], ['patch', 'Патч игры'], ['job', 'Процесс игры'], ['inject', 'Внедрение'], ['injected', 'Клиент внедрён'], ['entry', 'Запуск клиента'], ['finished', 'Готово'], ['window', 'Окно игры']];
-var SAMPLE = null, APP_VERSION = '2026-10-12.108';
+var SAMPLE = null, APP_VERSION = '2026-10-12.109';
 var ROW = 20, KBKEY = 'majestic-log-advisor.kb.v1';
 
 var $ = function (s) { return document.querySelector(s); };
@@ -3079,6 +3078,10 @@ function niceName(n) { return n.replace(/^[0-9a-f]{8}-/i, ''); }
 function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ'; }
 /* ---------- Версия 13: отчёты, все логи, окно загрузки, команда, слежение ---------- */
 var CHANGELOG = [
+  { v: '2026-10-12.109', items: [
+    'Узкая панель логов: «Свернуть» у архива больше не пропадает, лишней горизонтальной прокрутки нет. «Очистить архив» переехало в меню «⋯».',
+    'Выделение текста в логе не сбрасывается, пока строки на экране те же.'
+  ] },
   { v: '2026-10-12.108', items: [
     'Папка в папке: перетащите папку на другую папку, или нажмите «+ Папка» внутри открытой папки. У каждой своё название; число логов на папке считается вместе с вложенными.',
     'Вынуть из папки можно мышкой: перетащите лог или вложенную папку вниз, на «В работе» (или на «Архив»). Отпустить внутри той же папки — ничего не меняется.',
@@ -4053,7 +4056,7 @@ function deleteFolder(gid) {
 function openCaseTab(cg) { var fl = folderList(), fm = folderMap(fl), cfo = fm[cg]; if (!cfo) return; var all = cfo.files.length ? cfo.files : treeFiles(cfo, fl, fm); if (!all.length) return; S.open[cg] = 1; if (!all.some(function (x) { return x.id === S.active; })) S.active = all[all.length - 1].id; S.tab = 'case'; render(); window.scrollTo(0, 0); }
 function startRename(gid) { var fo = folderList().find(function (x) { return x.id === gid && x.type === 'case'; }); if (!fo) return; S.open[gid] = 1; S.renaming = gid; renderList(); }
 var clrArm = null;
-function clrBtn(z, n, id) { return '<button type="button" class="clrz' + (clrArm === z ? ' armed' : '') + '"' + (id ? ' id="' + id + '"' : '') + ' data-act="clrZone" data-z="' + z + '" title="' + (z === 'all' ? 'Убрать все логи из списка и из истории сохранённых: после перезапуска они не вернутся. Отчёты, история и статистика остаются.' : 'Убрать логи этой полосы из списка и из сохранённых после перезапуска. Отчёты, история и статистика остаются.') + '">' + (clrArm === z ? 'Точно убрать ' + n + '?' : z === 'all' ? 'Очистить всю историю' : 'Убрать все') + '</button>'; }
+function clrBtn(z, n, id) { return '<button type="button" class="clrz' + (clrArm === z ? ' armed' : '') + '"' + (id ? ' id="' + id + '"' : '') + ' data-act="clrZone" data-z="' + z + '" title="' + (z === 'all' ? 'Убрать все логи из списка и из истории сохранённых: после перезапуска они не вернутся. Отчёты, история и статистика остаются.' : 'Убрать логи этой полосы из списка и из сохранённых после перезапуска. Отчёты, история и статистика остаются.') + '">' + (clrArm === z ? 'Точно убрать ' + n + '?' : z === 'all' ? 'Очистить всю историю' : z === 'arc' ? 'Очистить архив' : 'Убрать все в работе') + '</button>'; }
 function clearZone(z) {
   if (clrArm !== z) { clrArm = z; clearTimeout(clearZone.t); clearZone.t = setTimeout(function () { clrArm = null; renderList(); }, 4000); renderList(); return; }
   clrArm = null; clearTimeout(clearZone.t);
@@ -4077,14 +4080,13 @@ function renderList() {
   });
   S.files.filter(function (f) { return !S.pins[f.id] && !inF[f.id] && sideMatch(f, q); }).sort(byNew).forEach(function (f) { put(isAct(f), fileCard(f)); });
   var gn = $('#gName'); if (gn && !gn.dataset.f) { gn.dataset.f = 1; gn.focus(); gn.select(); }
-  var ah = $('#actHd'); if (ah) ah.innerHTML = '<div class="zt"><i class="sd"></i><b>В работе</b><span class="zc">' + na + '</span><span class="side-sp"></span>' + (S.undo ? '<button type="button" class="clrz soft" data-act="undo" title="Отменить: ' + esc(S.undo.label) + '">↶ Отменить</button>' : '') + '<details class="zmenu"' + (S.zmenu || clrArm ? ' open' : '') + '><summary title="Действия со списком" aria-label="Действия со списком">⋯</summary><div class="zmenu-b">' + (na > 1 ? '<button type="button" class="clrz soft" data-act="allArc" title="Убрать всё в архив, кроме открытого и закреплённых">Всё в архив</button>' : '') + clrBtn('act', na) + clrBtn('all', S.files.length) + '</div></details></div>';
+  var ah = $('#actHd'); if (ah) ah.innerHTML = '<div class="zt"><i class="sd"></i><b>В работе</b><span class="zc">' + na + '</span><span class="side-sp"></span>' + (S.undo ? '<button type="button" class="clrz soft" data-act="undo" title="Отменить: ' + esc(S.undo.label) + '">↶ Отменить</button>' : '') + '<details class="zmenu"' + (S.zmenu || clrArm ? ' open' : '') + '><summary title="Действия со списком" aria-label="Действия со списком">⋯</summary><div class="zmenu-b">' + (na > 1 ? '<button type="button" class="clrz soft" data-act="allArc" title="Убрать всё в архив, кроме открытого и закреплённых">Всё в архив</button>' : '') + clrBtn('act', na) + (nr ? clrBtn('arc', nr, 'arcClr') : '') + clrBtn('all', S.files.length) + '</div></details></div>';
   $('#flist').innerHTML = A || '<li class="hint side-empty">' + (q ? 'Ничего не найдено.' : 'Логов пока нет. Перетащите файлы вниз панели или нажмите «Добавить логи».') + '</li>';
   var gn2 = $('#gName'); if (gn2 && !gn2.dataset.f) { gn2.dataset.f = 1; gn2.focus(); gn2.select(); }
   var aw = $('#arcWrap'); if (aw) {
     aw.hidden = !S.files.length && !nr; var open = S.kb.settings.arcOpen !== false || !!q; aw.classList.toggle('shut', !open);
     $('#arcHd').innerHTML = '<i class="sd"></i><b>Архив</b><span class="zc">' + nr + '</span><span class="zh">' + (nr ? 'сутки без открытия' : 'пусто') + '</span><em>' + (open ? 'Свернуть' : 'Показать') + '</em>';
     $('#arcHd').title = 'Сюда сами уходят логи, которые сутки не открывали. Вернуть: открыть или перетащить в «В работе».';
-    var cb = $('#arcClr'); if (cb) cb.outerHTML = ''; if (nr) aw.insertAdjacentHTML('afterbegin', clrBtn('arc', nr, 'arcClr'));
     $('#arcHd').setAttribute('aria-expanded', open); $('#flist2').hidden = !open; $('#flist2').innerHTML = R || '<li class="hint arc-empty" data-zone="arc">Перетащите сюда лог или папку, чтобы убрать в архив</li>';
   }
   var gn3 = $('#gName'); if (gn3 && !gn3.dataset.f) { gn3.dataset.f = 1; gn3.focus(); gn3.select(); }
@@ -4781,6 +4783,8 @@ function hl(text, e) {
 function drawRows() {
   var f = active(), sc = $('#sc'); if (!f || !sc || !f.view) return;
   var total = f.view.length, a = Math.max(0, rowAt(f, sc.scrollTop) - 12), b = Math.min(total, rowAt(f, sc.scrollTop + sc.clientHeight) + 13), h = '', W = !!f.pre;
+  /* пока в логе выделен текст, те же строки не перерисовываем — иначе выделение пропадает */
+  var sig = [f.id, a, b, S.sel, f.marks.length, W, zoomPct()].join('|'), rws = $('#rows'); if (rws && rws.__sig === sig && rws.__view === f.view && rowsSelection()) return; if (rws) { rws.__sig = sig; rws.__view = f.view; }
   for (var i = a; i < b; i++) {
     var ln = f.view[i], ei = f.parsed.lineEntry[ln], e = ei >= 0 ? f.parsed.entries[ei] : null, s = f.parsed.lineSev[ln], txt = M(LA.stripAnsi(f.parsed.lines[ln]));
     if (txt.length > (W ? 4000 : 600)) txt = txt.slice(0, W ? 4000 : 600) + '…';

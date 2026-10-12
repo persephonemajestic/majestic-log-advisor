@@ -26,7 +26,7 @@ const H = require('./helpers'), { ok } = H;
   await p.locator('#flist .fi.folder').first().dragTo(p.locator('#arcHd')); await p.waitForTimeout(300);
   ok(await p.locator('#flist2 .fi.folder').count() >= 1, 'папка уходит в отложенные целиком');
   ok(!(await p.locator('#diagOff').count()), 'без ИИ лишней карточки «Диагноз ИИ» нет');
-  await p.click('#arcClr'); await p.click('#arcClr'); await p.waitForTimeout(300);
+  await p.click('#actHd .zmenu summary'); await p.click('#arcClr'); await p.click('#arcClr'); await p.waitForTimeout(300);
   ok(await p.locator('#flist2 .fi').count() === 0 && !(await p.isVisible('#arcClr')), '«Убрать все» в отложенных очищает полосу после второго нажатия');
   await p.click('#actHd .clrz >> nth=1'); await p.click('#actHd .clrz >> nth=1'); await p.waitForTimeout(300);
   ok(await p.locator('.fi').count() === 0, '«Очистить всю историю» убирает все логи');

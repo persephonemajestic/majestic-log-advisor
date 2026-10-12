@@ -203,6 +203,8 @@ function hl(text, e) {
 function drawRows() {
   var f = active(), sc = $('#sc'); if (!f || !sc || !f.view) return;
   var total = f.view.length, a = Math.max(0, rowAt(f, sc.scrollTop) - 12), b = Math.min(total, rowAt(f, sc.scrollTop + sc.clientHeight) + 13), h = '', W = !!f.pre;
+  /* пока в логе выделен текст, те же строки не перерисовываем — иначе выделение пропадает */
+  var sig = [f.id, a, b, S.sel, f.marks.length, W, zoomPct()].join('|'), rws = $('#rows'); if (rws && rws.__sig === sig && rws.__view === f.view && rowsSelection()) return; if (rws) { rws.__sig = sig; rws.__view = f.view; }
   for (var i = a; i < b; i++) {
     var ln = f.view[i], ei = f.parsed.lineEntry[ln], e = ei >= 0 ? f.parsed.entries[ei] : null, s = f.parsed.lineSev[ln], txt = M(LA.stripAnsi(f.parsed.lines[ln]));
     if (txt.length > (W ? 4000 : 600)) txt = txt.slice(0, W ? 4000 : 600) + '…';
