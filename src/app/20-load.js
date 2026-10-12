@@ -1,4 +1,14 @@
 /* ---------- Загрузка файлов ---------- */
+/* Пауза для окна между частями разбора: через MessageChannel (не замедляется, когда окно свёрнуто). */
+function yieldUI() { return new Promise(function (r) { var c = new MessageChannel(); c.port1.onmessage = function () { c.port1.close(); r(); }; c.port2.postMessage(0); }); }
+function bigPause(it, i, n, meta) {
+  var last = 0;
+  return function (frac) {
+    var now = Date.now();
+    if (!meta.batch && now - last > 200) { last = now; status('Разбираю ' + (i + 1) + ' из ' + n + ': ' + niceName(it.name) + ' (' + fmtSize(it.size) + ') — ' + Math.round(frac * 100) + '%'); setProgress((i + frac) / n); }
+    return yieldUI();
+  };
+}
 async function addTexts(items, meta) {
   meta = meta || {}; var added = 0, skipped = [], newF = [], caseG = null, mtId = S.mergeTarget || null, touched = [];
   S.mergeTarget = null;
@@ -18,11 +28,13 @@ async function addTexts(items, meta) {
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
     if (!meta.batch) { status('Разбираю ' + (i + 1) + ' из ' + items.length + ': ' + niceName(it.name) + ' (' + fmtSize(it.size) + ')'); setProgress((i + 1) / items.length); await tick(); }
-    var hash = it.hash || fnv(it.text), dup = S.files.find(function (f) { return f.hash === hash; });
+    var hash = it.hash || (it.text.length > 4000000 ? await fnvAsync(it.text, yieldUI) : fnv(it.text)), dup = S.files.find(function (f) { return f.hash === hash; });
     if (dup && it.sys && !dup.sys) { dup.sys = it.sys; LS.setSys(dup); }
     if (dup) touched.push(dup);
     if (dup) { skipped.push(niceName(it.name) + ' (то же содержимое, что ' + dup.label + ')'); continue; }
-    var parsed = LA.parse(it.text, it.name), sc = LA.scan(parsed);
+    if (it.text.length > 4000000) await yieldUI();
+    var an = await LA.analyzeAsync(it.text, it.name, bigPause(it, i, items.length, meta)), parsed = an.parsed, sc = an.sc; an = null;
+    if (it.text.length > 4000000) await yieldUI();
     var f = { id: ++S.uid, name: it.name, label: niceName(it.name), size: it.size, mtime: it.mtime || 0, added: it.added || Date.now(), group: it.group || null, hash: hash, sample: !!it.sample, text: it.text, parsed: parsed, sc: sc, view: null, marks: [] };
     if (it.sys) f.sys = it.sys;
     if (!f.sample) { LA.learn(S.kb, hash, sc); recordHist(f); }
@@ -31,6 +43,7 @@ async function addTexts(items, meta) {
   }
   if (!meta.restore && S.pendingParts && S.pendingParts.length && newF.length) { var pt = newF.find(function (x) { return x.sc.kind === 'client'; }) || newF[0]; S.pendingParts.forEach(function (p) { attachSysPart(pt, p); }); S.pendingParts = null; }
   if (meta.batch) return added;
+  if (items.some(function (x) { return x.text && x.text.length > 4000000; })) await yieldUI();
   setProgress(1); saveKB(); applyAll();
   if (mtId && !meta.restore) {
     var mt = S.files.find(function (x) { return x.id === mtId; });

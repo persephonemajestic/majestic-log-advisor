@@ -11,18 +11,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Тесты ядра
         run: node tests/run.js
       - name: Синтаксис оболочки
+        shell: bash
         run: |
-          node --check app/boot.js
-          node --check app/main.js
-          node --check app/preload.js
-          node --check plugins/installer/installer.js
-          node --check plugins/betterdiscord/MajesticLogImport.plugin.js
-          node tests/ext-receiver.test.js
-          node tests/plugins/installer.test.js
+          fail=0
+          for c in "node --check app/boot.js" "node --check app/main.js" "node --check app/preload.js" "node --check plugins/installer/installer.js" "node --check plugins/betterdiscord/MajesticLogImport.plugin.js" "node tests/ext-receiver.test.js" "node tests/plugins/installer.test.js"; do
+            if ! $c > out.txt 2>&1; then fail=1; echo "::error::$c"; grep -E "FAIL|Error" out.txt | head -8 | sed 's/^/::error::/' || true; tail -5 out.txt; fi
+          done
+          exit $fail
       - name: index.html собран из исходников
         run: |
           python3 src/build.py
@@ -44,7 +43,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Установка playwright и chromium
         run: |
           npm install --no-save playwright@1.49.0
@@ -53,7 +52,9 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          node tests/ui/run.js 2>&1 | tee ui.log; code=$?
+          code=0
+          node tests/ui/run.js 2>&1 | tee ui.log || code=$?
           # строки с ошибками — в аннотации запуска, чтобы их было видно без скачивания журнала
-          grep -nE "FAIL|Error|Timeout|exceeded|Cannot" ui.log | head -25 | sed 's/^/::error::/' || true
+          grep -nE "FAIL|Error|Timeout|exceeded|Cannot|SKIP" ui.log | head -9 | sed 's/^/::error::/' || true
+          tail -6 ui.log | sed 's/^/::warning::/' || true
           exit $code

@@ -2008,12 +2008,15 @@ function normLvl(l) {
   return 'info';
 }
 
-function parse(text, name) {
+/* Разбор и сканирование идут шагами: синхронно целиком (parse/scan) или частями с паузами для окна (analyzeAsync). */
+function parseInit(text, name) {
   var lines = text.split(/\r?\n/);
   if (lines.length && lines[lines.length - 1] === '') lines.pop();
-  var kind = detectKind(lines, name);
-  var entries = [], lineEntry = new Int32Array(lines.length).fill(-1), cur = null;
-  for (var i = 0; i < lines.length; i++) {
+  return { kind: detectKind(lines, name), lines: lines, entries: [], lineEntry: new Int32Array(lines.length).fill(-1), cur: null, i: 0 };
+}
+function parseRun(st, n) {
+  var lines = st.lines, kind = st.kind, entries = st.entries, lineEntry = st.lineEntry, cur = st.cur, end = Math.min(lines.length, st.i + n);
+  for (var i = st.i; i < end; i++) {
     var ln = lines[i], m = null;
     if (ln.charCodeAt(0) === 91) m = kind === 'main' ? MAINRE.exec(ln) : CLRE.exec(ln);
     if (m) {
@@ -2036,12 +2039,30 @@ function parse(text, name) {
       if (cur.text.length < 2500) cur.text += ' ⏎ ' + stripAnsi(ln).trim();
     }
   }
-  return { kind: kind, lines: lines, entries: entries, lineEntry: lineEntry };
+  st.i = end; st.cur = cur;
+  return end >= lines.length;
 }
+function parseDone(st) { return { kind: st.kind, lines: st.lines, entries: st.entries, lineEntry: st.lineEntry }; }
+function parse(text, name) { var st = parseInit(text, name); parseRun(st, Infinity); return parseDone(st); }
 
+function toMsSlow(s) { var p = s.split(/[:.]/); return ((+p[0]) * 3600 + (+p[1]) * 60 + (+p[2])) * 1000 + (p[3] ? +(p[3] + '00').slice(0, 3) : 0); }
+/* Быстрый путь для обычного «ЧЧ:ММ:СС.ммм» без split и регулярок; всё необычное — прежним способом */
+function tsMs(s) {
+  if (s.length < 8 || s.charCodeAt(2) !== 58 || s.charCodeAt(5) !== 58) return toMsSlow(s);
+  var d = [0, 1, 3, 4, 6, 7], v = [];
+  for (var k = 0; k < 6; k++) { var c = s.charCodeAt(d[k]) - 48; if (c < 0 || c > 9) return toMsSlow(s); v.push(c); }
+  var ms = ((v[0] * 10 + v[1]) * 3600 + (v[2] * 10 + v[3]) * 60 + v[4] * 10 + v[5]) * 1000;
+  if (s.length === 8) return ms;
+  if (s.charCodeAt(8) !== 46 || s.length === 9) return toMsSlow(s);
+  var f = 0, n = 0;
+  for (var j = 9; j < s.length; j++) { var x = s.charCodeAt(j) - 48; if (x < 0 || x > 9) return toMsSlow(s); if (n < 3) { f = f * 10 + x; n++; } }
+  while (n < 3) { f *= 10; n++; }
+  return ms + f;
+}
+var dayCache = { s: null, v: 0 };
 function toMs(e, kind) {
-  var p = e.ts.split(/[:.]/); var ms = ((+p[0]) * 3600 + (+p[1]) * 60 + (+p[2])) * 1000 + (p[3] ? +(p[3] + '00').slice(0, 3) : 0);
-  if (kind === 'main' && e.date) ms += Date.parse(e.date + 'T00:00:00Z');
+  var ms = tsMs(e.ts);
+  if (kind === 'main' && e.date) { if (dayCache.s !== e.date) { dayCache.s = e.date; dayCache.v = Date.parse(e.date + 'T00:00:00Z'); } ms += dayCache.v; }
   return ms;
 }
 
@@ -2102,9 +2123,10 @@ function candidates(ix, t) {
   if (ix.re) { ix.re.lastIndex = 0; while ((m = ix.re.exec(t))) { var l = ix.pre[m[0]]; for (i = 0; i < l.length; i++) if (st[l[i]] !== g) { st[l[i]] = g; out.push(l[i]); } ix.re.lastIndex = m.index + 1; } }
   return out.sort(function (a, b) { return a - b; });
 }
-function scan(parsed) {
-  var kind = parsed.kind, es = parsed.entries, rules = BY_KIND[kind], groups = new Map(), unk = new Map(), ix = kwIndex(rules);
-  for (var i = 0; i < es.length; i++) {
+function scanInit(parsed) { var rules = BY_KIND[parsed.kind]; return { parsed: parsed, rules: rules, groups: new Map(), unk: new Map(), ix: kwIndex(rules), i: 0 }; }
+function scanRun(st, n) {
+  var es = st.parsed.entries, rules = st.rules, groups = st.groups, unk = st.unk, ix = st.ix, end = Math.min(es.length, st.i + n);
+  for (var i = st.i; i < end; i++) {
     var e = es[i], t = e.text, hit = null, m = null, cand = candidates(ix, t);
     for (var ci = 0; ci < cand.length; ci++) {
       var rule = rules[cand[ci]];
@@ -2129,6 +2151,11 @@ function scan(parsed) {
       u.count++; if (u.entries.length < 200) u.entries.push(i);
     }
   }
+  st.i = end;
+  return end >= es.length;
+}
+function scanDone(st) {
+  var parsed = st.parsed, kind = parsed.kind, es = parsed.entries, groups = st.groups, unk = st.unk;
   var findings = Array.from(groups.values());
   findings.forEach(function (g) { if (g.rule.warnAt && g.count >= g.rule.warnAt) g.sev = 'warn'; });
   findings.forEach(function (g) { if (g.rule.loopAt && g.count >= g.rule.loopAt) { g.loop = true; g.cause = g.cause + ' Повторилось ' + g.count + ' раз.'; g.fix = ERR_LOOP.concat(g.fix || []); } });
@@ -2150,14 +2177,27 @@ function scan(parsed) {
   res.range = es.length ? { from: es[0].date ? es[0].date + ' ' + es[0].ts : es[0].ts, to: es[es.length - 1].date ? es[es.length - 1].date + ' ' + es[es.length - 1].ts : es[es.length - 1].ts } : null;
   return res;
 }
+function scan(parsed) { var st = scanInit(parsed); scanRun(st, Infinity); return scanDone(st); }
+/* Разбор большого лога без замирания окна: работа частями по ~25 мс, между ними окно рисуется и принимает клики.
+   pause(доля) — функция паузы (возвращает Promise), её даёт интерфейс. */
+async function analyzeAsync(text, name, pause) {
+  var now = function () { return typeof performance !== 'undefined' ? performance.now() : Date.now(); };
+  var st = parseInit(text, name), n = st.lines.length || 1, done = false, t0;
+  while (!done) { t0 = now(); while (!done && now() - t0 < 25) done = parseRun(st, 5000); if (!done && pause) await pause(st.i / n * 0.35); }
+  var parsed = parseDone(st), ss = scanInit(parsed), m = parsed.entries.length || 1; done = false;
+  while (!done) { t0 = now(); while (!done && now() - t0 < 25) done = scanRun(ss, 2000); if (!done && pause) await pause(0.35 + ss.i / m * 0.6); }
+  return { parsed: parsed, sc: scanDone(ss) };
+}
 
 
 /* ---------- Окружение, хронология и главная причина ---------- */
 var PLAT = { steam: 'Steam', epic: 'Epic Games', rockstar: 'Rockstar Games Launcher' };
+var ENVQ = /GPU:|VRAM|Game version|Game path:/i;
 function envClient(es) {
   var gpu = '', vram = 0, gver = '', edition = '', path = '';
   for (var i = 0; i < es.length; i++) {
     var t = es[i].text, m;
+    if (!ENVQ.test(t)) continue;
     if (!gpu && (m = /GPU:\s*(.+)$/.exec(t))) gpu = m[1].trim();
     else if (!vram && (m = /Dedicated VRAM:\s*(\d+)\s*GB/i.exec(t))) vram = +m[1];
     else if (!gver && (m = /Game version:\s*(\d+)(?:\s+on\s+([\w ]+))?/i.exec(t))) { gver = m[1]; edition = (m[2] || '').trim(); }
@@ -2406,7 +2446,7 @@ function clientStage(es, parsed, groups) {
         var x = es[k].text;
         if (/Last (loaded asset|pos|deleted vehicle model|dynamic object created|str desctutor hash)|Texture info/.test(x)) st.ctx.push({ line: es[k].i, text: x });
       }
-    } else if (/^Shutting down/.test(t)) st.shut = e;
+    } else if (t.lastIndexOf('Shutting down', 0) === 0) st.shut = e;
   }
   return st;
 }
@@ -2823,7 +2863,7 @@ function mask(s) {
     .replace(/\b((?:access_|refresh_|auth_|id_)?token|authorization|bearer|session_?id|api_?key)(["']?\s*[:=]\s*["']?|\s+)([A-Za-z0-9._~+\/=-]{12,})/gi, '$1$2***');
 }
 
-var LA = root.LA = { permCommand: permCommand, h32: h32, caseSummary: caseSummary, stripAnsi: stripAnsi, SEV: SEV, RULES: RULES, parse: parse, scan: scan, learn: learn, classify: classify, applyKB: applyKB, newKB: newKB, setCustomRules: setCustomRules, composeReply: composeReply, diffScans: diffScans, gameFolder: gameFolder, guessGamePaths: guessGamePaths, mask: mask, clusterReports: clusterReports, histTime: histTime, signature: signature, detectKind: detectKind, owner: owner, toMs: toMs };
+var LA = root.LA = { permCommand: permCommand, h32: h32, caseSummary: caseSummary, stripAnsi: stripAnsi, SEV: SEV, RULES: RULES, parse: parse, scan: scan, analyzeAsync: analyzeAsync, learn: learn, classify: classify, applyKB: applyKB, newKB: newKB, setCustomRules: setCustomRules, composeReply: composeReply, diffScans: diffScans, gameFolder: gameFolder, guessGamePaths: guessGamePaths, mask: mask, clusterReports: clusterReports, histTime: histTime, signature: signature, detectKind: detectKind, owner: owner, toMs: toMs };
 if (typeof module !== 'undefined' && module.exports) module.exports = root.LA;
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -2867,6 +2907,8 @@ function toast(t) {
 function status(t) { $('#status').textContent = t || ''; if (t && !/^Разбираю/.test(t) && t.length < 220) toast(t); }
 function tick() { return new Promise(function (r) { setTimeout(r, 0); }); }
 function fnv(s) { var h = 2166136261 >>> 0; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(16) + '-' + s.length; }
+/* То же значение, что fnv, но длинный текст считается частями с паузами для окна */
+async function fnvAsync(s, pause) { var h = 2166136261 >>> 0, CH = 4000000; for (var a = 0; a < s.length; a += CH) { var e = Math.min(s.length, a + CH); for (var i = a; i < e; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } if (e < s.length) await pause(); } return h.toString(16) + '-' + s.length; }
 function niceName(n) { return n.replace(/^[0-9a-f]{8}-/i, ''); }
 function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ'; }
 /* ---------- Версия 13: отчёты, все логи, окно загрузки, команда, слежение ---------- */
@@ -3510,6 +3552,16 @@ function weekHtml(withChart) {
   return '<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Недельный отчёт</title><style>' + css + '</style></head><body><h1>' + esc(t[0]) + '</h1>' + (withChart ? weekChart() : '') + '<pre>' + esc(t.slice(1).join('\n')) + '</pre></body></html>';
 }
 /* ---------- Загрузка файлов ---------- */
+/* Пауза для окна между частями разбора: через MessageChannel (не замедляется, когда окно свёрнуто). */
+function yieldUI() { return new Promise(function (r) { var c = new MessageChannel(); c.port1.onmessage = function () { c.port1.close(); r(); }; c.port2.postMessage(0); }); }
+function bigPause(it, i, n, meta) {
+  var last = 0;
+  return function (frac) {
+    var now = Date.now();
+    if (!meta.batch && now - last > 200) { last = now; status('Разбираю ' + (i + 1) + ' из ' + n + ': ' + niceName(it.name) + ' (' + fmtSize(it.size) + ') — ' + Math.round(frac * 100) + '%'); setProgress((i + frac) / n); }
+    return yieldUI();
+  };
+}
 async function addTexts(items, meta) {
   meta = meta || {}; var added = 0, skipped = [], newF = [], caseG = null, mtId = S.mergeTarget || null, touched = [];
   S.mergeTarget = null;
@@ -3529,11 +3581,13 @@ async function addTexts(items, meta) {
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
     if (!meta.batch) { status('Разбираю ' + (i + 1) + ' из ' + items.length + ': ' + niceName(it.name) + ' (' + fmtSize(it.size) + ')'); setProgress((i + 1) / items.length); await tick(); }
-    var hash = it.hash || fnv(it.text), dup = S.files.find(function (f) { return f.hash === hash; });
+    var hash = it.hash || (it.text.length > 4000000 ? await fnvAsync(it.text, yieldUI) : fnv(it.text)), dup = S.files.find(function (f) { return f.hash === hash; });
     if (dup && it.sys && !dup.sys) { dup.sys = it.sys; LS.setSys(dup); }
     if (dup) touched.push(dup);
     if (dup) { skipped.push(niceName(it.name) + ' (то же содержимое, что ' + dup.label + ')'); continue; }
-    var parsed = LA.parse(it.text, it.name), sc = LA.scan(parsed);
+    if (it.text.length > 4000000) await yieldUI();
+    var an = await LA.analyzeAsync(it.text, it.name, bigPause(it, i, items.length, meta)), parsed = an.parsed, sc = an.sc; an = null;
+    if (it.text.length > 4000000) await yieldUI();
     var f = { id: ++S.uid, name: it.name, label: niceName(it.name), size: it.size, mtime: it.mtime || 0, added: it.added || Date.now(), group: it.group || null, hash: hash, sample: !!it.sample, text: it.text, parsed: parsed, sc: sc, view: null, marks: [] };
     if (it.sys) f.sys = it.sys;
     if (!f.sample) { LA.learn(S.kb, hash, sc); recordHist(f); }
@@ -3542,6 +3596,7 @@ async function addTexts(items, meta) {
   }
   if (!meta.restore && S.pendingParts && S.pendingParts.length && newF.length) { var pt = newF.find(function (x) { return x.sc.kind === 'client'; }) || newF[0]; S.pendingParts.forEach(function (p) { attachSysPart(pt, p); }); S.pendingParts = null; }
   if (meta.batch) return added;
+  if (items.some(function (x) { return x.text && x.text.length > 4000000; })) await yieldUI();
   setProgress(1); saveKB(); applyAll();
   if (mtId && !meta.restore) {
     var mt = S.files.find(function (x) { return x.id === mtId; });
@@ -4121,14 +4176,14 @@ function runsCalc(f) {
   function open(e) { cur = { start: e, from: e.i, to: e.i, last: e, inited: false, started: null, connected: false, dump: null, shut: false, codes: {} }; runs.push(cur); }
   for (var i = 0; i < es.length; i++) {
     var e = es[i], t = e.text;
-    if (/Logger initialized/.test(t) || !cur) open(e);
+    if (t.indexOf('Logger initialized') !== -1 || !cur) open(e);
     cur.to = e.j; cur.last = e;
-    if (/Majestic Multiplayer inited/.test(t)) cur.inited = true;
-    else if (/Game Started in (\d+) ms/.test(t)) cur.started = +/Game Started in (\d+) ms/.exec(t)[1];
-    else if (/Connected with id/.test(t)) cur.connected = true;
-    else if (/MINIDUMP: Temporary dump saved/.test(t) && !cur.dump) cur.dump = e;
-    else if (/^Shutting down/.test(t)) cur.shut = true;
-    var m = /\bERR_[A-Z0-9_]{3,40}\b/.exec(t); if (m && m[0] !== 'ERR_SYS_FILELOAD') cur.codes[m[0]] = (cur.codes[m[0]] || 0) + 1;
+    if (t.indexOf('Majestic Multiplayer inited') !== -1) cur.inited = true;
+    else if (t.indexOf('Game Started in') !== -1 && /Game Started in (\d+) ms/.test(t)) cur.started = +/Game Started in (\d+) ms/.exec(t)[1];
+    else if (t.indexOf('Connected with id') !== -1) cur.connected = true;
+    else if (t.indexOf('MINIDUMP: Temporary dump saved') !== -1 && !cur.dump) cur.dump = e;
+    else if (t.lastIndexOf('Shutting down', 0) === 0) cur.shut = true;
+    if (t.indexOf('ERR_') !== -1) { var m = /\bERR_[A-Z0-9_]{3,40}\b/.exec(t); if (m && m[0] !== 'ERR_SYS_FILELOAD') cur.codes[m[0]] = (cur.codes[m[0]] || 0) + 1; }
   }
   runs.forEach(function (r) {
     var a = secOf(r.start.ts), b = secOf(r.last.ts); r.dur = a != null && b != null ? ((b - a) + 86400) % 86400 : null;

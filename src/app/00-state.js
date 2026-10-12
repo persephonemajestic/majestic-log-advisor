@@ -34,6 +34,8 @@ function toast(t) {
 function status(t) { $('#status').textContent = t || ''; if (t && !/^Разбираю/.test(t) && t.length < 220) toast(t); }
 function tick() { return new Promise(function (r) { setTimeout(r, 0); }); }
 function fnv(s) { var h = 2166136261 >>> 0; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(16) + '-' + s.length; }
+/* То же значение, что fnv, но длинный текст считается частями с паузами для окна */
+async function fnvAsync(s, pause) { var h = 2166136261 >>> 0, CH = 4000000; for (var a = 0; a < s.length; a += CH) { var e = Math.min(s.length, a + CH); for (var i = a; i < e; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } if (e < s.length) await pause(); } return h.toString(16) + '-' + s.length; }
 function niceName(n) { return n.replace(/^[0-9a-f]{8}-/i, ''); }
 function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ'; }
 

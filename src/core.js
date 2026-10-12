@@ -646,12 +646,15 @@ function normLvl(l) {
   return 'info';
 }
 
-function parse(text, name) {
+/* Разбор и сканирование идут шагами: синхронно целиком (parse/scan) или частями с паузами для окна (analyzeAsync). */
+function parseInit(text, name) {
   var lines = text.split(/\r?\n/);
   if (lines.length && lines[lines.length - 1] === '') lines.pop();
-  var kind = detectKind(lines, name);
-  var entries = [], lineEntry = new Int32Array(lines.length).fill(-1), cur = null;
-  for (var i = 0; i < lines.length; i++) {
+  return { kind: detectKind(lines, name), lines: lines, entries: [], lineEntry: new Int32Array(lines.length).fill(-1), cur: null, i: 0 };
+}
+function parseRun(st, n) {
+  var lines = st.lines, kind = st.kind, entries = st.entries, lineEntry = st.lineEntry, cur = st.cur, end = Math.min(lines.length, st.i + n);
+  for (var i = st.i; i < end; i++) {
     var ln = lines[i], m = null;
     if (ln.charCodeAt(0) === 91) m = kind === 'main' ? MAINRE.exec(ln) : CLRE.exec(ln);
     if (m) {
@@ -674,12 +677,30 @@ function parse(text, name) {
       if (cur.text.length < 2500) cur.text += ' ⏎ ' + stripAnsi(ln).trim();
     }
   }
-  return { kind: kind, lines: lines, entries: entries, lineEntry: lineEntry };
+  st.i = end; st.cur = cur;
+  return end >= lines.length;
 }
+function parseDone(st) { return { kind: st.kind, lines: st.lines, entries: st.entries, lineEntry: st.lineEntry }; }
+function parse(text, name) { var st = parseInit(text, name); parseRun(st, Infinity); return parseDone(st); }
 
+function toMsSlow(s) { var p = s.split(/[:.]/); return ((+p[0]) * 3600 + (+p[1]) * 60 + (+p[2])) * 1000 + (p[3] ? +(p[3] + '00').slice(0, 3) : 0); }
+/* Быстрый путь для обычного «ЧЧ:ММ:СС.ммм» без split и регулярок; всё необычное — прежним способом */
+function tsMs(s) {
+  if (s.length < 8 || s.charCodeAt(2) !== 58 || s.charCodeAt(5) !== 58) return toMsSlow(s);
+  var d = [0, 1, 3, 4, 6, 7], v = [];
+  for (var k = 0; k < 6; k++) { var c = s.charCodeAt(d[k]) - 48; if (c < 0 || c > 9) return toMsSlow(s); v.push(c); }
+  var ms = ((v[0] * 10 + v[1]) * 3600 + (v[2] * 10 + v[3]) * 60 + v[4] * 10 + v[5]) * 1000;
+  if (s.length === 8) return ms;
+  if (s.charCodeAt(8) !== 46 || s.length === 9) return toMsSlow(s);
+  var f = 0, n = 0;
+  for (var j = 9; j < s.length; j++) { var x = s.charCodeAt(j) - 48; if (x < 0 || x > 9) return toMsSlow(s); if (n < 3) { f = f * 10 + x; n++; } }
+  while (n < 3) { f *= 10; n++; }
+  return ms + f;
+}
+var dayCache = { s: null, v: 0 };
 function toMs(e, kind) {
-  var p = e.ts.split(/[:.]/); var ms = ((+p[0]) * 3600 + (+p[1]) * 60 + (+p[2])) * 1000 + (p[3] ? +(p[3] + '00').slice(0, 3) : 0);
-  if (kind === 'main' && e.date) ms += Date.parse(e.date + 'T00:00:00Z');
+  var ms = tsMs(e.ts);
+  if (kind === 'main' && e.date) { if (dayCache.s !== e.date) { dayCache.s = e.date; dayCache.v = Date.parse(e.date + 'T00:00:00Z'); } ms += dayCache.v; }
   return ms;
 }
 
@@ -740,9 +761,10 @@ function candidates(ix, t) {
   if (ix.re) { ix.re.lastIndex = 0; while ((m = ix.re.exec(t))) { var l = ix.pre[m[0]]; for (i = 0; i < l.length; i++) if (st[l[i]] !== g) { st[l[i]] = g; out.push(l[i]); } ix.re.lastIndex = m.index + 1; } }
   return out.sort(function (a, b) { return a - b; });
 }
-function scan(parsed) {
-  var kind = parsed.kind, es = parsed.entries, rules = BY_KIND[kind], groups = new Map(), unk = new Map(), ix = kwIndex(rules);
-  for (var i = 0; i < es.length; i++) {
+function scanInit(parsed) { var rules = BY_KIND[parsed.kind]; return { parsed: parsed, rules: rules, groups: new Map(), unk: new Map(), ix: kwIndex(rules), i: 0 }; }
+function scanRun(st, n) {
+  var es = st.parsed.entries, rules = st.rules, groups = st.groups, unk = st.unk, ix = st.ix, end = Math.min(es.length, st.i + n);
+  for (var i = st.i; i < end; i++) {
     var e = es[i], t = e.text, hit = null, m = null, cand = candidates(ix, t);
     for (var ci = 0; ci < cand.length; ci++) {
       var rule = rules[cand[ci]];
@@ -767,6 +789,11 @@ function scan(parsed) {
       u.count++; if (u.entries.length < 200) u.entries.push(i);
     }
   }
+  st.i = end;
+  return end >= es.length;
+}
+function scanDone(st) {
+  var parsed = st.parsed, kind = parsed.kind, es = parsed.entries, groups = st.groups, unk = st.unk;
   var findings = Array.from(groups.values());
   findings.forEach(function (g) { if (g.rule.warnAt && g.count >= g.rule.warnAt) g.sev = 'warn'; });
   findings.forEach(function (g) { if (g.rule.loopAt && g.count >= g.rule.loopAt) { g.loop = true; g.cause = g.cause + ' Повторилось ' + g.count + ' раз.'; g.fix = ERR_LOOP.concat(g.fix || []); } });
@@ -788,14 +815,27 @@ function scan(parsed) {
   res.range = es.length ? { from: es[0].date ? es[0].date + ' ' + es[0].ts : es[0].ts, to: es[es.length - 1].date ? es[es.length - 1].date + ' ' + es[es.length - 1].ts : es[es.length - 1].ts } : null;
   return res;
 }
+function scan(parsed) { var st = scanInit(parsed); scanRun(st, Infinity); return scanDone(st); }
+/* Разбор большого лога без замирания окна: работа частями по ~25 мс, между ними окно рисуется и принимает клики.
+   pause(доля) — функция паузы (возвращает Promise), её даёт интерфейс. */
+async function analyzeAsync(text, name, pause) {
+  var now = function () { return typeof performance !== 'undefined' ? performance.now() : Date.now(); };
+  var st = parseInit(text, name), n = st.lines.length || 1, done = false, t0;
+  while (!done) { t0 = now(); while (!done && now() - t0 < 25) done = parseRun(st, 5000); if (!done && pause) await pause(st.i / n * 0.35); }
+  var parsed = parseDone(st), ss = scanInit(parsed), m = parsed.entries.length || 1; done = false;
+  while (!done) { t0 = now(); while (!done && now() - t0 < 25) done = scanRun(ss, 2000); if (!done && pause) await pause(0.35 + ss.i / m * 0.6); }
+  return { parsed: parsed, sc: scanDone(ss) };
+}
 
 
 /* ---------- Окружение, хронология и главная причина ---------- */
 var PLAT = { steam: 'Steam', epic: 'Epic Games', rockstar: 'Rockstar Games Launcher' };
+var ENVQ = /GPU:|VRAM|Game version|Game path:/i;
 function envClient(es) {
   var gpu = '', vram = 0, gver = '', edition = '', path = '';
   for (var i = 0; i < es.length; i++) {
     var t = es[i].text, m;
+    if (!ENVQ.test(t)) continue;
     if (!gpu && (m = /GPU:\s*(.+)$/.exec(t))) gpu = m[1].trim();
     else if (!vram && (m = /Dedicated VRAM:\s*(\d+)\s*GB/i.exec(t))) vram = +m[1];
     else if (!gver && (m = /Game version:\s*(\d+)(?:\s+on\s+([\w ]+))?/i.exec(t))) { gver = m[1]; edition = (m[2] || '').trim(); }
@@ -1044,7 +1084,7 @@ function clientStage(es, parsed, groups) {
         var x = es[k].text;
         if (/Last (loaded asset|pos|deleted vehicle model|dynamic object created|str desctutor hash)|Texture info/.test(x)) st.ctx.push({ line: es[k].i, text: x });
       }
-    } else if (/^Shutting down/.test(t)) st.shut = e;
+    } else if (t.lastIndexOf('Shutting down', 0) === 0) st.shut = e;
   }
   return st;
 }
@@ -1461,6 +1501,6 @@ function mask(s) {
     .replace(/\b((?:access_|refresh_|auth_|id_)?token|authorization|bearer|session_?id|api_?key)(["']?\s*[:=]\s*["']?|\s+)([A-Za-z0-9._~+\/=-]{12,})/gi, '$1$2***');
 }
 
-var LA = root.LA = { permCommand: permCommand, h32: h32, caseSummary: caseSummary, stripAnsi: stripAnsi, SEV: SEV, RULES: RULES, parse: parse, scan: scan, learn: learn, classify: classify, applyKB: applyKB, newKB: newKB, setCustomRules: setCustomRules, composeReply: composeReply, diffScans: diffScans, gameFolder: gameFolder, guessGamePaths: guessGamePaths, mask: mask, clusterReports: clusterReports, histTime: histTime, signature: signature, detectKind: detectKind, owner: owner, toMs: toMs };
+var LA = root.LA = { permCommand: permCommand, h32: h32, caseSummary: caseSummary, stripAnsi: stripAnsi, SEV: SEV, RULES: RULES, parse: parse, scan: scan, analyzeAsync: analyzeAsync, learn: learn, classify: classify, applyKB: applyKB, newKB: newKB, setCustomRules: setCustomRules, composeReply: composeReply, diffScans: diffScans, gameFolder: gameFolder, guessGamePaths: guessGamePaths, mask: mask, clusterReports: clusterReports, histTime: histTime, signature: signature, detectKind: detectKind, owner: owner, toMs: toMs };
 if (typeof module !== 'undefined' && module.exports) module.exports = root.LA;
 })(typeof window !== 'undefined' ? window : globalThis);

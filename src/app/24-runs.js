@@ -11,14 +11,14 @@ function runsCalc(f) {
   function open(e) { cur = { start: e, from: e.i, to: e.i, last: e, inited: false, started: null, connected: false, dump: null, shut: false, codes: {} }; runs.push(cur); }
   for (var i = 0; i < es.length; i++) {
     var e = es[i], t = e.text;
-    if (/Logger initialized/.test(t) || !cur) open(e);
+    if (t.indexOf('Logger initialized') !== -1 || !cur) open(e);
     cur.to = e.j; cur.last = e;
-    if (/Majestic Multiplayer inited/.test(t)) cur.inited = true;
-    else if (/Game Started in (\d+) ms/.test(t)) cur.started = +/Game Started in (\d+) ms/.exec(t)[1];
-    else if (/Connected with id/.test(t)) cur.connected = true;
-    else if (/MINIDUMP: Temporary dump saved/.test(t) && !cur.dump) cur.dump = e;
-    else if (/^Shutting down/.test(t)) cur.shut = true;
-    var m = /\bERR_[A-Z0-9_]{3,40}\b/.exec(t); if (m && m[0] !== 'ERR_SYS_FILELOAD') cur.codes[m[0]] = (cur.codes[m[0]] || 0) + 1;
+    if (t.indexOf('Majestic Multiplayer inited') !== -1) cur.inited = true;
+    else if (t.indexOf('Game Started in') !== -1 && /Game Started in (\d+) ms/.test(t)) cur.started = +/Game Started in (\d+) ms/.exec(t)[1];
+    else if (t.indexOf('Connected with id') !== -1) cur.connected = true;
+    else if (t.indexOf('MINIDUMP: Temporary dump saved') !== -1 && !cur.dump) cur.dump = e;
+    else if (t.lastIndexOf('Shutting down', 0) === 0) cur.shut = true;
+    if (t.indexOf('ERR_') !== -1) { var m = /\bERR_[A-Z0-9_]{3,40}\b/.exec(t); if (m && m[0] !== 'ERR_SYS_FILELOAD') cur.codes[m[0]] = (cur.codes[m[0]] || 0) + 1; }
   }
   runs.forEach(function (r) {
     var a = secOf(r.start.ts), b = secOf(r.last.ts); r.dur = a != null && b != null ? ((b - a) + 86400) % 86400 : null;

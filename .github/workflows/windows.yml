@@ -13,25 +13,26 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Сборка
         shell: bash
         run: |
           python src/build.py
           cp index.html app/index.html
           cd app
-          npm install --no-audit --no-fund
-          npm run dist
+          npm install --no-audit --no-fund > ../npm.log 2>&1 || { tail -8 ../npm.log | sed 's/^/::error::/'; exit 1; }
+          npm run dist > ../dist.log 2>&1 || { tail -8 ../dist.log | sed 's/^/::error::/'; exit 1; }
       - name: Playwright
         shell: bash
         run: npm install --no-save --no-audit --no-fund playwright@1.49.0
       - name: Проверка приложения
         shell: bash
         run: |
-          set -o pipefail
-          node tests/win/e2e.js 2>&1 | tee win.log
-          code=$?
-          grep -E "FAIL|INFO" win.log | sed 's/^/::notice::/' || true
+          code=0
+          node tests/win/e2e.js 2>&1 | tee win.log || code=$?
+          grep -E "FAIL" win.log | head -9 | sed 's/^/::error::/' || true
+          grep -E "INFO|WIN" win.log | sed 's/^/::notice::/' || true
+          tail -6 win.log | sed 's/^/::warning::/' || true
           exit $code
       - name: Снимки окна
         if: always()
@@ -47,19 +48,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Playwright и Chromium
         shell: bash
         run: |
           npm install --no-save --no-audit --no-fund playwright@1.49.0
           npx playwright install chromium
       - name: Тесты ядра
-        run: node tests/run.js
+        shell: bash
+        run: |
+          code=0; node tests/run.js > core.log 2>&1 || code=$?
+          grep -E "FAIL|Error" core.log | head -9 | sed 's/^/::error::/' || true
+          exit $code
       - name: UI-тесты в Chromium под Windows
         shell: bash
         run: |
-          set -o pipefail
-          node tests/ui/run.js 2>&1 | tee ui.log
-          code=$?
-          grep -nE "FAIL|Error|Timeout" ui.log | head -25 | sed 's/^/::error::/' || true
+          code=0
+          node tests/ui/run.js 2>&1 | tee ui.log || code=$?
+          grep -nE "FAIL|Error|Timeout|SKIP" ui.log | head -9 | sed 's/^/::error::/' || true
+          tail -6 ui.log | sed 's/^/::warning::/' || true
           exit $code
