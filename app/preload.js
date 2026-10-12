@@ -27,5 +27,7 @@ contextBridge.exposeInMainWorld('nativeApp', {
   extInfo: () => ipcRenderer.invoke('ext-info'),
   extReset: () => ipcRenderer.invoke('ext-reset'),
   onExtImport: (cb) => ipcRenderer.on('ext-import', (e, d) => cb(d)),
-  extReady: () => ipcRenderer.send('ext-ready')
+  extReady: () => ipcRenderer.send('ext-ready'),
+  onExtPair: (cb) => ipcRenderer.on('ext-pair', (e, d) => cb(d)),
+  extPairAnswer: (id, ok) => ipcRenderer.send('ext-pair-answer', id, !!ok)
 });

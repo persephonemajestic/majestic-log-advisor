@@ -58,7 +58,7 @@ const EXCASES = [
     if (kind === 'BetterDiscord') {
       await p.evaluate((src) => {
         const data = {}; window.BdApi = { Data: { load: (a, k) => data[a + k], save: (a, k, v) => { data[a + k] = v; } }, Webpack: { getStore: (n) => window.__stores[n] }, UI: { showToast: (m, o) => window.__toasts.push([m, o.type]) }, DOM: { addStyle() {}, removeStyle() {} },
-          Net: { fetch: async (url, o) => { if (/^https:\/\/cdn\.discordapp\.com\//.test(url)) { window.__dl = (window.__dl || 0) + 1; return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode('LOG').buffer }; } if (/\/v1\/upload$/.test(url)) { const meta = JSON.parse(decodeURIComponent(escape(atob(o.headers['x-mla-meta'])))); window.__bytes = o.body && o.body.length; const r = window.__reply(meta, o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } if (/raw\.githubusercontent/.test(url)) return { ok: true, status: 200, text: async () => window.__newSrc || '' }; if (/ping$/.test(url)) return { ok: true, status: 200, json: async () => ({ ok: true }) }; const r = window.__reply(JSON.parse(o.body), o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } } };
+          Net: { fetch: async (url, o) => { if (/^https:\/\/cdn\.discordapp\.com\//.test(url)) { window.__dl = (window.__dl || 0) + 1; return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode('LOG').buffer }; } if (/\/v1\/upload$/.test(url)) { const meta = JSON.parse(decodeURIComponent(escape(atob(o.headers['x-mla-meta'])))); window.__bytes = o.body && o.body.length; const r = window.__reply(meta, o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } if (/\/v1\/pair$/.test(url)) { window.__pairs = (window.__pairs || 0) + 1; return window.__pairOk ? { ok: true, status: 200, json: async () => ({ ok: true, token: window.__pairOk }) } : { ok: false, status: 403, json: async () => ({ ok: false, error: 'denied' }) }; } if (/raw\.githubusercontent/.test(url)) return { ok: true, status: 200, text: async () => window.__newSrc || '' }; if (/ping$/.test(url)) return { ok: true, status: 200, json: async () => ({ ok: true }) }; const r = window.__reply(JSON.parse(o.body), o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } } };
         const module = { exports: {} }; new Function('module', 'exports', src)(module, module.exports);
         const P = module.exports; window.__p = new P({}); window.__setTok = (t) => BdApi.Data.save('MajesticLogImport', 'settings', { token: t, port: 47615 }); window.__p.start();
       }, BD);
@@ -72,7 +72,14 @@ const EXCASES = [
     const btns = await p.$$eval('.mla-one', (x) => x.map(b => b.previousElementSibling.textContent));
     ok(btns.join(',') === 'client.log,crash.zip', kind + ': кнопки только у логов и архивов в своей ветке-тикете (' + btns.join(',') + ')');
     await p.click('.mla-one >> nth=0'); await p.waitForTimeout(200);
-    ok(await p.evaluate(() => window.__toasts.some(t => /ключ/.test(t[0]))), kind + ': без ключа просит вставить ключ');
+    if (kind === 'BetterDiscord') {
+      ok(await p.evaluate(() => window.__pairs === 1 && window.__toasts.some(t => /отклонено/.test(t[0]))), kind + ': без ключа просит подключиться через анализатор');
+      await p.evaluate(() => { window.__tokenOk = 'aaaabbbbccccddddeeeeffff00001111'; window.__pairOk = window.__tokenOk; window.__posts = []; });
+      await p.click('.mla-one >> nth=0'); await p.waitForTimeout(300);
+      ok(await p.evaluate(() => BdApi.Data.load('MajesticLogImport', 'settings').token === window.__tokenOk && window.__posts.length === 1), kind + ': после «Разрешить» в анализаторе ключ сохранён и файл отправлен');
+      await p.evaluate(() => { window.__tokenOk = 'secret'; window.__posts = []; window.__setTok(''); });
+      await p.evaluate(() => { const b = document.querySelector('.mla-one'); b.disabled = false; b.textContent = 'В анализатор'; });
+    } else ok(await p.evaluate(() => window.__toasts.some(t => /ключ/.test(t[0]))), kind + ': без ключа просит вставить ключ');
     await p.evaluate(() => window.__setTok('secret'));
     await p.click('.mla-one >> nth=0'); await p.waitForTimeout(200);
     const post = await p.evaluate(() => window.__posts[0]);
@@ -116,7 +123,7 @@ const EXCASES = [
         BdApi.Data.save('MajesticLogImport', 'settings', { token: 'secret', port: 47615 });
         return { ids, saved, pasted, inField };
       });
-      ok(r.ids === 'token,port,paste,check' && r.saved === 'abcabcabcabcabcabcabcabcabcabcab', kind + ': настройки на полях BetterDiscord, ключ сохраняется (' + r.ids + ')');
+      ok(r.ids === 'token,port,pair,paste,check' && r.saved === 'abcabcabcabcabcabcabcabcabcabcab', kind + ': настройки на полях BetterDiscord, ключ сохраняется (' + r.ids + ')');
       ok(r.pasted === '0123456789abcdef0123456789abcdef' && r.inField === r.pasted, kind + ': «Вставить ключ из буфера» сохраняет ключ');
     }
     ok(/Все файлы тикета \(2\)/.test(await p.textContent('.mla-all').catch(() => '')) && await p.locator('.mla-all').count() === 1, kind + ': одна кнопка «Все файлы тикета (2)»');

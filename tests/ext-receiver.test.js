@@ -40,5 +40,17 @@ setTimeout(async () => {
   ok((await up(nt, { url: 'https://cdn.discordapp.com/attachments/1/9/main.log?ex=2', name: 'main.log' }, Buffer.from('x'))).j.dup, 'повтор того же вложения от плагина пропущен');
   ok((await up('wrong', { name: 'a.log' }, Buffer.from('x'))).s === 401, 'загрузка без верного ключа отклонена');
   ok((await up(nt, { name: 'virus.exe' }, Buffer.from('x'))).s === 400, 'загрузка не лога отклонена');
+  /* подключение плагина без ввода ключа: просьба → окно в приложении → «Разрешить» отдаёт ключ, «Отклонить» — нет */
+  const pr = () => req({ path: '/v1/pair', body: { client: 'BetterDiscord' } });
+  const w1 = pr(); await new Promise((r) => setTimeout(r, 50));
+  const ev = sent.filter((x) => x.ch === 'ext-pair').pop();
+  ok(ev && ev.d.client === 'BetterDiscord', 'просьба о подключении показана в приложении');
+  ok((await pr()).s === 409, 'вторая просьба, пока первая ждёт, отклоняется');
+  ons['ext-pair-answer'](null, ev.d.id, true); const a1 = await w1;
+  ok(a1.s === 200 && a1.j.token === (await handlers['ext-info']()).token, '«Разрешить» отдаёт плагину ключ');
+  const w2 = pr(); await new Promise((r) => setTimeout(r, 50)); const ev2 = sent.filter((x) => x.ch === 'ext-pair').pop();
+  ons['ext-pair-answer'](null, ev2.d.id, false); const a2 = await w2;
+  ok(a2.s === 403 && !a2.j.token, '«Отклонить» ключ не отдаёт');
+  ok((await req({ path: '/v1/pair', body: {}, headers: { origin: 'https://evil.example' } })).s === 403, 'чужой сайт подключиться не может');
   process.exit(bad ? 1 : 0);
 }, 200);

@@ -5,7 +5,7 @@ const H = require('./helpers'), { ok } = H, fs = require('fs');
   await p.addInitScript(() => {
     window.nativeApp = { kbLoad: () => null, kbSave: () => {}, copy: () => {}, gatedFetch: async () => null,
       extInfo: async () => ({ on: true, port: 47615, token: 'abc123token' }), extReset: async () => ({ on: true, port: 47615, token: 'new' }),
-      onExtImport: (cb) => { window.__ext = cb; }, extReady: () => { window.__ready = true; } };
+      onExtImport: (cb) => { window.__ext = cb; }, extReady: () => { window.__ready = true; }, onExtPair: (cb) => { window.__pair = cb; }, extPairAnswer: (id, ok) => { window.__pairAns = [id, ok]; } };
   });
   await p.reload(); await p.waitForTimeout(800);
   ok(await p.evaluate(() => window.__ready === true), 'интерфейс сообщил оболочке, что готов принимать файлы');
@@ -40,5 +40,9 @@ const H = require('./helpers'), { ok } = H, fs = require('fs');
   ok(/Тикет ticket-1234/.test(await p.textContent('#view')), 'из истории открывается прошлое дело');
   await p.evaluate(() => document.querySelector('#btnSet').click()); await p.waitForTimeout(400);
   ok(/abc123token/.test(await p.textContent('#panelHost')) && await p.locator('[data-act=extCopy]').count() === 1, 'ключ плагина в настройках');
+  await p.evaluate(() => { document.querySelector('#panelHost').innerHTML = ''; window.__pair({ id: 7, client: 'BetterDiscord' }); }); await p.waitForTimeout(200);
+  ok(/Подключить плагин Discord/.test(await p.textContent('#panelHost')), 'просьба плагина о подключении показана окном');
+  await p.click('#pairOk'); await p.waitForTimeout(200);
+  ok(JSON.stringify(await p.evaluate(() => window.__pairAns)) === '[7,true]' && !(await p.locator('#pairOk').count()), '«Разрешить» передаёт ответ оболочке и закрывает окно');
   await H.done(b, errs);
 })();

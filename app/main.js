@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, clipboard, Menu, shell, net, native
 const fs = require('fs');
 const path = require('path');
 
-const SHELL_VERSION = '2026-10-12.16';
+const SHELL_VERSION = '2026-10-12.17';
 const APPDIR = global.APP_DIR || __dirname;
 const bundled = () => path.join(APPDIR, 'index.html');
 const overrideFile = () => path.join(app.getPath('userData'), 'index-override.html');
@@ -293,6 +293,7 @@ async function extHandle(req, res) {
   const p = (req.url || '').split('?')[0];
   if (p === '/v1/ping') return send(200, { ok: true, app: 'majestic-log-advisor', v: SHELL_VERSION });
   if (p === '/v1/upload' && req.method === 'POST') return extUpload(req, res, send);
+  if (p === '/v1/pair' && req.method === 'POST') return extPair(req, send);
   if (p !== '/v1/import' || req.method !== 'POST') return send(404, { ok: false });
   if (!extSame(req.headers['x-mla-token'], extToken())) return send(401, { ok: false, error: 'token' });
   let raw = ''; for await (const ch of req) { raw += ch; if (raw.length > 16384) return send(413, { ok: false }); }
@@ -330,6 +331,23 @@ async function extUpload(req, res, send) {
   extDeliver({ name, data: new Uint8Array(buf), size: buf.length, ticket: String(meta.ticket || '').slice(0, 100), ticketId: String(meta.ticketId || '').replace(/\D/g, '').slice(0, 25), from: String(meta.from || '').slice(0, 60), player: extPlayer(meta.player) });
   return send(200, { ok: true });
 }
+/* Подключение плагина без ввода ключа: плагин просит, приложение спрашивает пользователя, по «Разрешить» отдаёт ключ.
+   Ключ получает только тот, кому разрешили в окне приложения; одна просьба за раз, ждём ответа до 2 минут. */
+const extPairs = new Map(); let extPairSeq = 0;
+async function extPair(req, send) {
+  let raw = ''; for await (const ch of req) { raw += ch; if (raw.length > 4096) return send(413, { ok: false }); }
+  let b = {}; try { b = JSON.parse(raw || '{}'); } catch (e) {}
+  if (!mainWin || mainWin.isDestroyed()) return send(503, { ok: false, error: 'window' });
+  if (extPairs.size) return send(409, { ok: false, error: 'busy' });
+  const id = ++extPairSeq, who = String(b.client || 'Discord').replace(/[^\w .()-]/g, '').slice(0, 40);
+  const answer = await new Promise((resolve) => {
+    const tm = setTimeout(() => { extPairs.delete(id); resolve(false); }, 120000);
+    extPairs.set(id, (ok) => { clearTimeout(tm); extPairs.delete(id); resolve(!!ok); });
+    try { mainWin.webContents.send('ext-pair', { id, client: who }); if (mainWin.isMinimized()) mainWin.restore(); mainWin.show(); mainWin.focus(); mainWin.flashFrame(true); } catch (e) {}
+  });
+  return answer ? send(200, { ok: true, token: extToken() }) : send(403, { ok: false, error: 'denied' });
+}
+ipcMain.on('ext-pair-answer', (e, id, ok) => { const f = extPairs.get(+id); if (f) f(ok); });
 function extPlayer(p) { if (!p || typeof p !== 'object') return null; const t = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n), o = { id: t(p.id, 25).replace(/\D/g, ''), name: t(p.name, 64), username: t(p.username, 40), nick: t(p.nick, 48), static: t(p.static, 12).replace(/\D/g, ''), server: t(p.server, 32), link: /^https:\/\/((ptb|canary)\.)?discord\.com\/channels\/[\d/]+$/.test(String(p.link || '')) ? String(p.link) : '' }; return Object.values(o).some(Boolean) ? o : null; }
 function extStart() {
   const http = require('http'); let port = EXT_PORT;

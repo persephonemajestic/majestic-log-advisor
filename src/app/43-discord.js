@@ -73,4 +73,12 @@ async function extSettingsHtml() {
   if (!i) return '';
   return '<h4 style="margin:10px 0 2px">Плагин Discord</h4><p class="hint" style="margin:0">Кнопка «В анализатор» на вложениях в ваших тикетах отправляет файлы сюда. Вставьте этот ключ в настройки плагина (BetterDiscord или Vencord).' + (i.on ? ' Приёмник работает, порт ' + i.port + '.' : ' Приёмник не запустился.') + '</p><div class="lt"><code class="mono" id="extKey" style="flex:1;overflow-wrap:anywhere">' + esc(i.token) + '</code><button class="btn sm" data-act="extCopy">Скопировать ключ</button><button class="btn sm ghost" data-act="extReset" title="Старый ключ перестанет работать">Новый ключ</button></div>';
 }
+/* Плагин Discord просит подключиться: показываем окно, по «Разрешить» оболочка отдаёт плагину ключ */
+function showPair(d) {
+  if (!d || !window.nativeApp || !window.nativeApp.extPairAnswer) return;
+  var ans = function (ok) { try { window.nativeApp.extPairAnswer(d.id, ok); } catch (e) {} $('#panelHost').innerHTML = ''; status(ok ? 'Плагин Discord подключён: ключ передан.' : 'Подключение плагина Discord отклонено.'); };
+  $('#panelHost').innerHTML = '<div class="panel" data-act="noop"><div class="box" role="dialog" aria-label="Подключить плагин Discord"><b>Подключить плагин Discord?</b><p style="margin:0">Плагин MajesticLogImport в ' + esc(d.client || 'Discord') + ' просит ключ, чтобы отправлять сюда логи из тикетов. Если вы сейчас нажали «Подключить» в настройках плагина — разрешите.</p><div class="row-actions"><button class="btn primary" id="pairOk">Разрешить</button><button class="btn" id="pairNo">Отклонить</button></div></div></div>';
+  $('#pairOk').addEventListener('click', function () { ans(true); }); $('#pairNo').addEventListener('click', function () { ans(false); }); $('#pairOk').focus();
+}
+if (window.nativeApp && window.nativeApp.onExtPair) window.nativeApp.onExtPair(showPair);
 if (window.nativeApp && window.nativeApp.onExtImport) { window.nativeApp.onExtImport(onExtImport); try { window.nativeApp.extReady(); } catch (e) {} }
