@@ -287,3 +287,21 @@ console.log('OK');
   }
   console.log('OK реальные файлы SYS_DIR: ' + n);
 })();
+
+// Ответ игроку совпадает с причиной: краш с фоновым кодом, обрыв загрузки, платформа в patcher.log
+(function () {
+  const L = (t, lvl, msg) => `[2026-10-07 ${t}] [${lvl}] [ (game)              ] ${msg}`, lines = [];
+  for (let i = 0; i < 4; i++) {
+    lines.push(L('1' + i + ':00:00.000', 'info', 'game.play: zombie process sweep'));
+    lines.push(L('1' + i + ':00:05.000', 'info', "crashService: crash detected → armed needResourceCheck self-heal { internalError: 'ERR_SYS_FILELOAD', scope: 'ru4' }"));
+  }
+  lines.push(L('15:00:00.000', 'error', "game launch failed { reason: 'server-files-failed', message: 'fetch failed' }"));
+  const sc = LA.scan(LA.parse(lines.join('\n'), 'main.log')), rep = LA.composeReply(sc);
+  if (/фоновый шум/.test(rep)) { console.error('FAIL в ответ игроку попала служебная пометка «фоновый шум»:\n' + rep); process.exit(1); }
+  if (!/Игра вылетает после запуска/.test(rep) || !/crashdumps/.test(rep)) { console.error('FAIL краш ERR_SYS_FILELOAD: нет шагов про client.log и дамп:\n' + rep); process.exit(1); }
+  if (/свободное место/.test(rep) || !/VPN/.test(rep)) { console.error('FAIL fetch failed: ответ не про связь:\n' + rep); process.exit(1); }
+  const pt = LA.scan(LA.parse('[16:56:04] [info] MAJESTIC: Deleting pirate files\n[16:56:04] [error] MAJESTIC: GTAV ERROR: ERR_FAILED_TO_LAUNCH_PLATFORM\n[16:56:04] [error] MAJESTIC: Critical error corrupted, exiting game...\n', 'patcher.log'));
+  const pr = LA.composeReply(pt);
+  if (/не описан/.test(pt.findings.map(g => g.title).join(';')) || !/Переустановите платформу/.test(pr)) { console.error('FAIL patcher.log ERR_FAILED_TO_LAUNCH_PLATFORM:', pt.findings.map(g => g.title), pr); process.exit(1); }
+  console.log('OK ответ игроку совпадает с причиной');
+})();

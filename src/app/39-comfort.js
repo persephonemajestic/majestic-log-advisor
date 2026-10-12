@@ -70,7 +70,7 @@ function copyCurrentReply(f) {
 }
 /* Шпаргалка по клавишам: клавиша ? */
 function showKeys() {
-  var K = keyMap(), rows = Object.keys(KEYNAME).map(function (k) { return [codeLabel(K[k]), KEYNAME[k]]; }).concat([['J / K', 'Следующий / предыдущий лог'], ['R', 'Копировать ответ игроку (в деле — ответ по делу)'], ['E', 'Проблема решена'], ['/', 'Поиск по логу'], ['1–9', 'Вкладки по порядку'], ['Ctrl+K', 'Список команд'], ['Ctrl + / −', 'Масштаб лога'], ['Esc', 'Закрыть окно'], ['?', 'Эта шпаргалка']]);
+  var K = keyMap(), L = function (k) { return codeLabel(K[k]); }, rows = [[L('nextLog') + ' / ' + L('prevLog') + '  или  J / K', 'Следующий / предыдущий лог'], [L('nextProb') + ' / ' + L('prevProb'), 'Следующая / предыдущая проблема в логе'], [L('pin'), KEYNAME.pin], [L('copy') + '  или  R', 'Копировать ответ игроку (в деле — ответ по делу)']].concat([ ['E', 'Проблема решена'], ['/', 'Поиск по логу'], ['1–9', 'Вкладки по порядку'], ['Ctrl+K', 'Список команд'], ['Ctrl + / −', 'Масштаб лога'], ['Esc', 'Закрыть окно'], ['?', 'Эта шпаргалка']]);
   $('#panelHost').innerHTML = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" aria-label="Горячие клавиши"><b>Горячие клавиши</b><table class="keys">' + rows.map(function (r) { return '<tr><td><kbd>' + esc(r[0]) + '</kbd></td><td>' + esc(r[1]) + '</td></tr>'; }).join('') + '</table><p class="hint" style="margin:0">Свои клавиши можно назначить в «Настройках».</p><div class="row-actions"><button class="btn" data-act="closePanel">Закрыть</button></div></div></div>';
 }
 

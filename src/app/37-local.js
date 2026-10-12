@@ -21,7 +21,7 @@ async function loadFound(list, asGroup) {
 }
 
 /* ---------- Отчёт HTML / PDF ---------- */
-var REPORT_CSS = 'body{font:14px/1.5 "Segoe UI",system-ui,sans-serif;max-width:860px;margin:24px auto;padding:0 16px;color:#151c28}h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:22px 0 8px;border-bottom:1px solid #d5dbe6;padding-bottom:4px}h3{font-size:15px;margin:0 0 4px}.m,.c,.n{color:#586377;font-size:12.5px}.v{border:1px solid #d5dbe6;border-left-width:5px;border-radius:6px;padding:8px 12px}.v.ok{border-left-color:#17794e}.v.bad{border-left-color:#b8232b}.v.warn{border-left-color:#9a6a0c}.prio{background:#b8232b;color:#fff;border-radius:8px;padding:6px 14px;margin:14px 0}.prio code{background:rgba(255,255,255,.2);color:#fff}.f{border:1px solid #d5dbe6;border-radius:8px;padding:8px 12px;margin:8px 0;break-inside:avoid}pre,code{font:12px Consolas,monospace;background:#eef1f6;border-radius:4px;padding:1px 5px}pre{padding:8px;white-space:pre-wrap;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;font-size:12.5px}td,th{border:1px solid #d5dbe6;padding:3px 7px;text-align:left}';
+var REPORT_CSS = 'body{font:14px/1.5 "Segoe UI",system-ui,sans-serif;max-width:860px;margin:24px auto;padding:0 16px;color:#151c28}h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:22px 0 8px;border-bottom:1px solid #d5dbe6;padding-bottom:4px}h3{font-size:15px;margin:0 0 4px}.m,.c,.n{color:#586377;font-size: 13px}.v{border:1px solid #d5dbe6;border-left-width:5px;border-radius:6px;padding:8px 12px}.v.ok{border-left-color:#17794e}.v.bad{border-left-color:#b8232b}.v.warn{border-left-color:#9a6a0c}.prio{background:#b8232b;color:#fff;border-radius:8px;padding:6px 14px;margin:14px 0}.prio code{background:rgba(255,255,255,.2);color:#fff}.f{border:1px solid #d5dbe6;border-radius:8px;padding:8px 12px;margin:8px 0;break-inside:avoid}pre,code{font:12px Consolas,monospace;background:#eef1f6;border-radius:4px;padding:1px 5px}pre{padding:8px;white-space:pre-wrap;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;font-size: 13px}td,th{border:1px solid #d5dbe6;padding:3px 7px;text-align:left}';
 function buildReportHTML(f) {
   var sc = f.sc, v = sc.verdict, probs = sc.findings.filter(function (g) { return SEV[g.sev] >= SEV.warn; }), e = function (x) { return esc(M(x)); }, h = '';
   h += '<h1>Разбор лога: ' + e(f.label) + '</h1><p class="m">' + (sc.kindName || sc.kind) + '.log' + (sc.range ? ', ' + e(sc.range.from) + ' → ' + e(sc.range.to) : '') + (S.kb.tags[f.hash] ? ', игрок/тикет: ' + e(S.kb.tags[f.hash]) : '') + '. Отчёт создан ' + new Date().toLocaleString('ru') + '</p>';
@@ -97,7 +97,7 @@ function renderHistory() {
   var h = '<div class="card"><div class="lt"><label class="nl inl">Игрок или тикет<select class="sel" id="histSel">' + names.map(function (n) { return '<option value="' + esc(n) + '"' + (n === S.histTag ? ' selected' : '') + '>' + esc(n || 'Без метки') + ' (' + cnt[n] + ')</option>'; }).join('') + '</select></label><button class="btn sm" data-act="histCopy">Скопировать историю</button></div></div>';
   var list = keys.filter(function (k) { return (S.kb.tags[k] || '') === S.histTag; }).map(function (k) { return { k: k, h: S.kb.hist[k], t: timeOf(S.kb.hist[k]) }; }).sort(function (a, b) { return a.t - b.t; });
   var prev = {};
-  h += '<div class="tl">' + list.map(function (x) {
+  h += '<div class="htl">' + list.map(function (x) {
     var e = x.h, p = prev[e.kind], note = '';
     if (p) {
       var pk = {}, ck = {}; p.probs.forEach(function (q) { pk[q.k] = q; }); e.probs.forEach(function (q) { ck[q.k] = q; });
@@ -149,6 +149,7 @@ function renderStats() {
     h += '<div class="card"><h3 class="sec" style="margin:0 0 6px">Динамика по дням</h3><div class="cols" role="img" aria-label="Логи по дням: всего и со сбоями">' + days.map(function (x) { var o = byDay[x]; return '<div class="col" title="' + x + ': логов ' + o.n + ', сбоев ' + o.bad + '"><span class="cn">' + o.n + '</span><div class="cb" style="height:' + Math.max(4, Math.round(o.n * 100 / mxd)) + '%"><i style="height:' + Math.round(o.bad * 100 / o.n) + '%"></i></div><span class="cd">' + x.slice(8, 10) + '.' + x.slice(5, 7) + '</span></div>'; }).join('') + '</div><div class="legend"><span><i style="background:var(--accent)"></i>логов</span><span><i style="background:var(--crit)"></i>из них со сбоем</span></div></div>';
   }
   h += '<div class="row-actions"><button class="btn sm" data-act="statsCopy">Скопировать сводку</button><button class="btn sm" data-act="weekCopy">Недельный отчёт</button><button class="btn sm" data-act="weekHtml">Недельный отчёт HTML</button><button class="btn sm" data-act="weekPdf">Недельный отчёт PDF</button></div><p class="hint">Сводка копится из истории приложения (до 500 последних логов) и считается только по тем логам, которые вы добавили начиная с этой версии.</p>';
+  h += '<h3 class="sec" id="assetsSec" style="margin:14px 0 0">Ассеты перед падением</h3>' + assetsHtml().replace(/<h3 class="sec" style="margin:0">Ассеты перед падением (<span class="n">\d+<\/span>)<\/h3>/, '');
   $('#view').innerHTML = h;
 }
 function statsText() {

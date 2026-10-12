@@ -53,7 +53,7 @@ var SAMPLE_CLIENT = String.raw`[18:58:35.840] Logger initialized
 
 S.mask = false; /* в интерфейсе ничего не прячем: маска мешала шаблонам (DNS и т.п.); на сервер логи по-прежнему уходят обезличенными */
 var subEl = document.querySelector('#ver'); if (subEl) subEl.textContent = 'версия ' + APP_VERSION;
-if (window.nativeApp && window.nativeApp.shellInfo) window.nativeApp.shellInfo().then(function (i) { if (!i || !i.hwid || !subEl) return; subEl.insertAdjacentHTML('beforeend', '<div style="margin-top:10px;font-family:var(--font)">Код компьютера<br><code id="hwidCode" style="user-select:all">' + esc(i.hwid) + '</code> <button class="btn sm ghost" id="hwidCopy" type="button">Копировать</button></div>'); var hb = document.getElementById('hwidCopy'); if (hb) hb.addEventListener('click', function () { try { window.nativeApp.copy(i.hwid); status('Код компьютера скопирован.'); } catch (e) {} }); }).catch(function () {});
+if (window.nativeApp && window.nativeApp.shellInfo) window.nativeApp.shellInfo().then(function (i) { if (!i || !i.hwid || !subEl) return; subEl.insertAdjacentHTML('beforeend', '<div style="margin-top:10px;font-family:var(--sans)">Код компьютера<br><code id="hwidCode" style="user-select:all">' + esc(i.hwid) + '</code> <button class="btn sm ghost" id="hwidCopy" type="button">Копировать</button></div>'); var hb = document.getElementById('hwidCopy'); if (hb) hb.addEventListener('click', function () { try { window.nativeApp.copy(i.hwid); status('Код компьютера скопирован.'); } catch (e) {} }); }).catch(function () {});
 S.kb.settings.launches = (S.kb.settings.launches || 0) + 1; saveKB();
 (async function startFiles() {
   var restored = false;

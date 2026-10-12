@@ -212,7 +212,7 @@ R({ id: 'm-crashdet', kind: 'main', kw: 'crash detected', re: /crashService: cra
   refine: function (m) {
     var c = m[1];
     if (!c) return { key: 'nocode', title: 'Краш игры без кода ошибки', cause: 'Игра упала, а код ERR_… не определён (в client.log такой краш виден как MINIDUMP без строки ERR_). По руководству диагноз по коду поставить нельзя: нужна базовая диагностика и, если вылет повторяется, дамп.', fix: ['Проверить, нет ли Found blocking mod в этой же попытке (мод в корне игры).', 'Базовая диагностика: целостность файлов GTA V, настройки settings.xml, драйвер видеокарты, убрать моды, антивирус.', 'Запросить client.log той же попытки: Last loaded asset, Last pos. Дамп: %appdata%\\majestic-launcher\\Multiplayer\\crashdumps.'], tpl: [TPL_INJ] };
-    if (c === 'ERR_SYS_FILELOAD') return { key: c, title: 'ERR_SYS_FILELOAD (фоновый шум, не причина вылета)', cause: 'Код ERR_SYS_FILELOAD / Missing rpf перехватывается клиентом и игру не роняет. Настоящую причину ищите в client.log перед завершением: Last loaded asset, оверлеи, ошибки стримера.', fix: ['Открыть client.log и найти строки перед «MINIDUMP» или «Shutting down»: Last loaded asset, Texture info, ошибки скриптов.', 'Если в client.log причины нет, запросить у игрока свежий лог сразу после вылета.'] };
+    if (c === 'ERR_SYS_FILELOAD') return { key: c, title: 'Краш игры: код ERR_SYS_FILELOAD причину не называет', rt: 'игра вылетает после запуска', cause: 'Игра упала, а лаунчер записал последний код из client.log: ERR_SYS_FILELOAD. Сам по себе он фоновый (Missing rpf перехватывается клиентом), поэтому настоящую причину ищите в client.log этой попытки перед завершением: Last loaded asset, MINIDUMP, оверлеи, ошибки стримера.', fix: ['Открыть client.log и найти строки перед «MINIDUMP» или «Shutting down»: Last loaded asset, Texture info, ошибки скриптов.', 'Если в client.log причины нет, запросить у игрока свежий лог сразу после вылета.'] };
     if (/^ERR_GEN_ZLIB/.test(c)) return { key: c, title: 'Краш игры: ' + c + ' (повреждены данные)', cause: 'Ошибка вызова zlib: данные игры повреждены. Смотрите client.log: Error on asset reading покажет, чей файл.', fix: ['GTA V: проверить целостность файлов. Majestic: очистить кеш и перепроверить файлы.'], tpl: [TPL_RES] };
     if (c === 'ERR_GFX_D3D_INIT') return { key: c, title: 'Краш игры: ERR_GFX_D3D_INIT (графика)', cause: 'Отвалилась графика: моды, драйвер видеокарты, DirectX.', fix: ['Обновить драйвер видеокарты, убрать графические моды, сбросить settings.xml, проверить файлы игры.'], tpl: ['Ошибка при инициализации (ERR_GFX_D3D_INIT)', TPL_MODS] };
     var di = errInfo(c); if (di) return { key: c, src: 'web', title: 'Краш игры: ' + c + ' (' + di.t + ')', cause: di.cause + ' Лаунчер зафиксировал краш с этим кодом и включил самовосстановление ресурсов (needResourceCheck). Подробности: client.log той же попытки.', fix: di.fix };
@@ -531,6 +531,11 @@ R({ id: 'c-queue-net', kind: 'client', kw: ['CEF error', 'QUEUE SSE'], re: /\[QU
   cause: 'Это сетевая ошибка встроенного браузера лаунчера, а не краш игры. Связь с очередью входа оборвалась (провайдер, VPN, антивирус или брандмауэр режет соединение, либо сбой на стороне сервера). Клиент переподключается сам; важно, если повторяется часто и игрок не может войти.',
   fix: ['Отключить VPN и прокси, попробовать другую сеть (раздача с телефона).', 'Проверить антивирус и брандмауэр: добавить лаунчер и игру в исключения.', 'Если ошибка у многих игроков сразу: сбой на стороне сервера, не у игрока.'] });
 
+R({ id: 'c-platform', kind: 'client', kw: 'ERR_FAILED_TO_LAUNCH_PLATFORM', re: /ERR_FAILED_TO_LAUNCH_PLATFORM/, sev: 'crit', top: true, src: 'team',
+  title: 'Лаунчер не смог запустить платформу игры (ERR_FAILED_TO_LAUNCH_PLATFORM)',
+  cause: 'Патчер Majestic не смог запустить платформу, на которой куплена игра: Steam, Rockstar Games Launcher (RGL) или Epic Games. Почти всегда повреждена установка самой платформы. Решение — переустановить платформу поверх текущей.',
+  fix: ['Переустановить платформу поверх, ничего не удаляя: скачать установщик с официального сайта и установить в ту же папку (Steam, Rockstar Games Launcher или Epic Games). Игра и библиотека останутся.', 'После установки перезагрузить компьютер, открыть платформу один раз самостоятельно, затем запускать игру через Majestic.', 'Если не помогло: снять «Запускать от имени администратора» у платформы и у GTA5.exe, закрыть зависшие процессы платформы и повторить.'] });
+
 R({ id: 'c-errcode', kind: 'client', kw: 'ERR_', re: /\b(ERR_(?!CONNECTION_|SSL_|INTERNET_|NAME_|TIMED_OUT|NETWORK_)[A-Z0-9_]{3,})\b(?: happened)?/, sev: 'crit', src: 'infer', loopAt: 3,
   title: 'Код ошибки игры, которого нет в руководстве',
   detail: function (m) { return m[1]; },
@@ -542,7 +547,7 @@ R({ id: 'c-errcode', kind: 'client', kw: 'ERR_', re: /\b(ERR_(?!CONNECTION_|SSL_
   },
   cause: 'В client.log ищется именно код ERR_…, расшифровка идёт следом после Error message:. Для этого кода готового разбора нет.',
   fix: ['Прочитать Error message: рядом и найти по тексту решение в руководстве.', 'Если решения нет: собрать client.log, main.log и minidump и передать дальше.'],
-  test: function (m, t) { return !/^ERR_(SYS_FILELOAD|GFX_D3D_INIT|GEN_ZLIB|MEM_)/.test(m[1]) && !/Missing rpf/.test(t) || false; } });
+  test: function (m, t) { return !/^ERR_(SYS_FILELOAD|GFX_D3D_INIT|GEN_ZLIB|MEM_|FAILED_TO_LAUNCH_PLATFORM)/.test(m[1]) && !/Missing rpf/.test(t) || false; } });
 
 R({ id: 'c-dump', kind: 'client', kw: 'MINIDUMP', re: /MINIDUMP: Temporary dump saved/, sev: 'crit', src: 'guide',
   title: 'MINIDUMP: игра упала и сохранила дамп краша',
@@ -792,7 +797,7 @@ function scanRun(st, n) {
       e.key = hit.id + (ref && ref.key ? ':' + ref.key : '');
       e.det = hit.detail ? hit.detail(m, t) : '';
       var g = groups.get(e.key);
-      if (!g) { g = { key: e.key, rule: hit, title: (ref && ref.title) || hit.title, cause: (ref && ref.cause) || hit.cause, fix: (ref && ref.fix) || hit.fix, tpl: hit.tpl || [], src: (ref && ref.src) || hit.src, sev: (ref && ref.sev) || hit.sev, count: 0, entries: [], dets: new Map() }; groups.set(e.key, g); }
+      if (!g) { g = { key: e.key, rule: hit, rt: ref && ref.rt, rfix: ref && ref.fix && ref.src === 'web' ? ref.fix : null, title: (ref && ref.title) || hit.title, cause: (ref && ref.cause) || hit.cause, fix: (ref && ref.fix) || hit.fix, tpl: hit.tpl || [], src: (ref && ref.src) || hit.src, sev: (ref && ref.sev) || hit.sev, count: 0, entries: [], dets: new Map() }; groups.set(e.key, g); }
       g.count++; if (g.entries.length < 400) g.entries.push(i);
       if (e.det) g.dets.set(e.det, (g.dets.get(e.det) || 0) + 1);
     } else if (e.lvl === 'error' || e.lvl === 'warn') {
@@ -956,6 +961,7 @@ function rootCause(res) {
   var net = hasGroup(res, ['m-net', 'm-dl', 'm-http5xx', 'c-conn']);
   if (net.length >= 2 && !crashy.length) return { id: 'net', title: 'нестабильное соединение игрока', why: 'Сразу несколько сетевых находок: ' + net.slice(0, 3).map(function (g) { return g.title; }).join('; ') + '. Это одна причина (сеть, VPN, DNS), а не несколько разных поломок.' };
   var loops = res.findings.filter(function (g) { return g.loop; });
+  if (loops.length && loops[0].key === 'm-crashdet:ERR_SYS_FILELOAD') return { id: 'loop', title: 'игра стабильно вылетает после запуска', why: 'Краш повторился ' + loops[0].count + ' ' + plur(loops[0].count, 'раз', 'раза', 'раз') + '. Код ERR_SYS_FILELOAD, который пишет лаунчер, причину не называет: нужен client.log одной из этих попыток (Last loaded asset, MINIDUMP) и дамп краша. Пока его нет, базовые шаги: моды, целостность GTA V, драйвер видеокарты.' };
   if (loops.length) return { id: 'loop', title: 'повреждены файлы игры или кеш (ошибка повторяется)', why: loops[0].title + ' повторяется ' + loops[0].count + ' ' + plur(loops[0].count, 'раз', 'раза', 'раз') + '. Разовая очистка не помогла, поэтому нужно проверить целостность GTA V, диск и антивирус.' };
   return null;
 }
@@ -1270,7 +1276,14 @@ var REPLY = {
   'm-gpu': ['Обновите драйвер видеокарты и перезапустите лаунчер. Закройте программы с оверлеями и записью экрана.']
 };
 REPLY['m-patcherr'] = REPLY['m-crashdet'];
+REPLY['m-crashdet:ERR_SYS_FILELOAD'] = ['Проверьте папку GTA V: в ней не должно быть модов (dxgi.dll, ReShade, ENB, DLSS-файлов nvngx_*.dll и т.п.). Перенесите их в папку модификаций лаунчера или удалите.', 'Запустите проверку файлов игры в вашей платформе (Steam/Epic/Rockstar), обновите драйвер видеокарты.', 'Если игра снова вылетит, сразу пришлите client.log и файл краш-отчёта: Win+R → %appdata%\\majestic-launcher\\Multiplayer\\crashdumps (самый свежий файл).'];
+REPLY['m-srvfiles:net'] = ['Загрузка файлов сервера оборвалась из-за связи: проверьте интернет, отключите VPN и прокси, добавьте лаунчер в исключения фаервола и антивируса, затем повторите запуск.'];
+REPLY['m-srvfiles:bad'] = ['Файл сервера скачался повреждённым: в настройках лаунчера очистите кеш и дождитесь полной перепроверки файлов, затем повторите запуск.'];
+REPLY['m-srvfiles:space'] = ['На диске с игрой закончилось место: освободите несколько гигабайт (или выберите другой диск для файлов лаунчера) и повторите запуск.'];
+REPLY['c-platform'] = REPLY['m-platform'];
 function replySteps(g) {
+  if (REPLY[g.key]) return REPLY[g.key];
+  if (g.rfix && (g.rule.id === 'c-errcode' || g.rule.id === 'm-crashdet')) { var rf = g.rfix.filter(function (x) { return !STAFF.test(x); }); if (rf.length) return rf; }
   var base = REPLY[g.rule.id];
   if (base) return base;
   var f = (g.fix || []).filter(function (x) { return !STAFF.test(x); });
@@ -1305,7 +1318,7 @@ function composeReply(sc, o) {
     if (mf.length && (g.rule.id === 'm-patcherr' || g.rule.id === 'm-crashdet') ) return;
     if (steps.length) firsts[steps[0]] = 1; if (!steps.length && !(o.kb && o.kb.ruleNotes[g.key])) return;
     used[g.rule.id] = 1; shown++; n++;
-    L.push((mf.length ? 'Также: ' : 'Проблема: ') + g.title);
+    L.push((mf.length ? 'Также: ' : 'Проблема: ') + (g.rt ? g.rt.charAt(0).toUpperCase() + g.rt.slice(1) : g.title));
     steps.forEach(function (x, i) { L.push('  ' + (i + 1) + '. ' + x); });
     var nt = o.kb && o.kb.ruleNotes[g.key]; if (nt) L.push('  Что ещё помогало: ' + nt.replace(/\s+/g, ' ').slice(0, 300));
     L.push('');

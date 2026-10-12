@@ -1,6 +1,6 @@
 const H = require('./helpers'), { ok } = H;
 (async () => {
-  const { b, p, errs } = await H.launch(600, 800);
+  const { b, p, errs } = await H.launch(460, 800);
   const bb = await p.locator('#tabs').boundingBox(), sc = () => p.evaluate(() => Math.round(document.querySelector('#tabs').scrollLeft));
   ok(!(await p.locator('#tabR').isHidden()), 'в узком окне есть стрелка вправо');
   await p.click('#tabR'); await p.waitForTimeout(700); ok(await sc() > 50, 'стрелка листает вкладки');

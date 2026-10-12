@@ -158,7 +158,11 @@ function linkHtml(f) {
 }
 function sysHtml(f) {
   var s = f.sys, h = '<div class="ai-h">Дамп краша и журнал Windows</div>';
-  if (!s || (!s.dump && !s.ev)) return h + '<p class="hint" style="margin:0 0 8px">Добавьте минидамп (crashdump.dmp из краш-отчёта, .dmp) или журнал событий Windows (.evtx или events.txt). Приложение покажет, где и почему упала игра, какой модуль виноват и совпадает ли это с событиями системы. Файлы читаются частями, большие не грузятся целиком. Архив краш-отчёта (.zip) разбирается сразу вместе с client.log.</p>' + sysBtns(f);
+  if (!s || (!s.dump && !s.ev)) {
+    var crashed = f.sc && f.sc.findings && f.sc.findings.some(function (g) { return g.rule && /^(c-dump|m-crashdet|c-lastasset)$/.test(g.rule.id); });
+    if (f === S.sysOnly) return '<div class="row-actions">' + sysBtns(f).replace(/^<div class="row-actions">|<\/div>$/g, '') + '</div><p class="hint" style="margin:6px 0 0">Покажет, где и почему упала игра, какой модуль виноват и совпадает ли это с событиями Windows. Большие файлы читаются частями.</p>';
+    return '<div class="sys-line"><span class="ai-h">Дамп краша и журнал Windows</span><span class="mut">' + (crashed ? 'в логе есть краш: дамп покажет модуль, где упала игра' : 'не добавлены') + '</span><button class="btn sm' + (crashed ? '' : ' ghost') + '" data-act="sysAdd" title="Минидамп (.dmp), журнал событий Windows (.evtx, events.txt) или zip краш-отчёта">Добавить дамп или журнал</button></div>';
+  }
   var d = s.dump, ev = s.ev;
   h += '<div class="diag"><dl>';
   if (d) {

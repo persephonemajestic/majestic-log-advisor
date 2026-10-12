@@ -32,7 +32,7 @@ const dump = () => H.dump();
   await p.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.resolve() }, configurable: true }); });
   await p.click('[data-act=sysCopy]'); await p.waitForTimeout(300);
   await p.click('[data-act=sysClear]'); await p.waitForTimeout(200);
-  ok(/Добавьте минидамп/.test(await p.textContent('#sysBox')), 'данные можно убрать');
+  ok(/Добавить дамп или журнал/.test(await p.textContent('#sysBox')) && !/Дамп<\/dt>/.test(await p.innerHTML('#sysBox')), 'данные можно убрать');
   /* отдельная кнопка «Только дамп»: без лога, данные не попадают в открытый лог */
   await p.click('#btnMore'); await p.click('#btnDump'); await p.waitForSelector('#sysOnlyBox');
   ok(/Лог не нужен/.test(await p.textContent('#sysOnlyBox')), 'окно «Только дамп» открылось');
@@ -42,6 +42,6 @@ const dump = () => H.dump();
   await p.click('#sysOnlyBox #sysAiBtn'); await p.waitForFunction(() => /Упал драйвер/.test(document.querySelector('#sysOnlyBox').textContent), null, { timeout: 8000 });
   ok(await p.evaluate(() => window.__calls.length) === 2, 'ИИ для дампа без лога по кнопке');
   await p.click('#sysOnlyBox [data-act=closePanel]'); await p.waitForTimeout(200);
-  ok(/Добавьте минидамп/.test(await p.textContent('#sysBox')), 'открытый лог дампом из окна не затронут');
+  ok(/Добавить дамп или журнал/.test(await p.textContent('#sysBox')), 'открытый лог дампом из окна не затронут');
   await H.done(b, errs);
 })();
