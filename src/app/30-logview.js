@@ -206,7 +206,7 @@ function drawRows() {
   for (var i = a; i < b; i++) {
     var ln = f.view[i], ei = f.parsed.lineEntry[ln], e = ei >= 0 ? f.parsed.entries[ei] : null, s = f.parsed.lineSev[ln], txt = M(LA.stripAnsi(f.parsed.lines[ln]));
     if (txt.length > (W ? 4000 : 600)) txt = txt.slice(0, W ? 4000 : 600) + '…';
-    h += '<div class="ln' + (W ? ' w' : '') + ' s' + s + (ln === S.sel ? ' sel' : '') + (f.marks.indexOf(ln) >= 0 ? ' mk' : '') + '"' + (W ? ' style="--n:' + (f.pre[i + 1] - f.pre[i]) + '"' : '') + ' data-act="pick" data-line="' + ln + '"><span class="no">' + (ln + 1) + '</span><span class="tx">' + hl(txt, e) + (f.rep && f.rep[ln] ? '<span class="rep" title="Ещё ' + (f.rep[ln] - 1) + ' таких же строк подряд скрыто">×' + f.rep[ln] + '</span>' : '') + '</span></div>';
+    h += '<div class="ln' + (W ? ' w' : '') + ' s' + s + (ln === S.sel ? ' sel' : '') + (f.marks.indexOf(ln) >= 0 ? ' mk' : '') + '"' + (W ? ' style="--n:' + (f.pre[i + 1] - f.pre[i]) + '"' : '') + ' data-act="pick" data-line="' + ln + '"><span class="no">' + (ln + 1) + '</span><span class="tx">' + hl(txt, e) + (f.rep && f.rep[ln] ? '<span class="rep" title="Ещё ' + (f.rep[ln] - 1) + ' таких же строк подряд скрыто">×' + f.rep[ln] + '</span>' : '') + '</span><button class="lcp" type="button" data-act="lcopy" data-line="' + ln + '" title="Копировать строку (или выделите текст мышью и Ctrl+C)" aria-label="Копировать строку"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8" fill="none" stroke="currentColor" stroke-width="1.7"/></svg></button></div>';
   }
   var rows = $('#rows'); rows.style.transform = 'translateY(' + offs(f, a) + 'px)'; rows.innerHTML = h;
 }
@@ -224,7 +224,7 @@ function drawInspector(f) {
     var u = f.sc.unknown.find(function (x) { return x.sig === e.sig; });
     if (u) h += '<div><span class="cls cls-' + u.cls.cls + '">' + esc(u.cls.text) + '</span></div><p class="hint" style="margin:0">Правила для этой строки нет. Метку и заметку можно добавить на вкладке «Диагноз».</p>';
   }
-  var st0 = e.i; h += '<div class="row-actions"><button class="btn sm" data-act="mark">' + (f.marks.indexOf(st0) >= 0 ? 'Снять закладку' : '★ Закладка') + '</button><button class="btn sm" data-act="ruleLine" data-line="' + e.i + '">Добавить правило по этой строке</button><button class="btn sm" data-act="fragCopy" data-line="' + e.i + '" title="Строка и по 5 строк вокруг, личные данные скрыты">Копировать фрагмент</button>' + (entryMs(f, e) != null ? '<button class="btn sm" data-act="twin" data-line="' + e.i + '" title="Показать только строки за 30 секунд до и после этой">Окно ±30 с</button>' : '') + '</div>';
+  var st0 = e.i; h += '<div class="row-actions"><button class="btn sm" data-act="lcopy" data-line="' + e.i + '" title="Ctrl+C, когда строка выбрана">Копировать строку</button><button class="btn sm" data-act="mark">' + (f.marks.indexOf(st0) >= 0 ? 'Снять закладку' : '★ Закладка') + '</button><button class="btn sm" data-act="ruleLine" data-line="' + e.i + '">Добавить правило по этой строке</button><button class="btn sm" data-act="fragCopy" data-line="' + e.i + '" title="Строка и по 5 строк вокруг, личные данные скрыты">Копировать фрагмент</button>' + (entryMs(f, e) != null ? '<button class="btn sm" data-act="twin" data-line="' + e.i + '" title="Показать только строки за 30 секунд до и после этой">Окно ±30 с</button>' : '') + '</div>';
   box.innerHTML = h;
 }
 function drawMarks() {
@@ -259,3 +259,16 @@ function jump(line) {
   sc.scrollIntoView({ block: 'nearest' });
 }
 
+
+/* Копирование строки лога: запись целиком (с продолжением на следующих строках), с маской личных данных, если она включена */
+function lineText(f, ln) { var ei = f.parsed.lineEntry[ln], e = ei >= 0 ? f.parsed.entries[ei] : null, a = e ? e.i : ln, b = e ? Math.min(e.j, e.i + 60) : ln; return M(LA.stripAnsi(f.parsed.lines.slice(a, b + 1).join('\n'))); }
+function copyLine(ln) { var f = active(); if (!f || !(ln >= 0)) return; copyText(lineText(f, ln), 'Строка лога', 'Скопируйте строку.', 'Строка L' + (ln + 1) + ' скопирована.'); }
+function rowsSelection() { var s = window.getSelection && window.getSelection(), r = $('#rows'); return s && !s.isCollapsed && r && (r.contains(s.anchorNode) || r.contains(s.focusNode)) ? String(s) : ''; }
+document.addEventListener('keydown', function (e) {
+  if (!(e.ctrlKey || e.metaKey) || e.code !== 'KeyC' || e.shiftKey || e.altKey || S.tab !== 'log') return;
+  var tg = e.target && e.target.tagName; if (tg === 'INPUT' || tg === 'TEXTAREA') return;
+  var s = window.getSelection && window.getSelection(); if (s && !s.isCollapsed) return; /* выделенный мышью текст копирует сам браузер */
+  if (S.sel >= 0) { e.preventDefault(); copyLine(S.sel); }
+});
+/* При копировании выделения из лога номера строк не попадают, а личные данные остаются скрытыми (берётся то, что видно на экране) */
+document.addEventListener('copy', function (e) { var txt = rowsSelection(); if (!txt || !e.clipboardData) return; e.clipboardData.setData('text/plain', txt.replace(/\u00a0/g, ' ')); e.preventDefault(); });

@@ -431,6 +431,11 @@ table.at td.wrapc { white-space: normal; min-width: 220px; }
 .ln:hover { background: var(--surface2); }
 .ln .no { flex: 0 0 calc(var(--lh, 20px) * 3.2); text-align: right; padding-right: 12px; color: var(--muted); user-select: none; font-variant-numeric: tabular-nums; opacity: .85; }
 .ln .tx { flex: 1; min-width: 0; padding-right: 20px; }
+.ln { position: relative; } .ln .tx { user-select: text; cursor: text; }
+.ln .lcp { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: none; width: 24px; height: 20px; padding: 0; border: 1px solid var(--line2); border-radius: 5px; background: var(--surface); color: var(--muted); cursor: pointer; place-items: center; }
+.ln .lcp svg { width: 13px; height: 13px; }
+.ln:hover .lcp, .ln.sel .lcp { display: grid; } .ln .lcp:hover { color: var(--accent); border-color: var(--accent-line); }
+#rows ::selection { background: color-mix(in srgb, var(--accent) 38%, transparent); color: inherit; }
 .ln.w { height: calc(var(--n, 1) * var(--lh, 20px)); white-space: pre-wrap; word-break: break-all; overflow: hidden; }
 .sc.wrap { overflow-x: hidden; }
 .ln.s7 { background: var(--crit-bg); border-left-color: var(--crit); } .ln.s6 { background: var(--err-bg); border-left-color: var(--err); }
@@ -696,6 +701,9 @@ body.dnd .side .zone { outline: 1.5px dashed var(--accent-line); outline-offset:
 body.dnd .side .zone.act::after, body.dnd .side .zone.arc::after { position: absolute; right: 6px; top: 4px; bottom: auto; padding: 1px 8px; border-radius: 99px; background: var(--accent); color: var(--accent-ink); font-size: 10.5px; font-weight: 600; pointer-events: none; z-index: 4; }
 body.dnd .side .zone.act::after { content: 'сюда — в работу'; }
 body.dnd .side .zone.arc::after { content: 'сюда — в архив'; }
+body.dnd.dnd-out .side .zone.act::after { content: 'сюда — вынуть из папки'; }
+body.dnd.dnd-out .side .zone.arc::after { content: 'сюда — вынуть и в архив'; }
+.side .fdraw .fdraw { margin-left: 12px; }
 .side .drop { margin: 6px 10px 10px; padding: 10px 12px; text-align: center; cursor: pointer; font-size: 11px; }
 .side .drop b { font-size: 12px; }
 /* ширина и скрытие панели */
@@ -708,7 +716,8 @@ body.side-off .side { display: none; }
 body.side-off .side-rail { position: sticky; top: var(--barh, 57px); height: calc(100vh - var(--barh, 57px)); display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 14px; border: 0; border-right: 1px solid var(--line); background: var(--side-bg); cursor: pointer; color: var(--muted); font: 600 11px var(--mono); }
 body.side-off .side-rail:hover { color: var(--ink); }
 .tape { padding-top: 8px; }
-.main { margin: 0; max-width: 1240px; }
+.main { margin: 0 auto; max-width: 1480px; width: 100%; }
+.work-main > .tape { max-width: 1480px; margin: 0 auto; width: 100%; }
 @media (max-width: 860px) {
   .work { grid-template-columns: minmax(0, 1fr); }
   .side { position: static; height: auto; max-height: 46vh; border-right: 0; border-bottom: 1px solid var(--line); }

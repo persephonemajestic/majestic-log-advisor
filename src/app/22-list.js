@@ -13,7 +13,23 @@ function folderList() {
   Object.keys(mf).forEach(function (id) { if (!m[id]) out.push({ id: id, name: mf[id].name || 'Новая папка', type: 'case', files: [], empty: true, at: mf[id].at || 0 }); });
   return out;
 }
-function folderAct(fo) { return fo.files.length ? fo.files.some(isAct) : !(manualFolders()[fo.id] || {}).arc; }
+function folderAct(fo, fl, fm) { var p = fm && parentOf(fo.id, fm); if (p) return folderAct(fm[p], fl, fm); var all = fl ? treeFiles(fo, fl, fm) : fo.files; return all.length ? all.some(isAct) : !(manualFolders()[fo.id] || {}).arc; }
+/* Папка в папке: родитель хранится отдельно (S.kb.settings.fparent), у логов остаётся их папка */
+function fparents() { var m = S.kb.settings.fparent; return m && typeof m === 'object' ? m : (S.kb.settings.fparent = {}); }
+function folderMap(fl) { var m = {}; (fl || folderList()).forEach(function (x) { m[x.id] = x; }); return m; }
+function parentOf(gid, fm) { var p = fparents()[gid]; return p && (!fm || fm[p]) ? p : ''; }
+function subFolders(gid, fl, fm) { return fl.filter(function (x) { return parentOf(x.id, fm) === gid; }); }
+function isInside(gid, anc) { var seen = {}; for (var p = fparents()[gid]; p && !seen[p]; p = fparents()[p]) { if (p === anc) return true; seen[p] = 1; } return false; }
+function treeFiles(fo, fl, fm) { var out = fo.files.slice(); subFolders(fo.id, fl, fm).forEach(function (c) { out = out.concat(treeFiles(c, fl, fm)); }); return out; }
+/* Папка, в которую кладут другие папки, должна жить и без своих логов: запоминаем её */
+function keepFolder(fo) { var mf = manualFolders(); if (!mf[fo.id]) mf[fo.id] = { name: fo.name, at: Date.now() }; }
+function nestFolder(src, tgt) {
+  var fl = folderList(), fm = folderMap(fl), a = fm[src], b = fm[tgt]; if (!a || !b || a.id === b.id || b.type !== 'case') return;
+  if (isInside(tgt, src)) { status('Нельзя положить папку внутрь её же вложенной папки.'); return; }
+  pushUndo('Папка в папку'); keepFolder(b); keepFolder(a); fparents()[a.id] = b.id; S.open[b.id] = 1; saveKB();
+  status('Папка «' + a.name + '» теперь внутри «' + b.name + '». Вынуть: перетащите её вниз, на «В работе».'); renderList();
+}
+function unnestFolder(gid) { if (!fparents()[gid]) return false; delete fparents()[gid]; saveKB(); return true; }
 function folderTime(fo) { return fo.files.reduce(function (m, f) { return Math.max(m, f.added || 0, (S.kb.settings.actAt || {})[f.hash] || 0); }, fo.at || (manualFolders()[fo.id] || {}).at || 0); }
 function folderOf(f) { var g = groupOf(f); if (!g) return null; return folderList().find(function (x) { return x.id === g.id; }) || null; }
 var GTYPE = { zip: 'архив', ticket: 'тикет', dir: 'папка', 'case': 'дело' };
@@ -50,21 +66,25 @@ function folderBadges(fo) {
 }
 function folderWorst(fo) { var ord = { bad: 3, warn: 2, unk: 1, ok: 0 }; return fo.files.reduce(function (m, f) { return ord[f.sc.verdict.status] > ord[m] ? f.sc.verdict.status : m; }, fo.files.length ? 'ok' : 'unk'); }
 /* Папка в дереве: стрелка, значок, название (переименование прямо здесь), число логов; раскрытая — содержимое под ней */
-function folderTile(fo, kids, forceOpen) {
-  var worst = folderWorst(fo), op = !!S.open[fo.id] || !!forceOpen, act = folderAct(fo), ren = S.renaming === fo.id, isCase = fo.type === 'case';
-  var probs = fo.files.reduce(function (n, f) { return n + f.sc.findings.filter(function (g) { return SEV[g.sev] >= SEV.warn; }).length; }, 0), mods = fo.files.filter(function (f) { return f.sc.mods; }).length;
-  var h = '<li data-zone="' + (act ? 'act' : 'arc') + '" role="treeitem" aria-expanded="' + op + '"' + (isCase ? ' data-gid="' + esc(fo.id) + '"' : '') + '><div class="fi folder s-' + worst + (op ? ' open' : '') + (fo.empty ? ' empty' : '') + (act ? ' isact' : ' isarc') + (ren ? ' ren' : '') + '"' + (ren ? '' : ' draggable="true"') + ' role="button" tabindex="0" data-act="gopen" data-id="' + esc(fo.id) + '" title="' + esc(fo.name) + '. Щелчок — ' + (op ? 'закрыть' : 'открыть') + ', двойной щелчок — диагноз дела' + (isCase ? ', F2 — переименовать' : '') + '">' +
+function folderTile(fo, ctx, depth) {
+  depth = depth || 0; var fl = ctx.fl, fm = ctx.fm, q = ctx.q;
+  var all = treeFiles(fo, fl, fm), subs = subFolders(fo.id, fl, fm).sort(function (x, y) { return x.name.localeCompare(y.name, 'ru'); });
+  var hit = q && fo.name.toLowerCase().indexOf(q) !== -1, kids = q && !hit ? fo.files.filter(function (f) { return sideMatch(f, q); }) : fo.files;
+  var shownSubs = q && !hit ? subs.filter(function (s) { return folderHas(s, ctx); }) : subs;
+  var tmp = { files: all }, worst = folderWorst(tmp), op = !!S.open[fo.id] || !!(q && !hit), act = folderAct(fo, fl, fm), ren = S.renaming === fo.id, isCase = fo.type === 'case', zone = act ? 'act' : 'arc';
+  var probs = all.reduce(function (n, f) { return n + f.sc.findings.filter(function (g) { return SEV[g.sev] >= SEV.warn; }).length; }, 0), mods = all.filter(function (f) { return f.sc.mods; }).length, empty = !all.length && !subs.length;
+  var h = '<li data-zone="' + zone + '" role="treeitem" aria-expanded="' + op + '"' + (isCase ? ' data-gid="' + esc(fo.id) + '"' : '') + ' style="--d:' + depth + '"><div class="fi folder s-' + worst + (op ? ' open' : '') + (empty ? ' empty' : '') + (act ? ' isact' : ' isarc') + (ren ? ' ren' : '') + '"' + (ren ? '' : ' draggable="true"') + ' role="button" tabindex="0" data-act="gopen" data-id="' + esc(fo.id) + '" title="' + esc(fo.name) + '. Щелчок — ' + (op ? 'закрыть' : 'открыть') + ', двойной щелчок — диагноз дела' + (isCase ? ', F2 — переименовать' : '') + '. Перетащите на другую папку, чтобы вложить.">' +
     '<span class="chev" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>' + foldIcon() +
     '<div class="ftx"><div class="r1">' + (ren ? '<input id="gName" class="fd-in" value="' + esc(fo.name) + '" maxlength="60" aria-label="Название папки"><button class="btn sm" data-act="gsave" data-id="' + esc(fo.id) + '">OK</button>' : '<span class="nm">' + esc(fo.name) + '</span>' + (isCase ? '' : '<span class="kind">' + GTYPE[fo.type] + '</span>') + (mods ? '<span class="st st-mod" title="Логов с модами: ' + mods + '">МОД</span>' : '')) + '</div>' +
-    '<div class="r2">' + (fo.files.length ? '<span class="dot d-' + worst + '"></span><span class="stt">' + STRU[worst].toLowerCase() + (probs ? ' · ' + probs : '') + '</span>' : '<span>пустая — перетащите сюда логи</span>') + folderBadges(fo) + '</div></div><span class="fcnt" title="' + nLogs(fo.files.length) + '">' + fo.files.length + '</span></div>';
+    '<div class="r2">' + (all.length ? '<span class="dot d-' + worst + '"></span><span class="stt">' + STRU[worst].toLowerCase() + (probs ? ' · ' + probs : '') + '</span>' + (subs.length ? '<span>папок: ' + subs.length + '</span>' : '') : '<span>' + (subs.length ? 'папок: ' + subs.length : 'пустая — перетащите сюда логи') + '</span>') + folderBadges(fo) + '</div></div><span class="fcnt" title="' + nLogs(all.length) + (subs.length ? ' вместе с вложенными папками' : '') + '">' + all.length + '</span></div>';
   if (op) {
-    var list = kids || fo.files;
-    h += '<div class="fdraw' + (S.animOpen === fo.id ? ' enter' : '') + '" data-for="' + esc(fo.id) + '"' + (isCase ? ' data-gid="' + esc(fo.id) + '"' : '') + ' data-zone="' + (act ? 'act' : 'arc') + '">' +
-      '<div class="fd-acts">' + (fo.files.length ? '<button class="lnk" data-act="gcase" data-id="' + esc(fo.id) + '" title="Общий диагноз по всем логам папки (или двойной щелчок по папке)">Диагноз</button>' : '') + (isCase ? '<button class="lnk" data-act="gadd" data-id="' + esc(fo.id) + '" title="Выбрать файлы с компьютера в эту папку">+ Логи</button>' + (ren ? '' : '<button class="lnk" data-act="grename" data-id="' + esc(fo.id) + '">Переименовать</button>') + '<button class="lnk dim ic" data-act="gdel" data-id="' + esc(fo.id) + '" title="Удалить папку: логи останутся в списке" aria-label="Удалить папку"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' : '') + '</div>' +
-      '<ul class="flist" role="group">' + (list.length ? list.map(function (f, i) { return fileCard(f, true, i); }).join('') : '<li class="fd-empty">Перетащите сюда логи из списка или файлы с компьютера</li>') + '</ul></div>';
+    h += '<div class="fdraw' + (S.animOpen === fo.id ? ' enter' : '') + '" data-for="' + esc(fo.id) + '"' + (isCase ? ' data-gid="' + esc(fo.id) + '"' : '') + ' data-zone="' + zone + '">' +
+      '<div class="fd-acts">' + (all.length ? '<button class="lnk" data-act="gcase" data-id="' + esc(fo.id) + '" title="Общий диагноз по логам папки (или двойной щелчок по папке)">Диагноз</button>' : '') + (isCase ? '<button class="lnk" data-act="gadd" data-id="' + esc(fo.id) + '" title="Выбрать файлы с компьютера в эту папку">+ Логи</button><button class="lnk" data-act="gsub" data-id="' + esc(fo.id) + '" title="Создать папку внутри этой">+ Папка</button>' + (ren ? '' : '<button class="lnk" data-act="grename" data-id="' + esc(fo.id) + '">Имя</button>') + '<button class="lnk dim ic" data-act="gdel" data-id="' + esc(fo.id) + '" title="Удалить папку: логи и вложенные папки переедут на уровень выше" aria-label="Удалить папку"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' : '') + '</div>' +
+      '<ul class="flist" role="group">' + shownSubs.map(function (s) { return folderTile(s, ctx, depth + 1); }).join('') + kids.map(function (f, i) { return fileCard(f, true, i + shownSubs.length); }).join('') + (!kids.length && !shownSubs.length ? '<li class="fd-empty">Перетащите сюда логи или папки из списка, или файлы с компьютера</li>' : '') + '</ul></div>';
   }
   return h + '</li>';
 }
+function folderHas(fo, ctx) { var q = ctx.q; if (!q) return true; if (fo.name.toLowerCase().indexOf(q) !== -1) return true; if (fo.files.some(function (f) { return sideMatch(f, q); })) return true; return subFolders(fo.id, ctx.fl, ctx.fm).some(function (s) { return folderHas(s, ctx); }); }
 function toggleFolder(gid) {
   if (!S.open[gid]) { S.open[gid] = 1; S.animOpen = gid; renderList(); setTimeout(function () { if (S.animOpen === gid) S.animOpen = null; }, 700); return; }
   var dr = document.querySelector('.fdraw[data-for="' + (window.CSS && CSS.escape ? CSS.escape(gid) : gid) + '"]'), tile = document.querySelector('.fi.folder[data-id="' + (window.CSS && CSS.escape ? CSS.escape(gid) : gid) + '"]');
@@ -74,20 +94,26 @@ function toggleFolder(gid) {
   dr.classList.remove('enter'); dr.classList.add('leave');
   setTimeout(function () { delete S.open[gid]; renderList(); }, 190);
 }
-function newFolder() {
+function newFolder(parent) {
   var id = 'c:' + Date.now(), mf = manualFolders(), names = {}, nm = 'Новая папка', n = 1; folderList().forEach(function (x) { names[x.name] = 1; }); while (names[nm]) nm = 'Новая папка ' + (++n);
-  mf[id] = { name: nm, at: Date.now() }; saveKB();
+  mf[id] = { name: nm, at: Date.now() };
+  if (parent) { var pfo = folderList().find(function (x) { return x.id === parent; }); if (pfo) { keepFolder(pfo); fparents()[id] = parent; S.open[parent] = 1; } }
+  saveKB();
   S.open[id] = 1; S.animOpen = id; S.renaming = id; S.sideQ = ''; var q = $('#sideQ'); if (q) q.value = '';
   if (document.body.classList.contains('side-off')) toggleSide();
   renderList(); var el = $('#gName'); if (el) el.scrollIntoView({ block: 'nearest' });
   status('Новая папка создана: назовите её и перетащите в неё логи.');
 }
 function deleteFolder(gid) {
-  var fo = folderList().find(function (x) { return x.id === gid; }); if (!fo) return;
-  pushUndo('Удалить папку «' + fo.name + '»'); fo.files.forEach(function (f) { putGroup(f, null); }); delete manualFolders()[gid]; delete S.open[gid]; saveKB();
-  status('Папка «' + fo.name + '» удалена' + (fo.files.length ? ', ' + nLogs(fo.files.length) + ' остались в списке' : '') + '.'); renderList();
+  var fl = folderList(), fm = folderMap(fl), fo = fm[gid]; if (!fo) return;
+  var up = parentOf(gid, fm), upF = up && fm[up];
+  pushUndo('Удалить папку «' + fo.name + '»');
+  fo.files.forEach(function (f) { putGroup(f, upF && upF.type === 'case' ? { id: upF.id, name: upF.name, type: 'case' } : null); });
+  subFolders(gid, fl, fm).forEach(function (s) { if (up) fparents()[s.id] = up; else delete fparents()[s.id]; });
+  delete manualFolders()[gid]; delete fparents()[gid]; delete S.open[gid]; saveKB();
+  status('Папка «' + fo.name + '» удалена' + (fo.files.length ? ', ' + nLogs(fo.files.length) + (upF ? ' переехали в «' + upF.name + '»' : ' остались в списке') : '') + '.'); renderList();
 }
-function openCaseTab(cg) { var cfo = folderList().find(function (x) { return x.id === cg; }); if (cfo) { S.open[cg] = 1; if (!cfo.files.some(function (x) { return x.id === S.active; })) S.active = cfo.files[cfo.files.length - 1].id; S.tab = 'case'; render(); window.scrollTo(0, 0); } }
+function openCaseTab(cg) { var fl = folderList(), fm = folderMap(fl), cfo = fm[cg]; if (!cfo) return; var all = cfo.files.length ? cfo.files : treeFiles(cfo, fl, fm); if (!all.length) return; S.open[cg] = 1; if (!all.some(function (x) { return x.id === S.active; })) S.active = all[all.length - 1].id; S.tab = 'case'; render(); window.scrollTo(0, 0); }
 function startRename(gid) { var fo = folderList().find(function (x) { return x.id === gid && x.type === 'case'; }); if (!fo) return; S.open[gid] = 1; S.renaming = gid; renderList(); }
 var clrArm = null;
 function clrBtn(z, n, id) { return '<button type="button" class="clrz' + (clrArm === z ? ' armed' : '') + '"' + (id ? ' id="' + id + '"' : '') + ' data-act="clrZone" data-z="' + z + '" title="' + (z === 'all' ? 'Убрать все логи из списка и из истории сохранённых: после перезапуска они не вернутся. Отчёты, история и статистика остаются.' : 'Убрать логи этой полосы из списка и из сохранённых после перезапуска. Отчёты, история и статистика остаются.') + '">' + (clrArm === z ? 'Точно убрать ' + n + '?' : z === 'all' ? 'Очистить всю историю' : 'Убрать все') + '</button>'; }
@@ -107,10 +133,10 @@ function renderList() {
   function put(act, html) { if (act) { A += html; na++; } else { R += html; nr++; } }
   fl.forEach(function (fo) { fo.files.forEach(function (f) { inF[f.id] = 1; }); });
   S.files.filter(function (f) { return S.pins[f.id] && !inF[f.id] && sideMatch(f, q); }).sort(byNew).forEach(function (f) { put(isAct(f), fileCard(f)); });
-  fl.slice().sort(function (a, b) { return folderTime(b) - folderTime(a); }).forEach(function (fo) {
-    var hit = q && fo.name.toLowerCase().indexOf(q) !== -1, kids = q && !hit ? fo.files.filter(function (f) { return sideMatch(f, q); }) : null;
-    if (q && !hit && !kids.length) return;
-    put(folderAct(fo), folderTile(fo, kids, !!(kids && kids.length)));
+  var fm = folderMap(fl), ctx = { fl: fl, fm: fm, q: q };
+  fl.filter(function (fo) { return !parentOf(fo.id, fm); }).sort(function (a, b) { return folderTime(b) - folderTime(a); }).forEach(function (fo) {
+    if (q && !folderHas(fo, ctx)) return;
+    put(folderAct(fo, fl, fm), folderTile(fo, ctx, 0));
   });
   S.files.filter(function (f) { return !S.pins[f.id] && !inF[f.id] && sideMatch(f, q); }).sort(byNew).forEach(function (f) { put(isAct(f), fileCard(f)); });
   var gn = $('#gName'); if (gn && !gn.dataset.f) { gn.dataset.f = 1; gn.focus(); gn.select(); }

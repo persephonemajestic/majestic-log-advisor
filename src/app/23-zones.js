@@ -16,13 +16,13 @@ function touchActive() {
 /* ---------- Отмена последнего действия со списком ---------- */
 function pushUndo(label) {
   var st = S.kb.settings;
-  S.undo = { label: label, groups: S.files.map(function (f) { return [f.hash, f.group ? JSON.parse(JSON.stringify(f.group)) : null]; }), arc: JSON.parse(JSON.stringify(st.arcHashes || {})), act: JSON.parse(JSON.stringify(st.actAt || {})), folders: JSON.parse(JSON.stringify(st.folders || {})) };
+  S.undo = { label: label, groups: S.files.map(function (f) { return [f.hash, f.group ? JSON.parse(JSON.stringify(f.group)) : null]; }), arc: JSON.parse(JSON.stringify(st.arcHashes || {})), act: JSON.parse(JSON.stringify(st.actAt || {})), folders: JSON.parse(JSON.stringify(st.folders || {})), fparent: JSON.parse(JSON.stringify(st.fparent || {})) };
 }
 function undoLast() {
   var u = S.undo; if (!u) return; var st = S.kb.settings, byHash = {};
   S.files.forEach(function (f) { byHash[f.hash] = f; });
   u.groups.forEach(function (x) { var f = byHash[x[0]]; if (!f) return; if (JSON.stringify(f.group || null) !== JSON.stringify(x[1])) putGroup(f, x[1]); });
-  st.arcHashes = u.arc; st.actAt = u.act; if (u.folders) st.folders = u.folders; S.undo = null; saveKB(); status('Действие «' + u.label + '» отменено.'); renderList();
+  st.arcHashes = u.arc; st.actAt = u.act; if (u.folders) st.folders = u.folders; if (u.fparent) st.fparent = u.fparent; S.undo = null; saveKB(); status('Действие «' + u.label + '» отменено.'); renderList();
 }
 function allToArc() {
   var act = S.files.filter(function (f) { return isAct(f) && !S.pins[f.id] && f.id !== S.active; }); if (!act.length) { status('Нечего откладывать: остались только открытый и закреплённые логи.'); return; }
@@ -71,7 +71,8 @@ var dragSrc = null;
 function dzAll() { return Array.prototype.slice.call(document.querySelectorAll('.dropok')); }
 document.addEventListener('dragstart', function (e) {
   var el = e.target.closest && e.target.closest('.flist .fi[draggable=true]'); if (!el) return;
-  dragSrc = el.classList.contains('folder') ? { gid: el.getAttribute('data-id') } : { id: +el.getAttribute('data-id'), from: (el.closest('.fdraw') || document.createElement('i')).getAttribute('data-gid') || '' };
+  dragSrc = el.classList.contains('folder') ? { gid: el.getAttribute('data-id') } : { id: +el.getAttribute('data-id'), from: (el.closest('.fdraw') || document.createElement('i')).getAttribute('data-for') || '' };
+  document.body.classList.toggle('dnd-out', !!(dragSrc.from || (dragSrc.gid && fparents()[dragSrc.gid])));
   try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'log'); } catch (x) {}
   setTimeout(function () { document.body.classList.add('dnd'); }, 0);
 });
@@ -79,6 +80,7 @@ document.addEventListener('dragover', function (e) {
   if (!dragSrc) return; var li = e.target.closest && e.target.closest('[data-zone]'); if (!li) return;
   e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch (x) {}
   var fgt = dragSrc.gid && e.target.closest('[data-gid]');
+  if (fgt && (fgt.getAttribute('data-gid') === dragSrc.gid || isInside(fgt.getAttribute('data-gid'), dragSrc.gid))) { dzAll().forEach(function (x) { x.classList.remove('dropok'); }); return; }
   if (fgt && fgt.getAttribute('data-gid') !== dragSrc.gid) { dzAll().forEach(function (x) { if (x !== fgt) x.classList.remove('dropok'); }); fgt.classList.add('dropok'); return; }
   var gt = !dragSrc.gid && e.target.closest('[data-gid]');
   if (gt && gt.getAttribute('data-gid') !== dragSrc.from) { dzAll().forEach(function (x) { if (x !== gt) x.classList.remove('dropok'); }); gt.classList.add('dropok'); return; }
@@ -90,18 +92,27 @@ document.addEventListener('drop', function (e) {
   if (!dragSrc) return; var li = e.target.closest && e.target.closest('[data-zone]'); if (!li) { dragSrc = null; document.body.classList.remove('dnd'); return; }
   e.preventDefault(); var zone = li.getAttribute('data-zone'), fs = [], gt = !dragSrc.gid && e.target.closest('[data-gid]');
   var fgt = dragSrc.gid && e.target.closest('[data-gid]');
-  if (fgt && fgt.getAttribute('data-gid') !== dragSrc.gid) { var sg = dragSrc.gid; dragSrc = null; document.body.classList.remove('dnd'); mergeFolders(sg, fgt.getAttribute('data-gid')); return; }
+  if (fgt && (fgt.getAttribute('data-gid') === dragSrc.gid || isInside(fgt.getAttribute('data-gid'), dragSrc.gid))) { dzAll().forEach(function (x) { x.classList.remove('dropok'); }); return; }
+  if (fgt && (fgt.getAttribute('data-gid') === dragSrc.gid || isInside(fgt.getAttribute('data-gid'), dragSrc.gid))) { dragSrc = null; document.body.classList.remove('dnd'); return; }
+  if (fgt && fgt.getAttribute('data-gid') !== dragSrc.gid) { var sg = dragSrc.gid; dragSrc = null; document.body.classList.remove('dnd'); nestFolder(sg, fgt.getAttribute('data-gid')); return; }
   if (gt && gt.getAttribute('data-gid') !== dragSrc.from) { var sf = S.files.find(function (x) { return x.id === dragSrc.id; }); dragSrc = null; document.body.classList.remove('dnd'); if (sf) moveToFolder([sf], gt.getAttribute('data-gid')); return; }
   var tc = !dragSrc.gid && !gt && e.target.closest('.flist > li[data-zone] > .fi[data-id]:not(.folder)');
   if (tc && +tc.getAttribute('data-id') !== dragSrc.id) {
     var sf2 = S.files.find(function (x) { return x.id === dragSrc.id; }), tf = S.files.find(function (x) { return x.id === +tc.getAttribute('data-id'); });
     dragSrc = null; document.body.classList.remove('dnd'); if (sf2 && tf) mergeLogs(sf2, tf, zone); return;
   }
-  if (dragSrc.gid) { var fo = folderList().find(function (x) { return x.id === dragSrc.gid; }); if (fo) fs = fo.files; var mfz = manualFolders()[dragSrc.gid]; if (mfz) { if (zone === 'arc') mfz.arc = 1; else delete mfz.arc; saveKB(); if (!fs.length) { dragSrc = null; document.body.classList.remove('dnd'); renderList(); return; } } }
+  /* перетащили лог из папки на свободное место — вынимаем из папки; папку из папки — поднимаем наверх */
+  if (!dragSrc.gid && dragSrc.from && !e.target.closest('[data-for="' + dragSrc.from.replace(/"/g, '') + '"]')) {
+    var ef = S.files.find(function (x) { return x.id === dragSrc.id; }); dragSrc = null; document.body.classList.remove('dnd');
+    if (ef) { pushUndo('Лог вынут из папки'); var og = ef.group; putGroup(ef, null); var st0 = S.kb.settings, ar0 = st0.arcHashes = st0.arcHashes || {}, m0 = st0.actAt = st0.actAt || {}; if (zone === 'arc') ar0[ef.hash] = 1; else { delete ar0[ef.hash]; m0[ef.hash] = Date.now(); } saveKB(); status('Лог «' + ef.label + '» вынут из папки' + (og ? ' «' + og.name + '»' : '') + '.'); renderList(); }
+    return;
+  }
+  if (dragSrc.gid && unnestFolder(dragSrc.gid)) status('Папка вынута наверх.');
+  if (dragSrc.gid) { var fo = folderList().find(function (x) { return x.id === dragSrc.gid; }); if (fo) fs = treeFiles(fo, folderList(), folderMap()); var mfz = manualFolders()[dragSrc.gid]; if (mfz) { if (zone === 'arc') mfz.arc = 1; else delete mfz.arc; saveKB(); if (!fs.length) { dragSrc = null; document.body.classList.remove('dnd'); renderList(); return; } } }
   else { var f = S.files.find(function (x) { return x.id === dragSrc.id; }); if (f) fs = [f]; }
-  dragSrc = null; document.body.classList.remove('dnd'); if (fs.length) moveZone(fs, zone);
+  dragSrc = null; document.body.classList.remove('dnd'); if (fs.length) moveZone(fs, zone); else renderList();
 });
-document.addEventListener('dragend', function () { dragSrc = null; document.body.classList.remove('dnd'); dzAll().forEach(function (x) { x.classList.remove('dropok'); }); });
+document.addEventListener('dragend', function () { dragSrc = null; document.body.classList.remove('dnd'); document.body.classList.remove('dnd-out'); dzAll().forEach(function (x) { x.classList.remove('dropok'); }); });
 setInterval(function () { if (!dragSrc && !S.renaming) renderList(); }, 60000);
 function renderCmd() {
   var f = active(), el = $('#cmdTitle'), T = { cmp: ['Сравнение логов', 'что изменилось между двумя запусками'], hist: ['История по игроку', 'логи, собранные по нику или тикету'], stats: ['Сводка', 'по всем добавленным логам'], learn: ['Обучение', 'база знаний и ваши правила'] };
@@ -134,7 +145,7 @@ function revealTab() {
 })();
 function renderTabs() {
   var f = active(), n = f ? f.sc.unknown.length : 0;
-  var hn = Object.keys(S.kb.hist).length, hasCase = !!(f && folderOf(f)), t = [['diag', 'Диагноз', ''], hasCase ? ['case', 'Дело', ''] : null, ['log', 'Лог', ''], ['cmp', 'Сравнение', ''], ['hist', 'История', hn ? String(hn) : ''], ['rep', 'Отчёты', (function () { var n = reports().length; return n ? String(n) : ''; })()], ['all', 'Все логи', ''], ['assets', 'Ассеты', '']].concat(srvOn() ? [['mass', 'Массовые', (function () { var n = massList().filter(function (o) { return o.hotDay || o.hotWeek; }).length; return n ? String(n) : ''; })()]] : []).concat([['stats', 'Сводка', '']]);
+  var hn = Object.keys(S.kb.hist).length, hasCase = !!(f && folderOf(f)), t = [['diag', 'Диагноз', ''], ['log', 'Лог', ''], hasCase ? ['case', 'Дело', ''] : null, ['cmp', 'Сравнение', ''], ['hist', 'История', hn ? String(hn) : ''], ['rep', 'Отчёты', (function () { var n = reports().length; return n ? String(n) : ''; })()], ['all', 'Все логи', ''], ['assets', 'Ассеты', '']].concat(srvOn() ? [['mass', 'Массовые', (function () { var n = massList().filter(function (o) { return o.hotDay || o.hotWeek; }).length; return n ? String(n) : ''; })()]] : []).concat([['stats', 'Сводка', '']]);
   t = t.filter(Boolean); $('#tabs').innerHTML = t.map(function (x) { return '<button class="tab" role="tab" data-act="tab" data-tab="' + x[0] + '" aria-selected="' + (S.tab === x[0]) + '">' + x[1] + (x[2] ? '<span class="n">' + x[2] + '</span>' : '') + '</button>'; }).join('');
   setTimeout(function () { revealTab(); updTabArrows(); }, 0);
 }

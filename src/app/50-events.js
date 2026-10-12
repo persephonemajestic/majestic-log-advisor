@@ -12,7 +12,8 @@ document.addEventListener('click', function (ev) {
   else if (a === 'rm') { var id = +t.getAttribute('data-id'); var rmf = S.files.find(function (x) { return x.id === id; }); if (rmf) LS.del(rmf.hash); delete S.pins[id]; S.files = S.files.filter(function (x) { return x.id !== id; }); if (S.active === id) S.active = S.files.length ? S.files[0].id : null; render(); ev.stopPropagation(); }
   else if (a === 'tab') { var wt = S.tab; S.tab = t.getAttribute('data-tab'); render(); if (wt !== S.tab) animView(); }
   else if (a === 'jump') jump(+t.getAttribute('data-line'));
-  else if (a === 'pick') { S.sel = +t.getAttribute('data-line'); drawRows(); drawInspector(f); }
+  else if (a === 'lcopy') { ev.stopPropagation(); copyLine(+t.getAttribute('data-line')); }
+  else if (a === 'pick') { if (rowsSelection()) return; S.sel = +t.getAttribute('data-line'); drawRows(); drawInspector(f); }
   else if (a === 'scope') { S.scope = t.getAttribute('data-v'); renderLogShell(f); }
   else if (a === 'quiet') { S.quiet = !S.quiet; renderLogShell(f); }
   else if (a === 'qSave') { var sq = savedQ().slice(), cq = S.q.trim(); if (cq && sq.indexOf(cq) < 0) { sq.unshift(cq); S.kb.settings.savedQ = sq.slice(0, 10); saveKB(); } drawSavedQ(); }
@@ -121,6 +122,7 @@ document.addEventListener('click', function (ev) {
   else if (a === 'newFolder') newFolder();
   else if (a === 'sideToggle') toggleSide();
   else if (a === 'gdel') deleteFolder(t.getAttribute('data-id'));
+  else if (a === 'gsub') newFolder(t.getAttribute('data-id'));
   else if (a === 'gopen') { if (ev.target.closest('#gName')) return; if (ev.detail > 1 && t.classList.contains('folder')) return; toggleFolder(t.getAttribute('data-id')); }
   else if (a === 'gcase') openCaseTab(t.getAttribute('data-id'));
   else if (a === 'cjump') { var cf = +t.getAttribute('data-fid'); if (S.files.some(function (x) { return x.id === cf; })) { S.active = cf; jump(+t.getAttribute('data-line')); } }

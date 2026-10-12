@@ -152,6 +152,16 @@ R({ id: 'm-sac', kind: 'main', kw: 'Failed to get handle', re: /Failed to get ha
   cause: 'Ошибка 299 (ReadProcessMemory/WriteProcessMemory выполнен частично) рядом с ERR_FAILED_TO_INJECT означает «Интеллектуальное управление приложениями» в Windows 11.',
   fix: ['Параметры → Конфиденциальность и защита → Безопасность Windows → Управление приложениями и браузером → Параметры службы: Интеллектуальное управление приложениями → «Отключено».', 'Предупредить игрока: включить обратно можно только переустановкой Windows.'], tpl: [TPL_INJ] });
 
+/* commandline.txt — файл параметров запуска GTA, а не мод: патчер его замечает, но сам по себе запуск он обычно не ломает.
+   Чаще всего остаётся от графических сборок (Redux и похожих). Отдельное правило стоит раньше «мода», чтобы не путать. */
+R({ id: 'm-cmdline', kind: 'main', kw: 'commandline', re: /Detected commandline\.txt but not disabled/i, sev: 'warn', src: 'ours',
+  title: 'В папке игры лежит commandline.txt (это не мод)',
+  detail: function (m, t) { var p = /\(([A-Za-z]:\\[^)]+)\)/.exec(t); return p ? p[1] : ''; },
+  cause: 'commandline.txt — файл с параметрами запуска GTA V. Это не мод вроде ReShade, ENB или OpenIV, и сам по себе запуск он обычно не останавливает. Чаще всего он остаётся после графической сборки (Redux и похожих) или его создают вручную; лишние параметры в нём могут мешать запуску и графике.',
+  fix: ['Удалить commandline.txt из папки игры (или перенести в папку модификаций лаунчера, если параметры нужны).',
+    'Если ставился Redux или другая графическая сборка: удалить её полностью и проверить файлы игры (Steam / Epic / Rockstar Launcher → «Проверить файлы»).',
+    'Настоящие моды, которые нужно убирать из папки игры: ReShade (dxgi.dll, d3d11.dll, reshade-shaders), ENB (enbseries, d3d11.dll), OpenIV (папка mods, OpenIV.asi), ASI-загрузчики (dinput8.dll).'] });
+
 R({ id: 'm-blockmod', kind: 'main', kw: 'MAJESTIC:', re: /Detected (.+?) but not disabled|Found blocking mod/, sev: 'crit', top: true, src: 'guide',
   title: 'МОД В ПАПКЕ ИГРЫ: главная причина крашей и незапуска',
   detail: function (m, t) {
@@ -1327,7 +1337,7 @@ function diffScans(a, b) {
 /* ---------- Проверка папки игры ---------- */
 var STD_FILES = ['gta5.exe', 'playgtav.exe', 'gtavlauncher.exe', 'gtavlanguageselect.exe', 'bink2w64.dll', 'd3dcompiler_46.dll', 'd3dcsx_46.dll', 'gfsdk_shadowlib.win64.dll', 'gfsdk_txaa.win64.dll', 'gfsdk_txaa_alpharesolve.win64.dll', 'nvpmapi.core.win64.dll', 'cudart64_65.dll', 'steam_api64.dll', 'eossdk-win64-shipping.dll', 'amd_ags_x64.dll', 'common.rpf', 'x64a.rpf', 'x64b.rpf', 'x64c.rpf', 'x64d.rpf', 'x64e.rpf', 'x64f.rpf', 'x64g.rpf', 'x64h.rpf', 'x64i.rpf', 'x64j.rpf', 'x64k.rpf', 'x64l.rpf', 'x64m.rpf', 'x64n.rpf', 'x64o.rpf', 'x64p.rpf', 'x64q.rpf', 'x64r.rpf', 'x64s.rpf', 'x64t.rpf', 'x64u.rpf', 'x64v.rpf', 'x64w.rpf', 'steam_appid.txt', 'installscript.vdf', 'index.bin', 'version.txt', 'readme.txt', 'eula.txt', 'uninstall.exe', 'gta5_be.exe', 'gta5_eac.exe'];
 var MOD_DLL = { 'dxgi.dll': 'ReShade / ENB (подмена DirectX)', 'd3d11.dll': 'ReShade / ENB (подмена DirectX)', 'd3d9.dll': 'ReShade (подмена DirectX)', 'd3d10.dll': 'графический мод', 'dinput8.dll': 'ASI-загрузчик / ScriptHook', 'version.dll': 'ASI-загрузчик', 'winmm.dll': 'ASI-загрузчик', 'dsound.dll': 'ASI-загрузчик', 'xinput1_3.dll': 'мод', 'xinput9_1_0.dll': 'мод', 'openiv.asi': 'OpenIV', 'scripthookv.dll': 'ScriptHookV', 'd3dcompiler_47.dll': 'ReShade / ENB (в стандартной игре нет)', 'opengl32.dll': 'графический мод', 'nvngx_dlssnr.dll': 'NVIDIA DLSS (сторонний файл)', 'nvngx_dlss.dll': 'NVIDIA DLSS (сторонний файл)', 'nvngx_dlssg.dll': 'NVIDIA DLSS (сторонний файл)' };
-var MOD_NAME = [[/^reshade.*\.(ini|log|dll)$/i, 'ReShade'], [/^enb.*\.(ini|dll|fx)$/i, 'ENB'], [/^scripthookvdotnet.*/i, 'ScriptHookVDotNet'], [/\.asi$/i, 'ASI-плагин'], [/^nvngx.*\.dll$/i, 'NVIDIA DLSS (сторонний файл)'], [/^commandline\.txt$/i, 'commandline.txt (запрещён)'], [/^(menyoo|trainer|nativetrainer).*/i, 'трейнер'], [/^dlss.*\.dll$/i, 'DLSS']];
+var MOD_NAME = [[/^reshade.*\.(ini|log|dll)$/i, 'ReShade'], [/^enb.*\.(ini|dll|fx)$/i, 'ENB'], [/^scripthookvdotnet.*/i, 'ScriptHookVDotNet'], [/\.asi$/i, 'ASI-плагин'], [/^nvngx.*\.dll$/i, 'NVIDIA DLSS (сторонний файл)'], [/^commandline\.txt$/i, 'commandline.txt (параметры запуска, часто остаётся от Redux — удалить)'], [/^(menyoo|trainer|nativetrainer).*/i, 'трейнер'], [/^dlss.*\.dll$/i, 'DLSS']];
 var MOD_DIR = { mods: 'папка mods (OpenIV)', scripts: 'папка scripts (скрипты)', plugins: 'папка plugins', 'reshade-shaders': 'шейдеры ReShade', 'reshade-presets': 'пресеты ReShade', enbseries: 'ENB', openiv: 'OpenIV', lspdfr: 'LSPDFR', 'x64\\patch': 'патч в x64' };
 function gameFolder(entries) {
   var mods = [], unknown = [], seenN = {};

@@ -431,6 +431,11 @@ table.at td.wrapc { white-space: normal; min-width: 220px; }
 .ln:hover { background: var(--surface2); }
 .ln .no { flex: 0 0 calc(var(--lh, 20px) * 3.2); text-align: right; padding-right: 12px; color: var(--muted); user-select: none; font-variant-numeric: tabular-nums; opacity: .85; }
 .ln .tx { flex: 1; min-width: 0; padding-right: 20px; }
+.ln { position: relative; } .ln .tx { user-select: text; cursor: text; }
+.ln .lcp { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: none; width: 24px; height: 20px; padding: 0; border: 1px solid var(--line2); border-radius: 5px; background: var(--surface); color: var(--muted); cursor: pointer; place-items: center; }
+.ln .lcp svg { width: 13px; height: 13px; }
+.ln:hover .lcp, .ln.sel .lcp { display: grid; } .ln .lcp:hover { color: var(--accent); border-color: var(--accent-line); }
+#rows ::selection { background: color-mix(in srgb, var(--accent) 38%, transparent); color: inherit; }
 .ln.w { height: calc(var(--n, 1) * var(--lh, 20px)); white-space: pre-wrap; word-break: break-all; overflow: hidden; }
 .sc.wrap { overflow-x: hidden; }
 .ln.s7 { background: var(--crit-bg); border-left-color: var(--crit); } .ln.s6 { background: var(--err-bg); border-left-color: var(--err); }
@@ -696,6 +701,9 @@ body.dnd .side .zone { outline: 1.5px dashed var(--accent-line); outline-offset:
 body.dnd .side .zone.act::after, body.dnd .side .zone.arc::after { position: absolute; right: 6px; top: 4px; bottom: auto; padding: 1px 8px; border-radius: 99px; background: var(--accent); color: var(--accent-ink); font-size: 10.5px; font-weight: 600; pointer-events: none; z-index: 4; }
 body.dnd .side .zone.act::after { content: 'сюда — в работу'; }
 body.dnd .side .zone.arc::after { content: 'сюда — в архив'; }
+body.dnd.dnd-out .side .zone.act::after { content: 'сюда — вынуть из папки'; }
+body.dnd.dnd-out .side .zone.arc::after { content: 'сюда — вынуть и в архив'; }
+.side .fdraw .fdraw { margin-left: 12px; }
 .side .drop { margin: 6px 10px 10px; padding: 10px 12px; text-align: center; cursor: pointer; font-size: 11px; }
 .side .drop b { font-size: 12px; }
 /* ширина и скрытие панели */
@@ -708,7 +716,8 @@ body.side-off .side { display: none; }
 body.side-off .side-rail { position: sticky; top: var(--barh, 57px); height: calc(100vh - var(--barh, 57px)); display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 14px; border: 0; border-right: 1px solid var(--line); background: var(--side-bg); cursor: pointer; color: var(--muted); font: 600 11px var(--mono); }
 body.side-off .side-rail:hover { color: var(--ink); }
 .tape { padding-top: 8px; }
-.main { margin: 0; max-width: 1240px; }
+.main { margin: 0 auto; max-width: 1480px; width: 100%; }
+.work-main > .tape { max-width: 1480px; margin: 0 auto; width: 100%; }
 @media (max-width: 860px) {
   .work { grid-template-columns: minmax(0, 1fr); }
   .side { position: static; height: auto; max-height: 46vh; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -1659,6 +1668,16 @@ R({ id: 'm-sac', kind: 'main', kw: 'Failed to get handle', re: /Failed to get ha
   title: 'Smart App Control блокирует доступ к памяти игры',
   cause: 'Ошибка 299 (ReadProcessMemory/WriteProcessMemory выполнен частично) рядом с ERR_FAILED_TO_INJECT означает «Интеллектуальное управление приложениями» в Windows 11.',
   fix: ['Параметры → Конфиденциальность и защита → Безопасность Windows → Управление приложениями и браузером → Параметры службы: Интеллектуальное управление приложениями → «Отключено».', 'Предупредить игрока: включить обратно можно только переустановкой Windows.'], tpl: [TPL_INJ] });
+
+/* commandline.txt — файл параметров запуска GTA, а не мод: патчер его замечает, но сам по себе запуск он обычно не ломает.
+   Чаще всего остаётся от графических сборок (Redux и похожих). Отдельное правило стоит раньше «мода», чтобы не путать. */
+R({ id: 'm-cmdline', kind: 'main', kw: 'commandline', re: /Detected commandline\.txt but not disabled/i, sev: 'warn', src: 'ours',
+  title: 'В папке игры лежит commandline.txt (это не мод)',
+  detail: function (m, t) { var p = /\(([A-Za-z]:\\[^)]+)\)/.exec(t); return p ? p[1] : ''; },
+  cause: 'commandline.txt — файл с параметрами запуска GTA V. Это не мод вроде ReShade, ENB или OpenIV, и сам по себе запуск он обычно не останавливает. Чаще всего он остаётся после графической сборки (Redux и похожих) или его создают вручную; лишние параметры в нём могут мешать запуску и графике.',
+  fix: ['Удалить commandline.txt из папки игры (или перенести в папку модификаций лаунчера, если параметры нужны).',
+    'Если ставился Redux или другая графическая сборка: удалить её полностью и проверить файлы игры (Steam / Epic / Rockstar Launcher → «Проверить файлы»).',
+    'Настоящие моды, которые нужно убирать из папки игры: ReShade (dxgi.dll, d3d11.dll, reshade-shaders), ENB (enbseries, d3d11.dll), OpenIV (папка mods, OpenIV.asi), ASI-загрузчики (dinput8.dll).'] });
 
 R({ id: 'm-blockmod', kind: 'main', kw: 'MAJESTIC:', re: /Detected (.+?) but not disabled|Found blocking mod/, sev: 'crit', top: true, src: 'guide',
   title: 'МОД В ПАПКЕ ИГРЫ: главная причина крашей и незапуска',
@@ -2835,7 +2854,7 @@ function diffScans(a, b) {
 /* ---------- Проверка папки игры ---------- */
 var STD_FILES = ['gta5.exe', 'playgtav.exe', 'gtavlauncher.exe', 'gtavlanguageselect.exe', 'bink2w64.dll', 'd3dcompiler_46.dll', 'd3dcsx_46.dll', 'gfsdk_shadowlib.win64.dll', 'gfsdk_txaa.win64.dll', 'gfsdk_txaa_alpharesolve.win64.dll', 'nvpmapi.core.win64.dll', 'cudart64_65.dll', 'steam_api64.dll', 'eossdk-win64-shipping.dll', 'amd_ags_x64.dll', 'common.rpf', 'x64a.rpf', 'x64b.rpf', 'x64c.rpf', 'x64d.rpf', 'x64e.rpf', 'x64f.rpf', 'x64g.rpf', 'x64h.rpf', 'x64i.rpf', 'x64j.rpf', 'x64k.rpf', 'x64l.rpf', 'x64m.rpf', 'x64n.rpf', 'x64o.rpf', 'x64p.rpf', 'x64q.rpf', 'x64r.rpf', 'x64s.rpf', 'x64t.rpf', 'x64u.rpf', 'x64v.rpf', 'x64w.rpf', 'steam_appid.txt', 'installscript.vdf', 'index.bin', 'version.txt', 'readme.txt', 'eula.txt', 'uninstall.exe', 'gta5_be.exe', 'gta5_eac.exe'];
 var MOD_DLL = { 'dxgi.dll': 'ReShade / ENB (подмена DirectX)', 'd3d11.dll': 'ReShade / ENB (подмена DirectX)', 'd3d9.dll': 'ReShade (подмена DirectX)', 'd3d10.dll': 'графический мод', 'dinput8.dll': 'ASI-загрузчик / ScriptHook', 'version.dll': 'ASI-загрузчик', 'winmm.dll': 'ASI-загрузчик', 'dsound.dll': 'ASI-загрузчик', 'xinput1_3.dll': 'мод', 'xinput9_1_0.dll': 'мод', 'openiv.asi': 'OpenIV', 'scripthookv.dll': 'ScriptHookV', 'd3dcompiler_47.dll': 'ReShade / ENB (в стандартной игре нет)', 'opengl32.dll': 'графический мод', 'nvngx_dlssnr.dll': 'NVIDIA DLSS (сторонний файл)', 'nvngx_dlss.dll': 'NVIDIA DLSS (сторонний файл)', 'nvngx_dlssg.dll': 'NVIDIA DLSS (сторонний файл)' };
-var MOD_NAME = [[/^reshade.*\.(ini|log|dll)$/i, 'ReShade'], [/^enb.*\.(ini|dll|fx)$/i, 'ENB'], [/^scripthookvdotnet.*/i, 'ScriptHookVDotNet'], [/\.asi$/i, 'ASI-плагин'], [/^nvngx.*\.dll$/i, 'NVIDIA DLSS (сторонний файл)'], [/^commandline\.txt$/i, 'commandline.txt (запрещён)'], [/^(menyoo|trainer|nativetrainer).*/i, 'трейнер'], [/^dlss.*\.dll$/i, 'DLSS']];
+var MOD_NAME = [[/^reshade.*\.(ini|log|dll)$/i, 'ReShade'], [/^enb.*\.(ini|dll|fx)$/i, 'ENB'], [/^scripthookvdotnet.*/i, 'ScriptHookVDotNet'], [/\.asi$/i, 'ASI-плагин'], [/^nvngx.*\.dll$/i, 'NVIDIA DLSS (сторонний файл)'], [/^commandline\.txt$/i, 'commandline.txt (параметры запуска, часто остаётся от Redux — удалить)'], [/^(menyoo|trainer|nativetrainer).*/i, 'трейнер'], [/^dlss.*\.dll$/i, 'DLSS']];
 var MOD_DIR = { mods: 'папка mods (OpenIV)', scripts: 'папка scripts (скрипты)', plugins: 'папка plugins', 'reshade-shaders': 'шейдеры ReShade', 'reshade-presets': 'пресеты ReShade', enbseries: 'ENB', openiv: 'OpenIV', lspdfr: 'LSPDFR', 'x64\\patch': 'патч в x64' };
 function gameFolder(entries) {
   var mods = [], unknown = [], seenN = {};
@@ -3025,7 +3044,7 @@ var STRU = { ok: 'Успех', bad: 'Сбой', warn: 'Внимание', unk: '
 var SRCRU = { guide: 'из руководства', obs: 'по наблюдению в логах', infer: 'вывод, в руководстве нет', web: 'по открытым источникам', user: 'ваше правило', team: 'правило команды' };
 var SRCTIP = { team: 'Общее правило команды из файла rules.json в репозитории проекта', user: 'Правило, которое добавили вы или коллега через «Добавить решение»', guide: 'Правило взято из документа «Руководство по диагностике ошибок и работе с логами»', obs: 'Строка встречается в успешных заходах загруженных логов, поэтому считается шумом', web: 'Случая нет в руководстве. Объяснение собрано по справкам Rockstar, форумам RAGE и cfx.re и реальным логам. Проверяйте его', infer: 'Этого случая нет в руководстве. Объяснение построено по логам и общим признакам, проверяйте его' };
 var PSTEPS_UI = [['admin', 'Администратор'], ['pirate', 'Очистка файлов'], ['backup', 'Резервная копия'], ['patch', 'Патч игры'], ['job', 'Процесс игры'], ['inject', 'Внедрение'], ['injected', 'Клиент внедрён'], ['entry', 'Запуск клиента'], ['finished', 'Готово'], ['window', 'Окно игры']];
-var SAMPLE = null, APP_VERSION = '2026-10-12.107';
+var SAMPLE = null, APP_VERSION = '2026-10-12.108';
 var ROW = 20, KBKEY = 'majestic-log-advisor.kb.v1';
 
 var $ = function (s) { return document.querySelector(s); };
@@ -3060,6 +3079,15 @@ function niceName(n) { return n.replace(/^[0-9a-f]{8}-/i, ''); }
 function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ'; }
 /* ---------- Версия 13: отчёты, все логи, окно загрузки, команда, слежение ---------- */
 var CHANGELOG = [
+  { v: '2026-10-12.108', items: [
+    'Папка в папке: перетащите папку на другую папку, или нажмите «+ Папка» внутри открытой папки. У каждой своё название; число логов на папке считается вместе с вложенными.',
+    'Вынуть из папки можно мышкой: перетащите лог или вложенную папку вниз, на «В работе» (или на «Архив»). Отпустить внутри той же папки — ничего не меняется.',
+    'В окне лога текст выделяется мышью и копируется Ctrl+C; у строки при наведении есть кнопка «Копировать», выбранная строка копируется Ctrl+C. Личные данные при копировании остаются скрытыми.',
+    'Вкладки идут по порядку работы: Диагноз, Лог, Дело.',
+    'commandline.txt больше не считается модом: отдельная находка «В папке игры лежит commandline.txt (это не мод)» с советом удалить его, часто он остаётся от Redux. Модами по-прежнему считаются ReShade, ENB, OpenIV и ASI.',
+    'Исправлено: «Предложить решение с Claude» в приложении падало с ошибкой «SAMPLE is not a function».',
+    'На широком экране содержимое теперь по центру, без пустой полосы справа.'
+  ] },
   { v: '2026-10-12.107', items: [
     'Логи переехали в левую панель, как в проводнике: папки с логами деревом, у логов значок документа с типом (MAIN, CLNT) на полосе цвета итога. Панель можно скрыть стрелкой и растянуть за край.',
     'Своя папка: кнопка «Папка» (или Ctrl+Shift+N) создаёт пустую папку, сразу можно вписать название и перетащить в неё логи из списка или файлы с компьютера. Пустая папка сохраняется.',
@@ -3922,7 +3950,23 @@ function folderList() {
   Object.keys(mf).forEach(function (id) { if (!m[id]) out.push({ id: id, name: mf[id].name || 'Новая папка', type: 'case', files: [], empty: true, at: mf[id].at || 0 }); });
   return out;
 }
-function folderAct(fo) { return fo.files.length ? fo.files.some(isAct) : !(manualFolders()[fo.id] || {}).arc; }
+function folderAct(fo, fl, fm) { var p = fm && parentOf(fo.id, fm); if (p) return folderAct(fm[p], fl, fm); var all = fl ? treeFiles(fo, fl, fm) : fo.files; return all.length ? all.some(isAct) : !(manualFolders()[fo.id] || {}).arc; }
+/* Папка в папке: родитель хранится отдельно (S.kb.settings.fparent), у логов остаётся их папка */
+function fparents() { var m = S.kb.settings.fparent; return m && typeof m === 'object' ? m : (S.kb.settings.fparent = {}); }
+function folderMap(fl) { var m = {}; (fl || folderList()).forEach(function (x) { m[x.id] = x; }); return m; }
+function parentOf(gid, fm) { var p = fparents()[gid]; return p && (!fm || fm[p]) ? p : ''; }
+function subFolders(gid, fl, fm) { return fl.filter(function (x) { return parentOf(x.id, fm) === gid; }); }
+function isInside(gid, anc) { var seen = {}; for (var p = fparents()[gid]; p && !seen[p]; p = fparents()[p]) { if (p === anc) return true; seen[p] = 1; } return false; }
+function treeFiles(fo, fl, fm) { var out = fo.files.slice(); subFolders(fo.id, fl, fm).forEach(function (c) { out = out.concat(treeFiles(c, fl, fm)); }); return out; }
+/* Папка, в которую кладут другие папки, должна жить и без своих логов: запоминаем её */
+function keepFolder(fo) { var mf = manualFolders(); if (!mf[fo.id]) mf[fo.id] = { name: fo.name, at: Date.now() }; }
+function nestFolder(src, tgt) {
+  var fl = folderList(), fm = folderMap(fl), a = fm[src], b = fm[tgt]; if (!a || !b || a.id === b.id || b.type !== 'case') return;
+  if (isInside(tgt, src)) { status('Нельзя положить папку внутрь её же вложенной папки.'); return; }
+  pushUndo('Папка в папку'); keepFolder(b); keepFolder(a); fparents()[a.id] = b.id; S.open[b.id] = 1; saveKB();
+  status('Папка «' + a.name + '» теперь внутри «' + b.name + '». Вынуть: перетащите её вниз, на «В работе».'); renderList();
+}
+function unnestFolder(gid) { if (!fparents()[gid]) return false; delete fparents()[gid]; saveKB(); return true; }
 function folderTime(fo) { return fo.files.reduce(function (m, f) { return Math.max(m, f.added || 0, (S.kb.settings.actAt || {})[f.hash] || 0); }, fo.at || (manualFolders()[fo.id] || {}).at || 0); }
 function folderOf(f) { var g = groupOf(f); if (!g) return null; return folderList().find(function (x) { return x.id === g.id; }) || null; }
 var GTYPE = { zip: 'архив', ticket: 'тикет', dir: 'папка', 'case': 'дело' };
@@ -3959,21 +4003,25 @@ function folderBadges(fo) {
 }
 function folderWorst(fo) { var ord = { bad: 3, warn: 2, unk: 1, ok: 0 }; return fo.files.reduce(function (m, f) { return ord[f.sc.verdict.status] > ord[m] ? f.sc.verdict.status : m; }, fo.files.length ? 'ok' : 'unk'); }
 /* Папка в дереве: стрелка, значок, название (переименование прямо здесь), число логов; раскрытая — содержимое под ней */
-function folderTile(fo, kids, forceOpen) {
-  var worst = folderWorst(fo), op = !!S.open[fo.id] || !!forceOpen, act = folderAct(fo), ren = S.renaming === fo.id, isCase = fo.type === 'case';
-  var probs = fo.files.reduce(function (n, f) { return n + f.sc.findings.filter(function (g) { return SEV[g.sev] >= SEV.warn; }).length; }, 0), mods = fo.files.filter(function (f) { return f.sc.mods; }).length;
-  var h = '<li data-zone="' + (act ? 'act' : 'arc') + '" role="treeitem" aria-expanded="' + op + '"' + (isCase ? ' data-gid="' + esc(fo.id) + '"' : '') + '><div class="fi folder s-' + worst + (op ? ' open' : '') + (fo.empty ? ' empty' : '') + (act ? ' isact' : ' isarc') + (ren ? ' ren' : '') + '"' + (ren ? '' : ' draggable="true"') + ' role="button" tabindex="0" data-act="gopen" data-id="' + esc(fo.id) + '" title="' + esc(fo.name) + '. Щелчок — ' + (op ? 'закрыть' : 'открыть') + ', двойной щелчок — диагноз дела' + (isCase ? ', F2 — переименовать' : '') + '">' +
+function folderTile(fo, ctx, depth) {
+  depth = depth || 0; var fl = ctx.fl, fm = ctx.fm, q = ctx.q;
+  var all = treeFiles(fo, fl, fm), subs = subFolders(fo.id, fl, fm).sort(function (x, y) { return x.name.localeCompare(y.name, 'ru'); });
+  var hit = q && fo.name.toLowerCase().indexOf(q) !== -1, kids = q && !hit ? fo.files.filter(function (f) { return sideMatch(f, q); }) : fo.files;
+  var shownSubs = q && !hit ? subs.filter(function (s) { return folderHas(s, ctx); }) : subs;
+  var tmp = { files: all }, worst = folderWorst(tmp), op = !!S.open[fo.id] || !!(q && !hit), act = folderAct(fo, fl, fm), ren = S.renaming === fo.id, isCase = fo.type === 'case', zone = act ? 'act' : 'arc';
+  var probs = all.reduce(function (n, f) { return n + f.sc.findings.filter(function (g) { return SEV[g.sev] >= SEV.warn; }).length; }, 0), mods = all.filter(function (f) { return f.sc.mods; }).length, empty = !all.length && !subs.length;
+  var h = '<li data-zone="' + zone + '" role="treeitem" aria-expanded="' + op + '"' + (isCase ? ' data-gid="' + esc(fo.id) + '"' : '') + ' style="--d:' + depth + '"><div class="fi folder s-' + worst + (op ? ' open' : '') + (empty ? ' empty' : '') + (act ? ' isact' : ' isarc') + (ren ? ' ren' : '') + '"' + (ren ? '' : ' draggable="true"') + ' role="button" tabindex="0" data-act="gopen" data-id="' + esc(fo.id) + '" title="' + esc(fo.name) + '. Щелчок — ' + (op ? 'закрыть' : 'открыть') + ', двойной щелчок — диагноз дела' + (isCase ? ', F2 — переименовать' : '') + '. Перетащите на другую папку, чтобы вложить.">' +
     '<span class="chev" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>' + foldIcon() +
     '<div class="ftx"><div class="r1">' + (ren ? '<input id="gName" class="fd-in" value="' + esc(fo.name) + '" maxlength="60" aria-label="Название папки"><button class="btn sm" data-act="gsave" data-id="' + esc(fo.id) + '">OK</button>' : '<span class="nm">' + esc(fo.name) + '</span>' + (isCase ? '' : '<span class="kind">' + GTYPE[fo.type] + '</span>') + (mods ? '<span class="st st-mod" title="Логов с модами: ' + mods + '">МОД</span>' : '')) + '</div>' +
-    '<div class="r2">' + (fo.files.length ? '<span class="dot d-' + worst + '"></span><span class="stt">' + STRU[worst].toLowerCase() + (probs ? ' · ' + probs : '') + '</span>' : '<span>пустая — перетащите сюда логи</span>') + folderBadges(fo) + '</div></div><span class="fcnt" title="' + nLogs(fo.files.length) + '">' + fo.files.length + '</span></div>';
+    '<div class="r2">' + (all.length ? '<span class="dot d-' + worst + '"></span><span class="stt">' + STRU[worst].toLowerCase() + (probs ? ' · ' + probs : '') + '</span>' + (subs.length ? '<span>папок: ' + subs.length + '</span>' : '') : '<span>' + (subs.length ? 'папок: ' + subs.length : 'пустая — перетащите сюда логи') + '</span>') + folderBadges(fo) + '</div></div><span class="fcnt" title="' + nLogs(all.length) + (subs.length ? ' вместе с вложенными папками' : '') + '">' + all.length + '</span></div>';
   if (op) {
-    var list = kids || fo.files;
-    h += '<div class="fdraw' + (S.animOpen === fo.id ? ' enter' : '') + '" data-for="' + esc(fo.id) + '"' + (isCase ? ' data-gid="' + esc(fo.id) + '"' : '') + ' data-zone="' + (act ? 'act' : 'arc') + '">' +
-      '<div class="fd-acts">' + (fo.files.length ? '<button class="lnk" data-act="gcase" data-id="' + esc(fo.id) + '" title="Общий диагноз по всем логам папки (или двойной щелчок по папке)">Диагноз</button>' : '') + (isCase ? '<button class="lnk" data-act="gadd" data-id="' + esc(fo.id) + '" title="Выбрать файлы с компьютера в эту папку">+ Логи</button>' + (ren ? '' : '<button class="lnk" data-act="grename" data-id="' + esc(fo.id) + '">Переименовать</button>') + '<button class="lnk dim ic" data-act="gdel" data-id="' + esc(fo.id) + '" title="Удалить папку: логи останутся в списке" aria-label="Удалить папку"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' : '') + '</div>' +
-      '<ul class="flist" role="group">' + (list.length ? list.map(function (f, i) { return fileCard(f, true, i); }).join('') : '<li class="fd-empty">Перетащите сюда логи из списка или файлы с компьютера</li>') + '</ul></div>';
+    h += '<div class="fdraw' + (S.animOpen === fo.id ? ' enter' : '') + '" data-for="' + esc(fo.id) + '"' + (isCase ? ' data-gid="' + esc(fo.id) + '"' : '') + ' data-zone="' + zone + '">' +
+      '<div class="fd-acts">' + (all.length ? '<button class="lnk" data-act="gcase" data-id="' + esc(fo.id) + '" title="Общий диагноз по логам папки (или двойной щелчок по папке)">Диагноз</button>' : '') + (isCase ? '<button class="lnk" data-act="gadd" data-id="' + esc(fo.id) + '" title="Выбрать файлы с компьютера в эту папку">+ Логи</button><button class="lnk" data-act="gsub" data-id="' + esc(fo.id) + '" title="Создать папку внутри этой">+ Папка</button>' + (ren ? '' : '<button class="lnk" data-act="grename" data-id="' + esc(fo.id) + '">Имя</button>') + '<button class="lnk dim ic" data-act="gdel" data-id="' + esc(fo.id) + '" title="Удалить папку: логи и вложенные папки переедут на уровень выше" aria-label="Удалить папку"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' : '') + '</div>' +
+      '<ul class="flist" role="group">' + shownSubs.map(function (s) { return folderTile(s, ctx, depth + 1); }).join('') + kids.map(function (f, i) { return fileCard(f, true, i + shownSubs.length); }).join('') + (!kids.length && !shownSubs.length ? '<li class="fd-empty">Перетащите сюда логи или папки из списка, или файлы с компьютера</li>' : '') + '</ul></div>';
   }
   return h + '</li>';
 }
+function folderHas(fo, ctx) { var q = ctx.q; if (!q) return true; if (fo.name.toLowerCase().indexOf(q) !== -1) return true; if (fo.files.some(function (f) { return sideMatch(f, q); })) return true; return subFolders(fo.id, ctx.fl, ctx.fm).some(function (s) { return folderHas(s, ctx); }); }
 function toggleFolder(gid) {
   if (!S.open[gid]) { S.open[gid] = 1; S.animOpen = gid; renderList(); setTimeout(function () { if (S.animOpen === gid) S.animOpen = null; }, 700); return; }
   var dr = document.querySelector('.fdraw[data-for="' + (window.CSS && CSS.escape ? CSS.escape(gid) : gid) + '"]'), tile = document.querySelector('.fi.folder[data-id="' + (window.CSS && CSS.escape ? CSS.escape(gid) : gid) + '"]');
@@ -3983,20 +4031,26 @@ function toggleFolder(gid) {
   dr.classList.remove('enter'); dr.classList.add('leave');
   setTimeout(function () { delete S.open[gid]; renderList(); }, 190);
 }
-function newFolder() {
+function newFolder(parent) {
   var id = 'c:' + Date.now(), mf = manualFolders(), names = {}, nm = 'Новая папка', n = 1; folderList().forEach(function (x) { names[x.name] = 1; }); while (names[nm]) nm = 'Новая папка ' + (++n);
-  mf[id] = { name: nm, at: Date.now() }; saveKB();
+  mf[id] = { name: nm, at: Date.now() };
+  if (parent) { var pfo = folderList().find(function (x) { return x.id === parent; }); if (pfo) { keepFolder(pfo); fparents()[id] = parent; S.open[parent] = 1; } }
+  saveKB();
   S.open[id] = 1; S.animOpen = id; S.renaming = id; S.sideQ = ''; var q = $('#sideQ'); if (q) q.value = '';
   if (document.body.classList.contains('side-off')) toggleSide();
   renderList(); var el = $('#gName'); if (el) el.scrollIntoView({ block: 'nearest' });
   status('Новая папка создана: назовите её и перетащите в неё логи.');
 }
 function deleteFolder(gid) {
-  var fo = folderList().find(function (x) { return x.id === gid; }); if (!fo) return;
-  pushUndo('Удалить папку «' + fo.name + '»'); fo.files.forEach(function (f) { putGroup(f, null); }); delete manualFolders()[gid]; delete S.open[gid]; saveKB();
-  status('Папка «' + fo.name + '» удалена' + (fo.files.length ? ', ' + nLogs(fo.files.length) + ' остались в списке' : '') + '.'); renderList();
+  var fl = folderList(), fm = folderMap(fl), fo = fm[gid]; if (!fo) return;
+  var up = parentOf(gid, fm), upF = up && fm[up];
+  pushUndo('Удалить папку «' + fo.name + '»');
+  fo.files.forEach(function (f) { putGroup(f, upF && upF.type === 'case' ? { id: upF.id, name: upF.name, type: 'case' } : null); });
+  subFolders(gid, fl, fm).forEach(function (s) { if (up) fparents()[s.id] = up; else delete fparents()[s.id]; });
+  delete manualFolders()[gid]; delete fparents()[gid]; delete S.open[gid]; saveKB();
+  status('Папка «' + fo.name + '» удалена' + (fo.files.length ? ', ' + nLogs(fo.files.length) + (upF ? ' переехали в «' + upF.name + '»' : ' остались в списке') : '') + '.'); renderList();
 }
-function openCaseTab(cg) { var cfo = folderList().find(function (x) { return x.id === cg; }); if (cfo) { S.open[cg] = 1; if (!cfo.files.some(function (x) { return x.id === S.active; })) S.active = cfo.files[cfo.files.length - 1].id; S.tab = 'case'; render(); window.scrollTo(0, 0); } }
+function openCaseTab(cg) { var fl = folderList(), fm = folderMap(fl), cfo = fm[cg]; if (!cfo) return; var all = cfo.files.length ? cfo.files : treeFiles(cfo, fl, fm); if (!all.length) return; S.open[cg] = 1; if (!all.some(function (x) { return x.id === S.active; })) S.active = all[all.length - 1].id; S.tab = 'case'; render(); window.scrollTo(0, 0); }
 function startRename(gid) { var fo = folderList().find(function (x) { return x.id === gid && x.type === 'case'; }); if (!fo) return; S.open[gid] = 1; S.renaming = gid; renderList(); }
 var clrArm = null;
 function clrBtn(z, n, id) { return '<button type="button" class="clrz' + (clrArm === z ? ' armed' : '') + '"' + (id ? ' id="' + id + '"' : '') + ' data-act="clrZone" data-z="' + z + '" title="' + (z === 'all' ? 'Убрать все логи из списка и из истории сохранённых: после перезапуска они не вернутся. Отчёты, история и статистика остаются.' : 'Убрать логи этой полосы из списка и из сохранённых после перезапуска. Отчёты, история и статистика остаются.') + '">' + (clrArm === z ? 'Точно убрать ' + n + '?' : z === 'all' ? 'Очистить всю историю' : 'Убрать все') + '</button>'; }
@@ -4016,10 +4070,10 @@ function renderList() {
   function put(act, html) { if (act) { A += html; na++; } else { R += html; nr++; } }
   fl.forEach(function (fo) { fo.files.forEach(function (f) { inF[f.id] = 1; }); });
   S.files.filter(function (f) { return S.pins[f.id] && !inF[f.id] && sideMatch(f, q); }).sort(byNew).forEach(function (f) { put(isAct(f), fileCard(f)); });
-  fl.slice().sort(function (a, b) { return folderTime(b) - folderTime(a); }).forEach(function (fo) {
-    var hit = q && fo.name.toLowerCase().indexOf(q) !== -1, kids = q && !hit ? fo.files.filter(function (f) { return sideMatch(f, q); }) : null;
-    if (q && !hit && !kids.length) return;
-    put(folderAct(fo), folderTile(fo, kids, !!(kids && kids.length)));
+  var fm = folderMap(fl), ctx = { fl: fl, fm: fm, q: q };
+  fl.filter(function (fo) { return !parentOf(fo.id, fm); }).sort(function (a, b) { return folderTime(b) - folderTime(a); }).forEach(function (fo) {
+    if (q && !folderHas(fo, ctx)) return;
+    put(folderAct(fo, fl, fm), folderTile(fo, ctx, 0));
   });
   S.files.filter(function (f) { return !S.pins[f.id] && !inF[f.id] && sideMatch(f, q); }).sort(byNew).forEach(function (f) { put(isAct(f), fileCard(f)); });
   var gn = $('#gName'); if (gn && !gn.dataset.f) { gn.dataset.f = 1; gn.focus(); gn.select(); }
@@ -4086,13 +4140,13 @@ function touchActive() {
 /* ---------- Отмена последнего действия со списком ---------- */
 function pushUndo(label) {
   var st = S.kb.settings;
-  S.undo = { label: label, groups: S.files.map(function (f) { return [f.hash, f.group ? JSON.parse(JSON.stringify(f.group)) : null]; }), arc: JSON.parse(JSON.stringify(st.arcHashes || {})), act: JSON.parse(JSON.stringify(st.actAt || {})), folders: JSON.parse(JSON.stringify(st.folders || {})) };
+  S.undo = { label: label, groups: S.files.map(function (f) { return [f.hash, f.group ? JSON.parse(JSON.stringify(f.group)) : null]; }), arc: JSON.parse(JSON.stringify(st.arcHashes || {})), act: JSON.parse(JSON.stringify(st.actAt || {})), folders: JSON.parse(JSON.stringify(st.folders || {})), fparent: JSON.parse(JSON.stringify(st.fparent || {})) };
 }
 function undoLast() {
   var u = S.undo; if (!u) return; var st = S.kb.settings, byHash = {};
   S.files.forEach(function (f) { byHash[f.hash] = f; });
   u.groups.forEach(function (x) { var f = byHash[x[0]]; if (!f) return; if (JSON.stringify(f.group || null) !== JSON.stringify(x[1])) putGroup(f, x[1]); });
-  st.arcHashes = u.arc; st.actAt = u.act; if (u.folders) st.folders = u.folders; S.undo = null; saveKB(); status('Действие «' + u.label + '» отменено.'); renderList();
+  st.arcHashes = u.arc; st.actAt = u.act; if (u.folders) st.folders = u.folders; if (u.fparent) st.fparent = u.fparent; S.undo = null; saveKB(); status('Действие «' + u.label + '» отменено.'); renderList();
 }
 function allToArc() {
   var act = S.files.filter(function (f) { return isAct(f) && !S.pins[f.id] && f.id !== S.active; }); if (!act.length) { status('Нечего откладывать: остались только открытый и закреплённые логи.'); return; }
@@ -4141,7 +4195,8 @@ var dragSrc = null;
 function dzAll() { return Array.prototype.slice.call(document.querySelectorAll('.dropok')); }
 document.addEventListener('dragstart', function (e) {
   var el = e.target.closest && e.target.closest('.flist .fi[draggable=true]'); if (!el) return;
-  dragSrc = el.classList.contains('folder') ? { gid: el.getAttribute('data-id') } : { id: +el.getAttribute('data-id'), from: (el.closest('.fdraw') || document.createElement('i')).getAttribute('data-gid') || '' };
+  dragSrc = el.classList.contains('folder') ? { gid: el.getAttribute('data-id') } : { id: +el.getAttribute('data-id'), from: (el.closest('.fdraw') || document.createElement('i')).getAttribute('data-for') || '' };
+  document.body.classList.toggle('dnd-out', !!(dragSrc.from || (dragSrc.gid && fparents()[dragSrc.gid])));
   try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'log'); } catch (x) {}
   setTimeout(function () { document.body.classList.add('dnd'); }, 0);
 });
@@ -4149,6 +4204,7 @@ document.addEventListener('dragover', function (e) {
   if (!dragSrc) return; var li = e.target.closest && e.target.closest('[data-zone]'); if (!li) return;
   e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch (x) {}
   var fgt = dragSrc.gid && e.target.closest('[data-gid]');
+  if (fgt && (fgt.getAttribute('data-gid') === dragSrc.gid || isInside(fgt.getAttribute('data-gid'), dragSrc.gid))) { dzAll().forEach(function (x) { x.classList.remove('dropok'); }); return; }
   if (fgt && fgt.getAttribute('data-gid') !== dragSrc.gid) { dzAll().forEach(function (x) { if (x !== fgt) x.classList.remove('dropok'); }); fgt.classList.add('dropok'); return; }
   var gt = !dragSrc.gid && e.target.closest('[data-gid]');
   if (gt && gt.getAttribute('data-gid') !== dragSrc.from) { dzAll().forEach(function (x) { if (x !== gt) x.classList.remove('dropok'); }); gt.classList.add('dropok'); return; }
@@ -4160,18 +4216,27 @@ document.addEventListener('drop', function (e) {
   if (!dragSrc) return; var li = e.target.closest && e.target.closest('[data-zone]'); if (!li) { dragSrc = null; document.body.classList.remove('dnd'); return; }
   e.preventDefault(); var zone = li.getAttribute('data-zone'), fs = [], gt = !dragSrc.gid && e.target.closest('[data-gid]');
   var fgt = dragSrc.gid && e.target.closest('[data-gid]');
-  if (fgt && fgt.getAttribute('data-gid') !== dragSrc.gid) { var sg = dragSrc.gid; dragSrc = null; document.body.classList.remove('dnd'); mergeFolders(sg, fgt.getAttribute('data-gid')); return; }
+  if (fgt && (fgt.getAttribute('data-gid') === dragSrc.gid || isInside(fgt.getAttribute('data-gid'), dragSrc.gid))) { dzAll().forEach(function (x) { x.classList.remove('dropok'); }); return; }
+  if (fgt && (fgt.getAttribute('data-gid') === dragSrc.gid || isInside(fgt.getAttribute('data-gid'), dragSrc.gid))) { dragSrc = null; document.body.classList.remove('dnd'); return; }
+  if (fgt && fgt.getAttribute('data-gid') !== dragSrc.gid) { var sg = dragSrc.gid; dragSrc = null; document.body.classList.remove('dnd'); nestFolder(sg, fgt.getAttribute('data-gid')); return; }
   if (gt && gt.getAttribute('data-gid') !== dragSrc.from) { var sf = S.files.find(function (x) { return x.id === dragSrc.id; }); dragSrc = null; document.body.classList.remove('dnd'); if (sf) moveToFolder([sf], gt.getAttribute('data-gid')); return; }
   var tc = !dragSrc.gid && !gt && e.target.closest('.flist > li[data-zone] > .fi[data-id]:not(.folder)');
   if (tc && +tc.getAttribute('data-id') !== dragSrc.id) {
     var sf2 = S.files.find(function (x) { return x.id === dragSrc.id; }), tf = S.files.find(function (x) { return x.id === +tc.getAttribute('data-id'); });
     dragSrc = null; document.body.classList.remove('dnd'); if (sf2 && tf) mergeLogs(sf2, tf, zone); return;
   }
-  if (dragSrc.gid) { var fo = folderList().find(function (x) { return x.id === dragSrc.gid; }); if (fo) fs = fo.files; var mfz = manualFolders()[dragSrc.gid]; if (mfz) { if (zone === 'arc') mfz.arc = 1; else delete mfz.arc; saveKB(); if (!fs.length) { dragSrc = null; document.body.classList.remove('dnd'); renderList(); return; } } }
+  /* перетащили лог из папки на свободное место — вынимаем из папки; папку из папки — поднимаем наверх */
+  if (!dragSrc.gid && dragSrc.from && !e.target.closest('[data-for="' + dragSrc.from.replace(/"/g, '') + '"]')) {
+    var ef = S.files.find(function (x) { return x.id === dragSrc.id; }); dragSrc = null; document.body.classList.remove('dnd');
+    if (ef) { pushUndo('Лог вынут из папки'); var og = ef.group; putGroup(ef, null); var st0 = S.kb.settings, ar0 = st0.arcHashes = st0.arcHashes || {}, m0 = st0.actAt = st0.actAt || {}; if (zone === 'arc') ar0[ef.hash] = 1; else { delete ar0[ef.hash]; m0[ef.hash] = Date.now(); } saveKB(); status('Лог «' + ef.label + '» вынут из папки' + (og ? ' «' + og.name + '»' : '') + '.'); renderList(); }
+    return;
+  }
+  if (dragSrc.gid && unnestFolder(dragSrc.gid)) status('Папка вынута наверх.');
+  if (dragSrc.gid) { var fo = folderList().find(function (x) { return x.id === dragSrc.gid; }); if (fo) fs = treeFiles(fo, folderList(), folderMap()); var mfz = manualFolders()[dragSrc.gid]; if (mfz) { if (zone === 'arc') mfz.arc = 1; else delete mfz.arc; saveKB(); if (!fs.length) { dragSrc = null; document.body.classList.remove('dnd'); renderList(); return; } } }
   else { var f = S.files.find(function (x) { return x.id === dragSrc.id; }); if (f) fs = [f]; }
-  dragSrc = null; document.body.classList.remove('dnd'); if (fs.length) moveZone(fs, zone);
+  dragSrc = null; document.body.classList.remove('dnd'); if (fs.length) moveZone(fs, zone); else renderList();
 });
-document.addEventListener('dragend', function () { dragSrc = null; document.body.classList.remove('dnd'); dzAll().forEach(function (x) { x.classList.remove('dropok'); }); });
+document.addEventListener('dragend', function () { dragSrc = null; document.body.classList.remove('dnd'); document.body.classList.remove('dnd-out'); dzAll().forEach(function (x) { x.classList.remove('dropok'); }); });
 setInterval(function () { if (!dragSrc && !S.renaming) renderList(); }, 60000);
 function renderCmd() {
   var f = active(), el = $('#cmdTitle'), T = { cmp: ['Сравнение логов', 'что изменилось между двумя запусками'], hist: ['История по игроку', 'логи, собранные по нику или тикету'], stats: ['Сводка', 'по всем добавленным логам'], learn: ['Обучение', 'база знаний и ваши правила'] };
@@ -4204,7 +4269,7 @@ function revealTab() {
 })();
 function renderTabs() {
   var f = active(), n = f ? f.sc.unknown.length : 0;
-  var hn = Object.keys(S.kb.hist).length, hasCase = !!(f && folderOf(f)), t = [['diag', 'Диагноз', ''], hasCase ? ['case', 'Дело', ''] : null, ['log', 'Лог', ''], ['cmp', 'Сравнение', ''], ['hist', 'История', hn ? String(hn) : ''], ['rep', 'Отчёты', (function () { var n = reports().length; return n ? String(n) : ''; })()], ['all', 'Все логи', ''], ['assets', 'Ассеты', '']].concat(srvOn() ? [['mass', 'Массовые', (function () { var n = massList().filter(function (o) { return o.hotDay || o.hotWeek; }).length; return n ? String(n) : ''; })()]] : []).concat([['stats', 'Сводка', '']]);
+  var hn = Object.keys(S.kb.hist).length, hasCase = !!(f && folderOf(f)), t = [['diag', 'Диагноз', ''], ['log', 'Лог', ''], hasCase ? ['case', 'Дело', ''] : null, ['cmp', 'Сравнение', ''], ['hist', 'История', hn ? String(hn) : ''], ['rep', 'Отчёты', (function () { var n = reports().length; return n ? String(n) : ''; })()], ['all', 'Все логи', ''], ['assets', 'Ассеты', '']].concat(srvOn() ? [['mass', 'Массовые', (function () { var n = massList().filter(function (o) { return o.hotDay || o.hotWeek; }).length; return n ? String(n) : ''; })()]] : []).concat([['stats', 'Сводка', '']]);
   t = t.filter(Boolean); $('#tabs').innerHTML = t.map(function (x) { return '<button class="tab" role="tab" data-act="tab" data-tab="' + x[0] + '" aria-selected="' + (S.tab === x[0]) + '">' + x[1] + (x[2] ? '<span class="n">' + x[2] + '</span>' : '') + '</button>'; }).join('');
   setTimeout(function () { revealTab(); updTabArrows(); }, 0);
 }
@@ -4719,7 +4784,7 @@ function drawRows() {
   for (var i = a; i < b; i++) {
     var ln = f.view[i], ei = f.parsed.lineEntry[ln], e = ei >= 0 ? f.parsed.entries[ei] : null, s = f.parsed.lineSev[ln], txt = M(LA.stripAnsi(f.parsed.lines[ln]));
     if (txt.length > (W ? 4000 : 600)) txt = txt.slice(0, W ? 4000 : 600) + '…';
-    h += '<div class="ln' + (W ? ' w' : '') + ' s' + s + (ln === S.sel ? ' sel' : '') + (f.marks.indexOf(ln) >= 0 ? ' mk' : '') + '"' + (W ? ' style="--n:' + (f.pre[i + 1] - f.pre[i]) + '"' : '') + ' data-act="pick" data-line="' + ln + '"><span class="no">' + (ln + 1) + '</span><span class="tx">' + hl(txt, e) + (f.rep && f.rep[ln] ? '<span class="rep" title="Ещё ' + (f.rep[ln] - 1) + ' таких же строк подряд скрыто">×' + f.rep[ln] + '</span>' : '') + '</span></div>';
+    h += '<div class="ln' + (W ? ' w' : '') + ' s' + s + (ln === S.sel ? ' sel' : '') + (f.marks.indexOf(ln) >= 0 ? ' mk' : '') + '"' + (W ? ' style="--n:' + (f.pre[i + 1] - f.pre[i]) + '"' : '') + ' data-act="pick" data-line="' + ln + '"><span class="no">' + (ln + 1) + '</span><span class="tx">' + hl(txt, e) + (f.rep && f.rep[ln] ? '<span class="rep" title="Ещё ' + (f.rep[ln] - 1) + ' таких же строк подряд скрыто">×' + f.rep[ln] + '</span>' : '') + '</span><button class="lcp" type="button" data-act="lcopy" data-line="' + ln + '" title="Копировать строку (или выделите текст мышью и Ctrl+C)" aria-label="Копировать строку"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8" fill="none" stroke="currentColor" stroke-width="1.7"/></svg></button></div>';
   }
   var rows = $('#rows'); rows.style.transform = 'translateY(' + offs(f, a) + 'px)'; rows.innerHTML = h;
 }
@@ -4737,7 +4802,7 @@ function drawInspector(f) {
     var u = f.sc.unknown.find(function (x) { return x.sig === e.sig; });
     if (u) h += '<div><span class="cls cls-' + u.cls.cls + '">' + esc(u.cls.text) + '</span></div><p class="hint" style="margin:0">Правила для этой строки нет. Метку и заметку можно добавить на вкладке «Диагноз».</p>';
   }
-  var st0 = e.i; h += '<div class="row-actions"><button class="btn sm" data-act="mark">' + (f.marks.indexOf(st0) >= 0 ? 'Снять закладку' : '★ Закладка') + '</button><button class="btn sm" data-act="ruleLine" data-line="' + e.i + '">Добавить правило по этой строке</button><button class="btn sm" data-act="fragCopy" data-line="' + e.i + '" title="Строка и по 5 строк вокруг, личные данные скрыты">Копировать фрагмент</button>' + (entryMs(f, e) != null ? '<button class="btn sm" data-act="twin" data-line="' + e.i + '" title="Показать только строки за 30 секунд до и после этой">Окно ±30 с</button>' : '') + '</div>';
+  var st0 = e.i; h += '<div class="row-actions"><button class="btn sm" data-act="lcopy" data-line="' + e.i + '" title="Ctrl+C, когда строка выбрана">Копировать строку</button><button class="btn sm" data-act="mark">' + (f.marks.indexOf(st0) >= 0 ? 'Снять закладку' : '★ Закладка') + '</button><button class="btn sm" data-act="ruleLine" data-line="' + e.i + '">Добавить правило по этой строке</button><button class="btn sm" data-act="fragCopy" data-line="' + e.i + '" title="Строка и по 5 строк вокруг, личные данные скрыты">Копировать фрагмент</button>' + (entryMs(f, e) != null ? '<button class="btn sm" data-act="twin" data-line="' + e.i + '" title="Показать только строки за 30 секунд до и после этой">Окно ±30 с</button>' : '') + '</div>';
   box.innerHTML = h;
 }
 function drawMarks() {
@@ -4771,6 +4836,20 @@ function jump(line) {
   var sc = $('#sc'); sc.scrollTop = Math.max(0, offs(f, pos) - sc.clientHeight / 2); drawRows(); drawInspector(f);
   sc.scrollIntoView({ block: 'nearest' });
 }
+
+
+/* Копирование строки лога: запись целиком (с продолжением на следующих строках), с маской личных данных, если она включена */
+function lineText(f, ln) { var ei = f.parsed.lineEntry[ln], e = ei >= 0 ? f.parsed.entries[ei] : null, a = e ? e.i : ln, b = e ? Math.min(e.j, e.i + 60) : ln; return M(LA.stripAnsi(f.parsed.lines.slice(a, b + 1).join('\n'))); }
+function copyLine(ln) { var f = active(); if (!f || !(ln >= 0)) return; copyText(lineText(f, ln), 'Строка лога', 'Скопируйте строку.', 'Строка L' + (ln + 1) + ' скопирована.'); }
+function rowsSelection() { var s = window.getSelection && window.getSelection(), r = $('#rows'); return s && !s.isCollapsed && r && (r.contains(s.anchorNode) || r.contains(s.focusNode)) ? String(s) : ''; }
+document.addEventListener('keydown', function (e) {
+  if (!(e.ctrlKey || e.metaKey) || e.code !== 'KeyC' || e.shiftKey || e.altKey || S.tab !== 'log') return;
+  var tg = e.target && e.target.tagName; if (tg === 'INPUT' || tg === 'TEXTAREA') return;
+  var s = window.getSelection && window.getSelection(); if (s && !s.isCollapsed) return; /* выделенный мышью текст копирует сам браузер */
+  if (S.sel >= 0) { e.preventDefault(); copyLine(S.sel); }
+});
+/* При копировании выделения из лога номера строк не попадают, а личные данные остаются скрытыми (берётся то, что видно на экране) */
+document.addEventListener('copy', function (e) { var txt = rowsSelection(); if (!txt || !e.clipboardData) return; e.clipboardData.setData('text/plain', txt.replace(/\u00a0/g, ' ')); e.preventDefault(); });
 /* ---------- «Настройки» → «Правила и база знаний» (бывшая вкладка «Обучение» без списка строк) ---------- */
 function rulesSettingsHtml() {
   var c = S.kb.custom, t = S.kb.settings.team, m = S.kb.settings.dxFb || {}, bad = Object.keys(m).filter(function (h) { return m[h].v === 'bad'; }).length;
@@ -6229,7 +6308,9 @@ async function runAI(prompt, box, btn, done) {
   btn.disabled = true; var old = btn.textContent; btn.textContent = 'Claude думает…';
   box.innerHTML = '<div class="ai-h">Разбор Claude</div><div class="ai" id="aiTxt">…</div>';
   try {
-    var r = await SAMPLE(prompt, { cache: false, onText: function (x) { var el = box.querySelector('#aiTxt'); if (el) el.textContent = x.text; } });
+    /* ИИ через сервер команды (в приложении) — объект с .json, ИИ страницы Claude — функция */
+    var r = typeof SAMPLE === 'function' ? await SAMPLE(prompt, { cache: false, onText: function (x) { var el = box.querySelector('#aiTxt'); if (el) el.textContent = x.text; } })
+      : { text: String(await SAMPLE.json([{ role: 'system', content: 'Ты опытный инженер поддержки Majestic RP. Отвечай по-русски, кратко и по шагам, без выдуманных фактов.' }, { role: 'user', content: typeof prompt === 'string' ? prompt : JSON.stringify(prompt) }], { max: 1500 })) };
     var el = box.querySelector('#aiTxt'); if (el) el.textContent = r.text;
     if (done) done(r.text);
   } catch (e) {
@@ -6424,7 +6505,8 @@ document.addEventListener('click', function (ev) {
   else if (a === 'rm') { var id = +t.getAttribute('data-id'); var rmf = S.files.find(function (x) { return x.id === id; }); if (rmf) LS.del(rmf.hash); delete S.pins[id]; S.files = S.files.filter(function (x) { return x.id !== id; }); if (S.active === id) S.active = S.files.length ? S.files[0].id : null; render(); ev.stopPropagation(); }
   else if (a === 'tab') { var wt = S.tab; S.tab = t.getAttribute('data-tab'); render(); if (wt !== S.tab) animView(); }
   else if (a === 'jump') jump(+t.getAttribute('data-line'));
-  else if (a === 'pick') { S.sel = +t.getAttribute('data-line'); drawRows(); drawInspector(f); }
+  else if (a === 'lcopy') { ev.stopPropagation(); copyLine(+t.getAttribute('data-line')); }
+  else if (a === 'pick') { if (rowsSelection()) return; S.sel = +t.getAttribute('data-line'); drawRows(); drawInspector(f); }
   else if (a === 'scope') { S.scope = t.getAttribute('data-v'); renderLogShell(f); }
   else if (a === 'quiet') { S.quiet = !S.quiet; renderLogShell(f); }
   else if (a === 'qSave') { var sq = savedQ().slice(), cq = S.q.trim(); if (cq && sq.indexOf(cq) < 0) { sq.unshift(cq); S.kb.settings.savedQ = sq.slice(0, 10); saveKB(); } drawSavedQ(); }
@@ -6533,6 +6615,7 @@ document.addEventListener('click', function (ev) {
   else if (a === 'newFolder') newFolder();
   else if (a === 'sideToggle') toggleSide();
   else if (a === 'gdel') deleteFolder(t.getAttribute('data-id'));
+  else if (a === 'gsub') newFolder(t.getAttribute('data-id'));
   else if (a === 'gopen') { if (ev.target.closest('#gName')) return; if (ev.detail > 1 && t.classList.contains('folder')) return; toggleFolder(t.getAttribute('data-id')); }
   else if (a === 'gcase') openCaseTab(t.getAttribute('data-id'));
   else if (a === 'cjump') { var cf = +t.getAttribute('data-fid'); if (S.files.some(function (x) { return x.id === cf; })) { S.active = cf; jump(+t.getAttribute('data-line')); } }

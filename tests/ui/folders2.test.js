@@ -1,21 +1,33 @@
-// Объединение папок, «Все в отложенные», отмена последнего действия.
+// Папка в папку, вынуть папку и лог перетаскиванием, «Всё в архив», отмена последнего действия.
 const H = require('./helpers'), { ok } = H;
 (async () => {
   const { b, p, errs } = await H.launch();
   const names = ['a', 'b', 'c', 'd'];
   for (let i = 0; i < 4; i++) await H.load(p, [H.mainLog(names[i] + '.log', { attempts: ['ok'], date: '2026-10-0' + (i + 1) })]);
-  const lone = () => p.locator('#flist > li > .fi:not(.folder)');
+  const lone = () => p.locator('#flist > li > .fi:not(.folder)'), top = () => p.locator('#flist > li > .fi.folder');
   ok(await lone().count() === 4, 'четыре отдельных лога');
   await lone().nth(1).dragTo(lone().nth(0)); await p.waitForTimeout(300);
   await lone().nth(1).dragTo(lone().nth(0)); await p.waitForTimeout(300);
-  ok(await p.locator('#flist .fi.folder').count() === 2, 'две папки');
-  await p.locator('#flist .fi.folder').nth(1).dragTo(p.locator('#flist .fi.folder').nth(0)); await p.waitForTimeout(400);
-  ok(await p.locator('#flist .fi.folder').count() === 1 && await p.locator('.fdraw .fi').count() === 4, 'папка на папку: объединились, в одной папке 4 лога');
+  ok(await top().count() === 2, 'две папки');
+  await top().nth(1).dragTo(top().nth(0)); await p.waitForTimeout(400);
+  ok(await top().count() === 1 && await p.locator('#flist .fdraw .fi.folder').count() === 1 && await p.textContent('#flist > li > .fi.folder .fcnt') === '4', 'папка на папку: вложилась, наверху одна папка, в ней 4 лога с вложенной');
   await p.click('[data-act=undo]'); await p.waitForTimeout(300);
-  ok(await p.locator('#flist .fi.folder').count() === 2, 'отмена вернула две папки');
+  ok(await top().count() === 2, 'отмена вернула две папки рядом');
+  await top().nth(1).dragTo(top().nth(0)); await p.waitForTimeout(400);
+  await p.locator('#flist .fdraw .fi.folder').first().dragTo(p.locator('#actHd')); await p.waitForTimeout(400);
+  ok(await top().count() === 2 && await p.locator('#flist .fdraw .fi.folder').count() === 0, 'вложенная папка вынимается перетаскиванием наверх');
+  await p.locator('#flist .fdraw .fi.file').first().dragTo(p.locator('#actHd')); await p.waitForTimeout(400);
+  ok(await lone().count() === 1, 'лог вынимается из папки перетаскиванием');
+  await p.click('#flist > li > .fi.folder >> nth=0'); await p.waitForTimeout(400);
+  await p.locator('#flist > li > .fi.folder').first().click(); await p.waitForTimeout(400);
+  if (!(await p.locator('#flist [data-act=gsub]').count())) await p.locator('#flist > li > .fi.folder').first().click();
+  await p.waitForTimeout(300);
+  await p.locator('#flist [data-act=gsub]').first().click(); await p.waitForTimeout(300);
+  await p.fill('#gName', 'Вложенная'); await p.press('#gName', 'Enter'); await p.waitForTimeout(300);
+  ok(await p.locator('#flist .fdraw .fi.folder .nm:has-text("Вложенная")').count() === 1, '«+ Папка» создаёт папку внутри папки');
   await p.click('#actHd .zmenu summary'); await p.click('[data-act=allArc]'); await p.waitForTimeout(300);
-  ok(await p.locator('#flist2 .fi').count() >= 1, 'все активные ушли в отложенные');
+  ok(await p.locator('#flist2 .fi').count() >= 1, 'всё ушло в архив');
   await p.click('[data-act=undo]'); await p.waitForTimeout(300);
-  ok(await p.locator('#flist2 .fi').count() === 0, 'отмена вернула логи в активные');
+  ok(await p.locator('#flist2 .fi.file').count() === 0, 'отмена вернула логи в работу');
   await H.done(b, errs);
 })();

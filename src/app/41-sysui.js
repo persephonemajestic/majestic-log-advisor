@@ -219,7 +219,9 @@ async function runAI(prompt, box, btn, done) {
   btn.disabled = true; var old = btn.textContent; btn.textContent = 'Claude думает…';
   box.innerHTML = '<div class="ai-h">Разбор Claude</div><div class="ai" id="aiTxt">…</div>';
   try {
-    var r = await SAMPLE(prompt, { cache: false, onText: function (x) { var el = box.querySelector('#aiTxt'); if (el) el.textContent = x.text; } });
+    /* ИИ через сервер команды (в приложении) — объект с .json, ИИ страницы Claude — функция */
+    var r = typeof SAMPLE === 'function' ? await SAMPLE(prompt, { cache: false, onText: function (x) { var el = box.querySelector('#aiTxt'); if (el) el.textContent = x.text; } })
+      : { text: String(await SAMPLE.json([{ role: 'system', content: 'Ты опытный инженер поддержки Majestic RP. Отвечай по-русски, кратко и по шагам, без выдуманных фактов.' }, { role: 'user', content: typeof prompt === 'string' ? prompt : JSON.stringify(prompt) }], { max: 1500 })) };
     var el = box.querySelector('#aiTxt'); if (el) el.textContent = r.text;
     if (done) done(r.text);
   } catch (e) {
