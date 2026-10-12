@@ -6,19 +6,29 @@
 
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
-import { ChannelStore, JoinedThreadsStore, MessageStore, showToast } from "@webpack/common";
+import { Button, ChannelStore, JoinedThreadsStore, MessageStore, React, showToast } from "@webpack/common";
 
 import { cmpVer, extractPlayer } from "./extract";
 
 const Native = VencordNative.pluginHelpers.MajesticLogImport as PluginNative<typeof import("./native")>;
 
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.1.0";
+const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.2.0";
 
 const settings = definePluginSettings({
     token: { type: OptionType.STRING, description: "Ключ из Majestic Log Advisor («Настройки» → «Плагин Discord»)", default: "" },
-    port: { type: OptionType.NUMBER, description: "Порт приложения (обычно 47615)", default: 47615 }
+    port: { type: OptionType.NUMBER, description: "Порт приложения (обычно 47615)", default: 47615 },
+    check: { type: OptionType.COMPONENT, description: "Проверить связь с Majestic Log Advisor и ключ", component: () => React.createElement(Button, { onClick: () => checkLink(), size: Button.Sizes?.SMALL }, "Проверить связь с анализатором") }
 });
+
+/* Проверка связи: запущено ли приложение на этом компьютере и подходит ли ключ */
+async function checkLink() {
+    const port = Number(settings.store.port) || 47615, token = settings.store.token || "";
+    if (!(await Native.ping(port))) return showToast("Анализатор не отвечает: запустите Majestic Log Advisor (порт " + port + ")", "failure");
+    if (!token) return showToast("Связь есть, но ключ не вставлен: «Настройки» приложения → «Плагин Discord» → «Скопировать ключ»", "message");
+    const r = await Native.checkToken(port, token);
+    showToast(r === "ok" ? "Связь с анализатором есть, ключ подходит" : r === "token" ? "Ключ не подходит: скопируйте его заново в «Настройках» приложения" : "Анализатор не отвечает", r === "ok" ? "success" : "failure");
+}
 
 type Body = { url: string; name: string; ticket: string; ticketId: string; player: Record<string, string>; };
 
@@ -70,7 +80,7 @@ function saveQ(q: any[]) { try { localStorage.setItem(QKEY, JSON.stringify(q)); 
 async function post(body: Body) {
     const { token, port } = settings.store;
     if (!token) return { ok: false, error: "token", status: 401, dup: false };
-    return Native.send(Number(port) || 47615, token, body);
+    return Native.sendFile(Number(port) || 47615, token, body);
 }
 
 function enqueue(body: Body) { saveQ(loadQ().filter(x => x.body.url !== body.url).concat([{ at: Date.now(), body }])); }

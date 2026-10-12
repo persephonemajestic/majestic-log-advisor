@@ -23,6 +23,27 @@ export async function send(_: IpcMainInvokeEvent, port: number, token: string, b
     }
 }
 
+/* Скачать вложение сетью Discord (у приложения может не быть доступа к серверам Discord) и отдать файл приложению.
+   Если скачать не вышло — просим приложение скачать само (старый путь /v1/import). */
+const CDN = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
+export async function sendFile(_: IpcMainInvokeEvent, port: number, token: string, body: any) {
+    if (!okPort(port)) return { status: 0, ok: false, error: "port" };
+    const url = String(body?.url || "");
+    let buf: Buffer | null = null, why = "";
+    if (CDN.test(url)) {
+        try { const r = await fetch(url); if (r.ok) { buf = Buffer.from(await r.arrayBuffer()); if (buf.length > 250 * 1048576) { buf = null; why = "size"; } } else why = "http " + r.status; } catch (e: any) { why = String(e?.message || e); }
+    }
+    if (!buf) { const r = await send(_, port, token, body); return why && !r.ok && r.status ? { ...r, error: r.error + " (Discord: " + why + ")" } : r; }
+    try {
+        const meta = Buffer.from(JSON.stringify(body)).toString("base64");
+        const r = await fetch(`http://127.0.0.1:${port}/v1/upload`, { method: "POST", headers: { "content-type": "application/octet-stream", "x-mla-token": String(token || ""), "x-mla-meta": meta }, body: buf });
+        let j: any = {}; try { j = await r.json(); } catch { }
+        return { status: r.status, ok: r.ok && !!j.ok, dup: !!j.dup, error: j.error || "" };
+    } catch {
+        return { status: 0, ok: false, error: "down" };
+    }
+}
+
 export async function ping(_: IpcMainInvokeEvent, port: number) {
     if (!okPort(port)) return false;
     try { const r = await fetch(`http://127.0.0.1:${port}/v1/ping`); const j: any = await r.json(); return !!j.ok; } catch { return false; }
@@ -36,4 +57,10 @@ export async function latest(_: IpcMainInvokeEvent) {
         const p = (j?.plugins ?? []).find((x: any) => x?.id === "majesticLogImport");
         return typeof p?.version === "string" && /^\d+\.\d+\.\d+$/.test(p.version) ? p.version : "";
     } catch { return ""; }
+}
+
+/* Проверка ключа: приложение отвечает 401 на неверный ключ ещё до разбора запроса */
+export async function checkToken(_: IpcMainInvokeEvent, port: number, token: string) {
+    if (!okPort(port)) return "port";
+    try { const r = await fetch(`http://127.0.0.1:${port}/v1/import`, { method: "POST", headers: { "content-type": "application/json", "x-mla-token": String(token || "") }, body: "{}" }); return r.status === 401 ? "token" : "ok"; } catch { return "down"; }
 }

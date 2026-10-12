@@ -58,13 +58,13 @@ const EXCASES = [
     if (kind === 'BetterDiscord') {
       await p.evaluate((src) => {
         const data = {}; window.BdApi = { Data: { load: (a, k) => data[a + k], save: (a, k, v) => { data[a + k] = v; } }, Webpack: { getStore: (n) => window.__stores[n] }, UI: { showToast: (m, o) => window.__toasts.push([m, o.type]) }, DOM: { addStyle() {}, removeStyle() {} },
-          Net: { fetch: async (url, o) => { if (/raw\.githubusercontent/.test(url)) return { ok: true, status: 200, text: async () => window.__newSrc || '' }; if (/ping$/.test(url)) return { ok: true, status: 200, json: async () => ({ ok: true }) }; const r = window.__reply(JSON.parse(o.body), o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } } };
+          Net: { fetch: async (url, o) => { if (/^https:\/\/cdn\.discordapp\.com\//.test(url)) { window.__dl = (window.__dl || 0) + 1; return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode('LOG').buffer }; } if (/\/v1\/upload$/.test(url)) { const meta = JSON.parse(decodeURIComponent(escape(atob(o.headers['x-mla-meta'])))); window.__bytes = o.body && o.body.length; const r = window.__reply(meta, o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } if (/raw\.githubusercontent/.test(url)) return { ok: true, status: 200, text: async () => window.__newSrc || '' }; if (/ping$/.test(url)) return { ok: true, status: 200, json: async () => ({ ok: true }) }; const r = window.__reply(JSON.parse(o.body), o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } } };
         const module = { exports: {} }; new Function('module', 'exports', src)(module, module.exports);
         const P = module.exports; window.__p = new P({}); window.__setTok = (t) => BdApi.Data.save('MajesticLogImport', 'settings', { token: t, port: 47615 }); window.__p.start();
       }, BD);
     } else {
       await p.evaluate((src) => {
-        window.VencordNative = { pluginHelpers: { MajesticLogImport: { send: async (port, token, body) => { const r = window.__reply(body, token); return r.status ? { status: r.status, ok: r.status === 200, dup: false, error: r.j.error || '' } : { status: 0, ok: false, error: 'down' }; }, ping: async () => true } } };
+        window.VencordNative = { pluginHelpers: { MajesticLogImport: { ping: async () => window.__appUp, checkToken: async (port, token) => token === window.__tokenOk ? 'ok' : 'token', sendFile: async (port, token, body) => { const r = window.__reply(body, token); return r.status ? { status: r.status, ok: r.status === 200, dup: false, error: r.j.error || '' } : { status: 0, ok: false, error: 'down' }; }, send: async (port, token, body) => { const r = window.__reply(body, token); return r.status ? { status: r.status, ok: r.status === 200, dup: false, error: r.j.error || '' } : { status: 0, ok: false, error: 'down' }; }, ping: async () => true } } };
         new Function(src)(); window.__p = window.__vcPlugin; window.__setTok = (t) => { window.__vcSettings.token = t; }; window.__p.start();
       }, VC);
     }
@@ -89,10 +89,15 @@ const EXCASES = [
     if (kind === 'BetterDiscord') ok(await p.evaluate(() => window.__posts.some(x => x.name === 'crash.zip')), kind + ': очередь отправлена, когда приложение открылось');
     else { ok(await p.evaluate(() => /crash\.zip/.test(localStorage.getItem('MajesticLogImport.queue') || '')), kind + ': очередь сохранена до запуска приложения'); await p.waitForTimeout(20600); ok(await p.evaluate(() => window.__posts.some(x => x.name === 'crash.zip')), kind + ': очередь отправлена по таймеру, когда приложение открылось'); }
     if (kind === 'BetterDiscord') {
-      await p.evaluate((src) => { window.__toasts = []; window.__newSrc = src.replace('@version 1.1.0', '@version 9.9.9'); return window.__p.checkUpdate(); }, BD);
+      await p.evaluate((src) => { window.__toasts = []; window.__newSrc = src.replace(/@version [\d.]+/, '@version 9.9.9'); return window.__p.checkUpdate(); }, BD);
       ok(await p.evaluate(() => window.__toasts.some(t => /9\.9\.9/.test(t[0]))), kind + ': новая версия замечена');
       await p.evaluate(() => { window.__toasts = []; window.__newSrc = 'alert(1) // @version 9.9.10'; return window.__p.checkUpdate(); });
       ok(await p.evaluate(() => !window.__toasts.length), kind + ': чужой файл вместо плагина не принимается');
+    }
+    if (kind === 'BetterDiscord') ok(await p.evaluate(() => window.__dl > 0 && window.__bytes === 3), kind + ': файл скачан сетью Discord и передан приложению целиком');
+    else {
+      await p.evaluate(() => { window.__toasts = []; return window.__p.settings.def.check.component().p.onClick(); }); await p.waitForTimeout(100);
+      ok(await p.evaluate(() => window.__toasts.some(t => /ключ подходит/.test(t[0]))), kind + ': в настройках есть «Проверить связь с анализатором»');
     }
     ok(/Все файлы тикета \(2\)/.test(await p.textContent('.mla-all').catch(() => '')) && await p.locator('.mla-all').count() === 1, kind + ': одна кнопка «Все файлы тикета (2)»');
     await p.evaluate(() => { window.__posts = []; window.__toasts = []; });

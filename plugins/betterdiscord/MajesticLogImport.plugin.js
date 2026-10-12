@@ -1,6 +1,6 @@
 /**
  * @name MajesticLogImport
- * @version 1.1.0
+ * @version 1.2.0
  * @description Кнопка «В анализатор» на логах и дампах в ваших тикетах: файл и данные игрока уходят в Majestic Log Advisor.
  * @author persephonemajestic
  * @source https://github.com/persephonemajestic/majestic-log-advisor/tree/main/plugins/betterdiscord
@@ -12,7 +12,7 @@
    Если приложение закрыто, отправка встаёт в очередь и уйдёт, когда приложение запустится.
    Плагин сам проверяет обновления раз в 6 часов и ставит новую версию из репозитория. */
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.1.0";
+const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.2.0";
 const UPDATE_URL = "https://raw.githubusercontent.com/persephonemajestic/majestic-log-advisor/main/plugins/betterdiscord/MajesticLogImport.plugin.js";
 
 /* Данные игрока из текста: подписанные поля («Ник:», «Статик:», «Сервер:») и ник вида Имя_Фамилия.
@@ -146,14 +146,26 @@ module.exports = class MajesticLogImport {
         return { ticket: ch?.name || "", ticketId: channelId, player: Object.assign(base, extractPlayer(texts, fields, bot)) };
     }
 
+    /* Файл скачивает сам Discord (у приложения может не быть доступа к серверам Discord) и отдаёт приложению.
+       Если скачать не вышло — просим приложение скачать само (/v1/import). */
     async post(body) {
-        const c = this.cfg();
+        const c = this.cfg(), base = "http://127.0.0.1:" + (c.port || 47615);
         if (!c.token) throw new Error("token");
-        const opts = { method: "POST", headers: { "content-type": "application/json", "x-mla-token": c.token }, body: JSON.stringify(body) };
-        const r = await this.fetch("http://127.0.0.1:" + (c.port || 47615) + "/v1/import", opts);
+        let buf = null;
+        if (/^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//.test(body.url || "")) {
+            try { const d = await this.fetch(body.url); if (d.ok) { const ab = await d.arrayBuffer(); if (ab.byteLength && ab.byteLength <= 250 * 1048576) buf = new Uint8Array(ab); } } catch (e) {}
+        }
+        let r;
+        if (buf) {
+            const meta = btoa(unescape(encodeURIComponent(JSON.stringify(body))));
+            const up = { method: "POST", headers: { "content-type": "application/octet-stream", "x-mla-token": c.token, "x-mla-meta": meta }, body: buf };
+            try { r = await this.fetch(base + "/v1/upload", up); } catch (e) { r = await fetch(base + "/v1/upload", up); }
+        } else {
+            r = await this.fetch(base + "/v1/import", { method: "POST", headers: { "content-type": "application/json", "x-mla-token": c.token }, body: JSON.stringify(body) });
+        }
         let j = {}; try { j = await r.json(); } catch (e) {}
         if (r.status === 401) throw new Error("token");
-        if (!r.ok || !j.ok) throw new Error(j.error || ("http " + r.status));
+        if (!r.ok || !j.ok) { const err = new Error(j.error || ("http " + r.status)); err.app = true; throw err; }
         return j;
     }
     enqueue(body) {
@@ -170,6 +182,7 @@ module.exports = class MajesticLogImport {
             this.toast((j.dup ? "Уже в анализаторе: " : "Отправлено в анализатор: ") + name, "success");
         } catch (e) {
             if (String(e.message) === "token") { if (btn) { btn.disabled = false; btn.textContent = "В анализатор"; } this.toast("Вставьте ключ из «Настроек» Majestic Log Advisor в настройки плагина", "error"); return; }
+            if (e.app) { if (btn) { btn.disabled = false; btn.textContent = "В анализатор"; } this.toast("Анализатор не принял файл: " + e.message, "error"); return; }
             this.enqueue(body);
             if (btn) btn.textContent = "⏳ В очереди";
             this.toast("Приложение не отвечает: файл отправится, когда Majestic Log Advisor запустится", "warning");
@@ -179,17 +192,18 @@ module.exports = class MajesticLogImport {
     async sendAll(channelId, btn) {
         const list = this.attachments(channelId); if (!list.length) return;
         if (btn) { btn.disabled = true; btn.textContent = "Отправляю " + list.length + "…"; }
-        let sent = 0, dup = 0, queued = 0;
+        let sent = 0, dup = 0, queued = 0, failed = 0;
         for (const a of list) {
             const body = Object.assign({ url: a.url, name: a.name }, this.player(channelId, a.messageId));
             try { const j = await this.post(body); if (j.dup) dup++; else sent++; }
             catch (e) {
                 if (String(e.message) === "token") { if (btn) { btn.disabled = false; btn.textContent = "Все файлы тикета (" + list.length + ")"; } this.toast("Вставьте ключ из «Настроек» Majestic Log Advisor в настройки плагина", "error"); return; }
+                if (e.app) { failed++; continue; }
                 this.enqueue(body); queued++;
             }
         }
         if (btn) btn.textContent = queued ? "⏳ В очереди: " + queued : "✓ Все в анализаторе";
-        this.toast("Файлы тикета: отправлено " + sent + (dup ? ", уже были " + dup : "") + (queued ? ", в очереди " + queued + " (приложение не отвечает)" : ""), queued ? "warning" : "success");
+        this.toast("Файлы тикета: отправлено " + sent + (dup ? ", уже были " + dup : "") + (queued ? ", в очереди " + queued + " (приложение не отвечает)" : "") + (failed ? ", не приняты " + failed : ""), queued || failed ? "warning" : "success");
     }
 
     async flush() {
@@ -223,15 +237,19 @@ module.exports = class MajesticLogImport {
     getSettingsPanel() {
         const c = this.cfg(), el = document.createElement("div");
         el.style.cssText = "display:grid;gap:10px;color:var(--text-normal);padding:4px 0";
-        el.innerHTML = '<div>Ключ из Majestic Log Advisor («Настройки» → «Плагин Discord»):</div><input type="text" class="mla-key" style="padding:8px;border-radius:4px;border:1px solid var(--background-modifier-accent);background:var(--input-background);color:var(--text-normal)"><div>Порт (обычно 47615):</div><input type="number" class="mla-port" style="padding:8px;width:120px;border-radius:4px;border:1px solid var(--background-modifier-accent);background:var(--input-background);color:var(--text-normal)"><button class="mla-btn mla-test" type="button" style="justify-self:start;margin:0">Проверить связь</button>';
+        el.innerHTML = '<div>Ключ из Majestic Log Advisor («Настройки» → «Плагин Discord»):</div><input type="text" class="mla-key" style="padding:8px;border-radius:4px;border:1px solid var(--background-modifier-accent);background:var(--input-background);color:var(--text-normal)"><div>Порт (обычно 47615):</div><input type="number" class="mla-port" style="padding:8px;width:120px;border-radius:4px;border:1px solid var(--background-modifier-accent);background:var(--input-background);color:var(--text-normal)"><button class="mla-btn mla-test" type="button" style="justify-self:start;margin:0">Проверить связь с анализатором</button>';
         const k = el.querySelector(".mla-key"), p = el.querySelector(".mla-port");
         k.value = c.token; p.value = c.port;
         const save = () => this.setCfg({ token: k.value.trim(), port: parseInt(p.value, 10) || 47615 });
         k.addEventListener("change", save); p.addEventListener("change", save);
         el.querySelector(".mla-test").addEventListener("click", async () => {
             save();
-            try { const r = await this.fetch("http://127.0.0.1:" + (parseInt(p.value, 10) || 47615) + "/v1/ping"); const j = await r.json(); this.toast(j.ok ? "Связь с анализатором есть" : "Анализатор не ответил", j.ok ? "success" : "error"); }
-            catch (e) { this.toast("Анализатор не запущен или порт неверный", "error"); }
+            const base = "http://127.0.0.1:" + (parseInt(p.value, 10) || 47615);
+            try { const r = await this.fetch(base + "/v1/ping"); const j = await r.json(); if (!j.ok) return this.toast("Анализатор не ответил", "error"); }
+            catch (e) { return this.toast("Анализатор не запущен или порт неверный", "error"); }
+            if (!k.value.trim()) return this.toast("Связь есть, но ключ не вставлен: «Настройки» приложения → «Плагин Discord»", "warning");
+            try { const r = await this.fetch(base + "/v1/import", { method: "POST", headers: { "content-type": "application/json", "x-mla-token": k.value.trim() }, body: "{}" }); this.toast(r.status === 401 ? "Ключ не подходит: скопируйте его заново в «Настройках» приложения" : "Связь с анализатором есть, ключ подходит", r.status === 401 ? "error" : "success"); }
+            catch (e) { this.toast("Анализатор не отвечает", "error"); }
         });
         return el;
     }

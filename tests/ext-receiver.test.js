@@ -31,5 +31,14 @@ setTimeout(async () => {
   ok((await req({ body: { url: U }, headers: { 'x-mla-token': T } })).j.dup && fetched.length === 1, 'повторная отправка того же вложения пропущена');
   ok(api.extPlayer({ link: 'javascript:alert(1)' }) === null, 'посторонняя ссылка в данных игрока отброшена');
   const nt = (await handlers['ext-reset']()).token; ok(nt !== T && (await req({ body: { url: U.replace('client', 'c2') }, headers: { 'x-mla-token': T } })).s === 401, '«Новый ключ» отключает старый');
+  /* файл присылает сам плагин (скачан сетью Discord) */
+  const up = (tok, meta, data) => new Promise((res) => { const r = http.request({ host: '127.0.0.1', port: api.port, method: 'POST', path: '/v1/upload', headers: { 'content-type': 'application/octet-stream', 'x-mla-token': tok, 'x-mla-meta': Buffer.from(JSON.stringify(meta)).toString('base64') } }, (x) => { let b = ''; x.on('data', (c) => b += c); x.on('end', () => res({ s: x.statusCode, j: b ? JSON.parse(b) : {} })); }); r.write(data); r.end(); });
+  const n0 = sent.length, fz = fetched.length;
+  const u1 = await up(nt, { url: 'https://cdn.discordapp.com/attachments/1/9/main.log?ex=1', name: 'main.log', ticket: 'ticket-77', ticketId: '77', player: { nick: 'Petr_Ivanov' } }, Buffer.from('LOGDATA'));
+  const d2 = sent[n0] && sent[n0].d;
+  ok(u1.s === 200 && d2 && d2.name === 'main.log' && new TextDecoder().decode(d2.data) === 'LOGDATA' && d2.ticketId === '77' && d2.player.nick === 'Petr_Ivanov' && fetched.length === fz, 'файл от плагина принят без скачивания приложением');
+  ok((await up(nt, { url: 'https://cdn.discordapp.com/attachments/1/9/main.log?ex=2', name: 'main.log' }, Buffer.from('x'))).j.dup, 'повтор того же вложения от плагина пропущен');
+  ok((await up('wrong', { name: 'a.log' }, Buffer.from('x'))).s === 401, 'загрузка без верного ключа отклонена');
+  ok((await up(nt, { name: 'virus.exe' }, Buffer.from('x'))).s === 400, 'загрузка не лога отклонена');
   process.exit(bad ? 1 : 0);
 }, 200);

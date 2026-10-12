@@ -716,7 +716,7 @@ body.side-off .side-rail { position: sticky; top: var(--barh, 57px); height: cal
 body.side-off .side-rail:hover { color: var(--ink); }
 .tape { padding-top: 8px; }
 .main { margin: 0 auto; max-width: 1480px; width: 100%; }
-.work-main > .tape { max-width: 1480px; margin: 0 auto; width: 100%; }
+.work-main > .tape { max-width: 1480px; margin: 0 auto; width: 100%; padding-top: 0; }
 @media (max-width: 860px) {
   .work { grid-template-columns: minmax(0, 1fr); }
   .side { position: static; height: auto; max-height: 46vh; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -782,7 +782,6 @@ body.side-off .side-rail:hover { color: var(--ink); }
   <section class="tape">
     <div class="tape-h">
       <div class="status" id="status" role="status" aria-live="polite"></div>
-      <label class="sw" for="maskBox"><input type="checkbox" id="maskBox" checked><i></i><span>Скрывать e-mail и имя пользователя Windows</span></label>
     </div>
   </section>
   <main class="main">

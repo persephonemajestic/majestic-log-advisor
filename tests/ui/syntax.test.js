@@ -13,7 +13,7 @@ const H = require('./helpers'), { ok } = H, fs = require('fs'), path = require('
   ok(await p.locator('#rows .k-ts').count() > 5, 'время в строках подсвечено');
   ok(await p.locator('#rows .k-code, #rows mark').count() > 0, 'код ошибки выделен');
   ok(await p.locator('#rows .k-path').count() > 0, 'путь выделен');
-  ok(!/Ivan|ivan@example|abcdefghijklmnop1234/.test(await p.textContent('#rows')), 'ник, почта и токен скрыты в строках');
+  ok(/ivan@example/.test(await p.textContent('#rows')), 'строки показываются как есть, без маски');
 
   const all = await cnt();
   await p.click('[data-act=fold]'); await p.waitForTimeout(300);
@@ -29,7 +29,6 @@ const H = require('./helpers'), { ok } = H, fs = require('fs'), path = require('
   await p.click('#ins [data-act=fragCopy]'); await p.waitForTimeout(200);
   const frag = await p.evaluate(() => window.__c);
   ok(/строки \d+–\d+/.test(frag) && /> \d+: .*ERR_FIL_PACK_3/.test(frag), 'во фрагменте выбранная строка отмечена');
-  ok(!/Ivan|ivan@example|abcdefghijklmnop1234/.test(frag), 'во фрагменте личные данные скрыты');
 
   await p.click('#ins [data-act=twin]'); await p.waitForTimeout(300);
   const tw = await cnt(); ok(tw >= 2 && tw <= 4, 'окно ±30 с: только соседние по времени строки (' + tw + ')');

@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, clipboard, Menu, shell, net, native
 const fs = require('fs');
 const path = require('path');
 
-const SHELL_VERSION = '2026-10-12.15';
+const SHELL_VERSION = '2026-10-12.16';
 const APPDIR = global.APP_DIR || __dirname;
 const bundled = () => path.join(APPDIR, 'index.html');
 const overrideFile = () => path.join(app.getPath('userData'), 'index-override.html');
@@ -286,12 +286,13 @@ function extDeliver(item) {
 }
 async function extHandle(req, res) {
   const origin = String(req.headers.origin || ''), okOrigin = EXT_ORIGIN.test(origin), H = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
-  if (okOrigin) Object.assign(H, { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Headers': 'content-type, x-mla-token', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Private-Network': 'true', Vary: 'Origin' });
+  if (okOrigin) Object.assign(H, { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Headers': 'content-type, x-mla-token, x-mla-meta', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Private-Network': 'true', Vary: 'Origin' });
   const send = (c, o) => { res.writeHead(c, H); res.end(JSON.stringify(o)); };
   if (origin && !okOrigin) return send(403, { ok: false, error: 'origin' });
   if (req.method === 'OPTIONS') { res.writeHead(204, H); return res.end(); }
   const p = (req.url || '').split('?')[0];
   if (p === '/v1/ping') return send(200, { ok: true, app: 'majestic-log-advisor', v: SHELL_VERSION });
+  if (p === '/v1/upload' && req.method === 'POST') return extUpload(req, res, send);
   if (p !== '/v1/import' || req.method !== 'POST') return send(404, { ok: false });
   if (!extSame(req.headers['x-mla-token'], extToken())) return send(401, { ok: false, error: 'token' });
   let raw = ''; for await (const ch of req) { raw += ch; if (raw.length > 16384) return send(413, { ok: false }); }
@@ -310,7 +311,24 @@ async function extHandle(req, res) {
     extSeen.set(key, now);
     extDeliver({ name, data: new Uint8Array(buf), size: buf.length, ticket: String(b.ticket || '').slice(0, 100), ticketId: String(b.ticketId || '').replace(/\D/g, '').slice(0, 25), from: String(b.from || '').slice(0, 60), player: extPlayer(b.player) });
     return send(200, { ok: true });
-  } catch (e) { return send(502, { ok: false, error: 'download' }); }
+  } catch (e) { return send(502, { ok: false, error: 'download', detail: String(e && e.message || e).slice(0, 120) }); }
+}
+/* Файл присылает сам плагин: Discord скачивает вложение своей сетью (у приложения доступа к серверам Discord может не быть).
+   Тело запроса — сам файл, описание (имя, тикет, игрок) — в заголовке x-mla-meta (JSON в base64). */
+async function extUpload(req, res, send) {
+  if (!extSame(req.headers['x-mla-token'], extToken())) return send(401, { ok: false, error: 'token' });
+  let meta = {}; try { meta = JSON.parse(Buffer.from(String(req.headers['x-mla-meta'] || ''), 'base64').toString('utf8')) || {}; } catch (e) { return send(400, { ok: false, error: 'meta' }); }
+  const name = String(meta.name || '').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 120);
+  if (!EXT_FILE.test(name)) return send(400, { ok: false, error: 'type' });
+  const key = String(meta.url || '').replace(/[?#].*$/, '') || ('upload:' + name + ':' + (req.headers['content-length'] || '')), now = Date.now();
+  for (const [k, t] of extSeen) if (now - t > 3600000) extSeen.delete(k);
+  if (extSeen.has(key)) { req.resume(); return send(200, { ok: true, dup: true }); }
+  const parts = []; let size = 0;
+  for await (const ch of req) { size += ch.length; if (size > 250 * 1048576) return send(413, { ok: false, error: 'size' }); parts.push(ch); }
+  if (!size) return send(400, { ok: false, error: 'empty' });
+  const buf = Buffer.concat(parts); extSeen.set(key, now);
+  extDeliver({ name, data: new Uint8Array(buf), size: buf.length, ticket: String(meta.ticket || '').slice(0, 100), ticketId: String(meta.ticketId || '').replace(/\D/g, '').slice(0, 25), from: String(meta.from || '').slice(0, 60), player: extPlayer(meta.player) });
+  return send(200, { ok: true });
 }
 function extPlayer(p) { if (!p || typeof p !== 'object') return null; const t = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n), o = { id: t(p.id, 25).replace(/\D/g, ''), name: t(p.name, 64), username: t(p.username, 40), nick: t(p.nick, 48), static: t(p.static, 12).replace(/\D/g, ''), server: t(p.server, 32), link: /^https:\/\/((ptb|canary)\.)?discord\.com\/channels\/[\d/]+$/.test(String(p.link || '')) ? String(p.link) : '' }; return Object.values(o).some(Boolean) ? o : null; }
 function extStart() {
