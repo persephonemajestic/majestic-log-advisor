@@ -15,7 +15,7 @@ const APPDATA = process.env.APPDATA || path.join(os.homedir(), '.config');
 const HOME = process.env.MPI_HOME || os.homedir();
 const DATA = process.env.MPI_DATA || path.join(APPDATA, 'MajesticPluginInstaller');
 const CFG = path.join(DATA, 'config.json');
-const VERSION = '1.2.1';
+const VERSION = '1.2.2';
 const AUTO = process.argv.includes('--auto');
 
 /* ---------- ввод и вывод ---------- */
@@ -119,12 +119,26 @@ async function portableNode() {
   const f = path.join(TOOLS, m[2]); fs.mkdirSync(TOOLS, { recursive: true }); fs.writeFileSync(f, buf);
   if (!unzip(f, TOOLS)) throw new Error('не удалось распаковать Node.js'); fs.rmSync(f, { force: true });
 }
+/* Адрес, куда ведёт перенаправление (без скачивания страницы) */
+function redirectOf(url) {
+  return new Promise((res) => { https.get(url, { headers: { 'User-Agent': 'MajesticPluginInstaller/' + VERSION } }, (r) => { r.resume(); res(r.headers.location || ''); }).on('error', () => res('')); });
+}
+/* Где лежит MinGit: через API GitHub, а если API не отвечает (лимит запросов) — по ссылке на последний выпуск */
+async function mingitAsset() {
+  try {
+    const rel = JSON.parse((await get(GIT_API)).toString('utf8'));
+    const a = (rel.assets || []).find((x) => /^MinGit-[\d.]+(?:\.windows\.\d+)?-64-bit\.zip$/.test(x.name));
+    if (a) return { name: a.name, url: a.browser_download_url, digest: a.digest || '' };
+  } catch (e) {}
+  const loc = await redirectOf('https://github.com/git-for-windows/git/releases/latest'), m = /\/tag\/(v(\d+\.\d+\.\d+)\.windows\.(\d+))/.exec(loc);
+  if (!m) throw new Error('не удалось узнать последнюю версию Git');
+  const name = 'MinGit-' + m[2] + (m[3] !== '1' ? '.' + m[3] : '') + '-64-bit.zip';
+  return { name, url: 'https://github.com/git-for-windows/git/releases/download/' + m[1] + '/' + name, digest: '' };
+}
 async function portableGit() {
-  const rel = JSON.parse((await get(GIT_API)).toString('utf8'));
-  const a = (rel.assets || []).find((x) => /^MinGit-[\d.]+(?:\.windows\.\d+)?-64-bit\.zip$/.test(x.name));
-  if (!a) throw new Error('на GitHub не найден архив MinGit');
+  const a = await mingitAsset();
   say('  Скачиваю ' + a.name + '…');
-  const buf = await get(a.browser_download_url);
+  const buf = await get(a.url);
   if (a.digest && /^sha256:/.test(a.digest) && a.digest.slice(7) !== sha256(buf)) throw new Error('контрольная сумма Git не совпала');
   const f = path.join(TOOLS, a.name), dir = path.join(TOOLS, 'git'); fs.mkdirSync(TOOLS, { recursive: true }); fs.writeFileSync(f, buf);
   fs.rmSync(dir, { recursive: true, force: true });
