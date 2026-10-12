@@ -15,14 +15,15 @@ const APPDATA = process.env.APPDATA || path.join(os.homedir(), '.config');
 const HOME = process.env.MPI_HOME || os.homedir();
 const DATA = process.env.MPI_DATA || path.join(APPDATA, 'MajesticPluginInstaller');
 const CFG = path.join(DATA, 'config.json');
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
+const AUTO = process.argv.includes('--auto');
 
 /* ---------- ввод и вывод ---------- */
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const lines = []; let waiter = null;
 rl.on('line', (l) => { if (waiter) { const w = waiter; waiter = null; w(l); } else lines.push(l); });
 rl.on('close', () => { if (waiter) { const w = waiter; waiter = null; w(''); } });
-const ask = (q) => new Promise((res) => { process.stdout.write(q); if (lines.length) { const l = lines.shift(); process.stdout.write(l + '\n'); res(l); } else waiter = res; });
+const ask = (q) => AUTO ? Promise.resolve('') : new Promise((res) => { process.stdout.write(q); if (lines.length) { const l = lines.shift(); process.stdout.write(l + '\n'); res(l); } else waiter = res; });
 const say = (t) => console.log(t);
 const yes = async (q, def) => { const a = (await ask(q + (def ? ' [Д/н] ' : ' [д/Н] '))).trim().toLowerCase(); return a ? /^(д|да|y|yes)$/.test(a) : !!def; };
 
@@ -71,7 +72,7 @@ async function checkTools() {
   let pnpm = has('pnpm', ['-v']);
   if (!git || nodeMajor < 22) {
     say('\nДля сборки Vencord нужны Git и Node.js 22 или новее.' + (!git ? '\n  Git не найден.' : '') + (nodeMajor < 22 ? '\n  Node.js ' + (node || 'не найден') + ', нужна версия 22+.' : ''));
-    if (WIN && await yes('Установить недостающее через winget (встроенный установщик Windows)?', true)) {
+    if (WIN && !AUTO && await yes('Установить недостающее через winget (встроенный установщик Windows)?', true)) {
       if (!git) run('winget', ['install', '--id', 'Git.Git', '-e', '--accept-source-agreements', '--accept-package-agreements']);
       if (nodeMajor < 22) run('winget', ['install', '--id', 'OpenJS.NodeJS.LTS', '-e', '--accept-source-agreements', '--accept-package-agreements']);
       say('Готово. Закройте это окно и запустите установщик заново, чтобы Windows подхватила новые программы.');
@@ -105,10 +106,11 @@ async function putVencordPlugin(vdir, p, localDir) {
   return dst;
 }
 function build(vdir) { return (run('pnpm', ['install', '--frozen-lockfile'], { cwd: vdir }) || run('pnpm', ['install'], { cwd: vdir })) && run('pnpm', ['build'], { cwd: vdir }); }
-async function vencordFlow(list, localDir) {
+async function vencordFlow(list, localDir, opts) {
+  opts = opts || {};
   const cfg = readCfg();
-  if (!await checkTools()) return;
-  const vdir = await findVencord(cfg); if (!vdir) return;
+  if (!await checkTools()) return false;
+  const vdir = opts.auto ? (isVencord(cfg.vencordDir || '') ? cfg.vencordDir : null) : await findVencord(cfg); if (!vdir) return false;
   cfg.vencordDir = vdir; writeCfg(cfg);
   say('\nОбновляю исходники Vencord…');
   if (!run('git', ['pull', '--ff-only'], { cwd: vdir })) say('  Обновить не вышло (в папке есть свои изменения). Продолжаю с текущей версией.');
@@ -123,12 +125,14 @@ async function vencordFlow(list, localDir) {
   if (!build(vdir)) {
     say('\nСборка не удалась. Возвращаю плагины из резервной копии и собираю как было…');
     if (bk) { fs.rmSync(up, { recursive: true, force: true }); copyDir(bk, up); } else for (const m of mine) fs.rmSync(path.join(up, m), { recursive: true, force: true });
-    build(vdir); say('Плагины возвращены. Пришлите текст ошибки выше разработчику.'); return;
+    build(vdir); say('Плагины возвращены. Пришлите текст ошибки выше разработчику.'); return false;
   }
-  cfg.installed = cfg.installed || {}; list.forEach((p) => { cfg.installed[p.id] = { vencord: p.version, at: Date.now() }; }); writeCfg(cfg);
+  cfg.installed = cfg.installed || {}; list.forEach((p) => { cfg.installed[p.id] = Object.assign(cfg.installed[p.id] || {}, { vencord: p.version, at: Date.now() }); }); writeCfg(cfg);
+  if (opts.auto) { say('Обновлено. Новая версия заработает после перезапуска Discord.'); return true; }
   say('\nВнедряю Vencord в Discord. Если спросит, выберите вашу версию Discord.');
   if (!run('pnpm', ['inject', '--branch', 'auto'], { cwd: vdir })) run('pnpm', ['inject'], { cwd: vdir });
   say('\nГотово. Полностью перезапустите Discord (закройте из трея), затем включите плагин в «Настройки» → «Vencord» → «Плагины».');
+  return true;
 }
 
 /* ---------- BetterDiscord ---------- */
@@ -144,6 +148,27 @@ async function bdFlow(list) {
   say('\nГотово. BetterDiscord подхватит плагин сам; если нет — «Настройки» → «Плагины», включите его.');
 }
 
+/* ---------- автообновление ----------
+   «--auto»: без вопросов обновляет уже установленные плагины, если в репозитории вышла новая версия.
+   Запускается при входе в Windows через раздел автозапуска текущего пользователя (без прав администратора). */
+const RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', RUN_NAME = 'MajesticPluginInstaller';
+function autoCmd() { return 'cmd /c start "" /min "' + process.execPath + '" --auto'; }
+function autostartOn() { if (process.env.MPI_AUTOSTART) return exists(process.env.MPI_AUTOSTART); if (!WIN) return false; return cp.spawnSync('reg', ['query', RUN_KEY, '/v', RUN_NAME], { stdio: 'pipe' }).status === 0; }
+function setAutostart(on) {
+  if (process.env.MPI_AUTOSTART) { if (on) fs.writeFileSync(process.env.MPI_AUTOSTART, autoCmd()); else fs.rmSync(process.env.MPI_AUTOSTART, { force: true }); return true; }
+  if (!WIN) return false;
+  const r = on ? cp.spawnSync('reg', ['add', RUN_KEY, '/v', RUN_NAME, '/t', 'REG_SZ', '/d', autoCmd(), '/f'], { stdio: 'pipe' }) : cp.spawnSync('reg', ['delete', RUN_KEY, '/v', RUN_NAME, '/f'], { stdio: 'pipe' });
+  return r.status === 0;
+}
+async function autoUpdate(m) {
+  const cfg = readCfg(), inst = cfg.installed || {}, newer = (a, b) => { const x = String(a).split('.').map(Number), y = String(b || '0').split('.').map(Number); for (let i = 0; i < 3; i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0; } return false; };
+  const bd = m.plugins.filter((p) => p.betterdiscord && inst[p.id] && inst[p.id].bd && newer(p.version, inst[p.id].bd));
+  const vc = m.plugins.filter((p) => p.vencord && inst[p.id] && inst[p.id].vencord && newer(p.version, inst[p.id].vencord));
+  if (!bd.length && !vc.length) { say('Обновлений нет.'); return; }
+  if (bd.length) await bdFlow(bd);
+  if (vc.length) await vencordFlow(vc, null, { auto: true });
+}
+
 /* ---------- меню ---------- */
 async function pick(m, field) {
   const list = m.plugins.filter((p) => p[field]); const inst = readCfg().installed || {};
@@ -155,17 +180,20 @@ async function pick(m, field) {
 async function main() {
   say('Majestic Plugin Installer ' + VERSION + '\nСтавит и обновляет плагины для Vencord и BetterDiscord. Ваши другие плагины не трогает.\n');
   const m = await manifest(); if (!m) { await ask('\nНажмите Enter, чтобы закрыть.'); return rl.close(); }
+  if (AUTO) { try { await autoUpdate(m); } catch (e) { say('Ошибка: ' + (e && e.message || e)); } return rl.close(); }
   for (;;) {
-    say('\n1) Vencord: установить или обновить плагины\n2) BetterDiscord: установить или обновить плагины\n3) Vencord: добавить свой плагин из папки\n0) Выход');
+    const au = autostartOn();
+    say('\n1) Vencord: установить или обновить плагины\n2) BetterDiscord: установить или обновить плагины\n3) Vencord: добавить свой плагин из папки\n4) Автообновление при входе в Windows: ' + (au ? 'включено — выключить' : 'выключено — включить') + '\n0) Выход');
     const c = (await ask('Выберите: ')).trim();
     try {
       if (c === '1') { const l = await pick(m, 'vencord'); if (l.length) await vencordFlow(l); }
       else if (c === '2') { const l = await pick(m, 'betterdiscord'); if (l.length) await bdFlow(l); }
       else if (c === '3') { const d = (await ask('Путь к папке плагина (в ней index.ts или index.tsx): ')).trim().replace(/^"|"$/g, ''); if (d && (exists(path.join(d, 'index.ts')) || exists(path.join(d, 'index.tsx')))) await vencordFlow([], d); else say('В папке нет index.ts или index.tsx.'); }
+      else if (c === '4') { const ok = setAutostart(!au); say(ok ? (!au ? 'Автообновление включено: при входе в Windows установщик тихо проверит новые версии ваших плагинов и поставит их. Другие плагины не трогает.' : 'Автообновление выключено.') : 'Не удалось изменить автозапуск.'); }
       else if (c === '0' || c === '') break;
     } catch (e) { say('\nОшибка: ' + (e && e.message || e)); }
   }
   rl.close();
 }
 if (require.main === module) main();
-module.exports = { isVencord, putVencordPlugin, backupUserplugins };
+module.exports = { isVencord, putVencordPlugin, backupUserplugins, autoCmd };

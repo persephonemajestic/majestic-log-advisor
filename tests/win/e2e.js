@@ -69,11 +69,12 @@ async function devApp(F) {
   ok(maxLag < 3000, 'окно не замирает дольше 3 с при большом логе (' + maxLag + ' мс)');
   await shot(p, '3-big');
 
+  const nBefore = await p.locator('#flist .fi').count();
   await p.evaluate(() => window.nativeApp.reloadApp());
   await new Promise((r) => setTimeout(r, 1500));
   p = ea.windows()[0];
-  for (let i = 0; i < 60 && !/логов: [1-9]|Восстановлено|Приложение/.test(await p.textContent('body').catch(() => '')); i++) await new Promise((r) => setTimeout(r, 500));
-  ok(/client_2026-10-08/.test(await p.textContent('body')), 'после перезагрузки (автообновление) логи на месте');
+  let nAfter = 0; for (let i = 0; i < 120; i++) { nAfter = await p.locator('#flist .fi').count().catch(() => 0); if (nAfter >= nBefore && nBefore) break; await new Promise((r) => setTimeout(r, 500)); }
+  ok(nBefore > 0 && nAfter >= nBefore, 'после перезагрузки (автообновление) логи на месте (' + nAfter + ' из ' + nBefore + ')');
   await shot(p, '4-reload');
 
   ok(!errs.length, 'нет ошибок в окне' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));

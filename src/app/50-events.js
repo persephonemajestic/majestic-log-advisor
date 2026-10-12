@@ -124,6 +124,8 @@ document.addEventListener('click', function (ev) {
   else if (a === 'caseexp') { var cx = caseData(); if (cx) exportHtmlDoc('delo-' + cx.fo.name.replace(/[^\w.\-а-яё]+/gi, '_').slice(0, 40), caseHtml(cx), 'html'); }
   else if (a === 'coutcome') setOutcome(t.getAttribute('data-gid'), t.getAttribute('data-res'));
   else if (a === 'copen') { S.active = +t.getAttribute('data-fid'); S.tab = 'diag'; S.sel = -1; render(); }
+  else if (a === 'cmpCase') compareCases(t.getAttribute('data-a'), t.getAttribute('data-b'));
+  else if (a === 'caseReply') { var cr = caseData(); if (cr) copyText(caseReplyText(cr), 'Ответ игроку', 'Скопируйте и отправьте игроку.', 'Ответ игроку скопирован.'); }
   else if (a === 'caseask') { var ck = caseData(); if (ck) copyText(caseAskText(ck), 'Сообщение игроку', 'Скопируйте и отправьте игроку.', 'Сообщение игроку скопировано.'); }
   else if (a === 'addLogs') $('#fileIn').click();
   else if (a === 'gadd') { S.gAdd = t.getAttribute('data-id'); $('#fileInG').click(); }
@@ -180,7 +182,7 @@ document.addEventListener('change', function (ev) {
   else if (t.getAttribute && t.getAttribute('data-act') === 'rfcopy') { var cr = LA.RULES[+t.value]; if (cr) { $('#rfTitle').value = cr.title || ''; $('#rfCause').value = cr.cause || ''; $('#rfFix').value = (cr.fix || []).join('\n'); $('#rfSev').value = cr.sev === 'noise' ? 'info' : cr.sev; $('#rfKind').value = cr.kind; } }
   else if (t.getAttribute && t.getAttribute('data-act') === 'cnote') { var cn = S.kb.settings.caseNotes = S.kb.settings.caseNotes || {}; if (t.value.trim()) cn[t.getAttribute('data-gid')] = t.value; else delete cn[t.getAttribute('data-gid')]; saveKB(); }
   else if (t.getAttribute && t.getAttribute('data-act') === 'cstatus') setCaseStatus(t.getAttribute('data-gid'), t.value);
-  else if (t.getAttribute && t.getAttribute('data-act') === 'caseck') { var cs = S.kb.settings.caseChecks = S.kb.settings.caseChecks || {}, gm = cs[t.getAttribute('data-gid')] = cs[t.getAttribute('data-gid')] || {}; if (t.checked) gm[t.getAttribute('data-id')] = 1; else delete gm[t.getAttribute('data-id')]; saveKB(); }
+  else if (t.getAttribute && t.getAttribute('data-act') === 'caseck') { var cs = S.kb.settings.caseChecks = S.kb.settings.caseChecks || {}, gm = cs[t.getAttribute('data-gid')] = cs[t.getAttribute('data-gid')] || {}; if (t.checked) gm[t.getAttribute('data-id')] = 1; else delete gm[t.getAttribute('data-id')]; saveKB();  var cdx = caseData(), cpv = $('#caseReplyPv'); if (cdx && cpv) cpv.textContent = caseReplyText(cdx); }
   else if (t.id === 'sysIn') { ingestSys(Array.prototype.slice.call(t.files), []); t.value = ''; }
   else if (t.id === 'fileIn') { readFiles(t.files); t.value = ''; }
   else if (t.id === 'fileInG') { S.target = S.gAdd; readFiles(t.files); t.value = ''; }

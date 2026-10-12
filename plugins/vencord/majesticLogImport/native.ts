@@ -27,3 +27,13 @@ export async function ping(_: IpcMainInvokeEvent, port: number) {
     if (!okPort(port)) return false;
     try { const r = await fetch(`http://127.0.0.1:${port}/v1/ping`); const j: any = await r.json(); return !!j.ok; } catch { return false; }
 }
+
+/* Последняя версия плагина из списка установщика (только чтение, с GitHub) */
+export async function latest(_: IpcMainInvokeEvent) {
+    try {
+        const r = await fetch("https://raw.githubusercontent.com/persephonemajestic/majestic-log-advisor/main/plugins/manifest.json?t=" + Date.now());
+        const j: any = await r.json();
+        const p = (j?.plugins ?? []).find((x: any) => x?.id === "majesticLogImport");
+        return typeof p?.version === "string" && /^\d+\.\d+\.\d+$/.test(p.version) ? p.version : "";
+    } catch { return ""; }
+}

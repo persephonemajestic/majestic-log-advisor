@@ -1263,9 +1263,10 @@ function replySteps(g) {
   var f = (g.fix || []).filter(function (x) { return !STAFF.test(x); });
   return f;
 }
+var REPLY_BYE = 'Выполните шаги выше, перезапустите лаунчер и напишите, получилось ли. Если проблема останется, пришлите свежие main.log и client.log.';
 function composeReply(sc, o) {
   o = o || {};
-  var hello = o.hello || 'Здравствуйте!', bye = o.bye || 'Выполните шаги выше, перезапустите лаунчер и напишите, получилось ли. Если проблема останется, пришлите свежие main.log и client.log.';
+  var hello = o.hello || 'Здравствуйте!', bye = o.bye || REPLY_BYE;
   var L = [hello, ''], n = 0, used = {};
   var probs = sc.findings.filter(function (g) { return SEV[g.sev] >= SEV.warn; });
   var mf = (sc.mods ? sc.mods.files.slice() : []), seenB = {};
@@ -1501,6 +1502,6 @@ function mask(s) {
     .replace(/\b((?:access_|refresh_|auth_|id_)?token|authorization|bearer|session_?id|api_?key)(["']?\s*[:=]\s*["']?|\s+)([A-Za-z0-9._~+\/=-]{12,})/gi, '$1$2***');
 }
 
-var LA = root.LA = { permCommand: permCommand, h32: h32, caseSummary: caseSummary, stripAnsi: stripAnsi, SEV: SEV, RULES: RULES, parse: parse, scan: scan, analyzeAsync: analyzeAsync, learn: learn, classify: classify, applyKB: applyKB, newKB: newKB, setCustomRules: setCustomRules, composeReply: composeReply, diffScans: diffScans, gameFolder: gameFolder, guessGamePaths: guessGamePaths, mask: mask, clusterReports: clusterReports, histTime: histTime, signature: signature, detectKind: detectKind, owner: owner, toMs: toMs };
+var LA = root.LA = { permCommand: permCommand, h32: h32, caseSummary: caseSummary, stripAnsi: stripAnsi, SEV: SEV, RULES: RULES, parse: parse, scan: scan, analyzeAsync: analyzeAsync, learn: learn, classify: classify, applyKB: applyKB, newKB: newKB, setCustomRules: setCustomRules, composeReply: composeReply, REPLY_BYE: REPLY_BYE, diffScans: diffScans, gameFolder: gameFolder, guessGamePaths: guessGamePaths, mask: mask, clusterReports: clusterReports, histTime: histTime, signature: signature, detectKind: detectKind, owner: owner, toMs: toMs };
 if (typeof module !== 'undefined' && module.exports) module.exports = root.LA;
 })(typeof window !== 'undefined' ? window : globalThis);

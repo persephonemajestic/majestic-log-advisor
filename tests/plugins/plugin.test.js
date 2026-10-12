@@ -16,13 +16,31 @@ const PAGE = `<!doctype html><html><body>
 const MOCK = () => {
   const ch = { 100: { id: '100', name: 'ticket-1234', guild_id: '9', type: 11, isThread: () => true }, 200: { id: '200', name: 'ticket-777', guild_id: '9', type: 11, isThread: () => true }, 300: { id: '300', name: 'general', guild_id: '9', type: 0, isThread: () => false } };
   const au = { id: '42', username: 'ivan', globalName: 'Иван' };
-  const msgs = { 100: [{ id: '0', author: au, content: 'Ник: Ivan_Petrov, статик 55123, сервер Orlando' }, { id: '1', author: au, content: 'вот лог' }, { id: '2', author: { id: '7' }, content: 'Ник: Support_Guy' }] };
+  const msgs = { 100: [{ id: '0', author: au, content: 'Ник: Ivan_Petrov, статик 55123, сервер Orlando' }, { id: '1', author: au, content: 'вот лог', attachments: [{ filename: 'client.log', url: 'https://cdn.discordapp.com/attachments/100/5/client.log?ex=1' }, { filename: 'photo.png', url: 'https://cdn.discordapp.com/attachments/100/6/photo.png' }] }, { id: '2', author: { id: '7' }, content: 'Ник: Support_Guy', attachments: [{ filename: 'crash.zip', url: 'https://cdn.discordapp.com/attachments/100/7/crash.zip' }] }] };
   window.__stores = { ChannelStore: { getChannel: (id) => ch[id] }, JoinedThreadsStore: { hasJoined: (id) => id === '100' || id === '300' },
     MessageStore: { getMessage: (c, m) => (msgs[c] || []).find(x => x.id === m), getMessages: (c) => ({ toArray: () => msgs[c] || [] }) } };
   window.__toasts = []; window.__posts = []; window.__appUp = true; window.__tokenOk = 'secret';
   const reply = (body, token) => { if (!window.__appUp) return { status: 0 }; if (token !== window.__tokenOk) return { status: 401, j: { ok: false, error: 'token' } }; window.__posts.push(body); return { status: 200, j: { ok: true } }; };
   window.__reply = reply;
 };
+/* Разбор ника, статика и сервера: одинаковый в обеих версиях */
+const EXCASES = [
+  [['Ник: Ivan_Petrov, статик 55123, сервер Orlando'], [], ['Ivan_Petrov', '55123', 'Orlando']],
+  [['Здравствуйте, сервер: New York статик: 12 ник Ivan Petrov'], [], ['Ivan Petrov', '12', 'New York']],
+  [['играю на 5 сервере, вылетает'], [], ['', '', '5']],
+  [['**Ник:** John_Smith\n**Сервер:** Los Angeles\n**Static ID:** 4433'], [], ['John_Smith', '4433', 'Los Angeles']],
+  [[], [{ name: 'Игровой ник', value: 'Anna Lee' }, { name: 'Статик', value: '#7788' }, { name: 'Сервер', value: 'Chicago' }], ['Anna Lee', '7788', 'Chicago']],
+  [['сервер не важен, ник: Max_Payne'], [], ['Max_Payne', '', '']],
+  [['Сервер - Detroit | ник - Bob_Marley'], [], ['Bob_Marley', '', 'Detroit']]
+];
+{
+  global.BdApi = {}; const bdx = require(path.join(ROOT, 'plugins/betterdiscord/MajesticLogImport.plugin.js')).extractPlayer; delete global.BdApi;
+  let vcx = null; if (esb) { const o = path.join(require('os').tmpdir(), 'mla-ex.js'); require(esb).buildSync({ entryPoints: [path.join(ROOT, 'plugins/vencord/majesticLogImport/extract.ts')], bundle: true, format: 'cjs', platform: 'node', outfile: o, logLevel: 'warning' }); vcx = require(o).extractPlayer; }
+  let exBad = 0;
+  for (const [t, f, e] of EXCASES) for (const [k, fn] of [['BetterDiscord', bdx], ['Vencord', vcx]]) { if (!fn) continue; const r = fn(t, f); if ([r.nick, r.static, r.server].join('|') !== e.join('|')) { exBad++; console.log('FAIL ' + k + ': ' + JSON.stringify(t.concat(f.map(x => x.name + ': ' + x.value))) + ' → ' + JSON.stringify(r)); } }
+  console.log((exBad ? 'FAIL ' : 'PASS ') + 'ник, статик и сервер из текста и формы тикета: ' + EXCASES.length + ' случаев' + (vcx ? ', обе версии' : ''));
+  if (exBad) process.exitCode = 1;
+}
 (async () => {
   let b; try { b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' }); } catch (e) { b = await chromium.launch(); }
   let bad = 0; const ok = (c, m) => { if (!c) bad++; console.log((c ? 'PASS ' : 'FAIL ') + m); };
@@ -32,7 +50,7 @@ const MOCK = () => {
     if (kind === 'BetterDiscord') {
       await p.evaluate((src) => {
         const data = {}; window.BdApi = { Data: { load: (a, k) => data[a + k], save: (a, k, v) => { data[a + k] = v; } }, Webpack: { getStore: (n) => window.__stores[n] }, UI: { showToast: (m, o) => window.__toasts.push([m, o.type]) }, DOM: { addStyle() {}, removeStyle() {} },
-          Net: { fetch: async (url, o) => { if (/ping$/.test(url)) return { ok: true, status: 200, json: async () => ({ ok: true }) }; const r = window.__reply(JSON.parse(o.body), o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } } };
+          Net: { fetch: async (url, o) => { if (/raw\.githubusercontent/.test(url)) return { ok: true, status: 200, text: async () => window.__newSrc || '' }; if (/ping$/.test(url)) return { ok: true, status: 200, json: async () => ({ ok: true }) }; const r = window.__reply(JSON.parse(o.body), o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } } };
         const module = { exports: {} }; new Function('module', 'exports', src)(module, module.exports);
         const P = module.exports; window.__p = new P({}); window.__setTok = (t) => BdApi.Data.save('MajesticLogImport', 'settings', { token: t, port: 47615 }); window.__p.start();
       }, BD);
@@ -43,29 +61,41 @@ const MOCK = () => {
       }, VC);
     }
     await p.waitForTimeout(400);
-    const btns = await p.$$eval('.mla-btn', (x) => x.map(b => b.previousElementSibling.textContent));
+    const btns = await p.$$eval('.mla-one', (x) => x.map(b => b.previousElementSibling.textContent));
     ok(btns.join(',') === 'client.log,crash.zip', kind + ': кнопки только у логов и архивов в своей ветке-тикете (' + btns.join(',') + ')');
-    await p.click('.mla-btn >> nth=0'); await p.waitForTimeout(200);
+    await p.click('.mla-one >> nth=0'); await p.waitForTimeout(200);
     ok(await p.evaluate(() => window.__toasts.some(t => /ключ/.test(t[0]))), kind + ': без ключа просит вставить ключ');
     await p.evaluate(() => window.__setTok('secret'));
-    await p.click('.mla-btn >> nth=0'); await p.waitForTimeout(200);
+    await p.click('.mla-one >> nth=0'); await p.waitForTimeout(200);
     const post = await p.evaluate(() => window.__posts[0]);
     ok(post && post.name === 'client.log' && post.ticket === 'ticket-1234' && post.ticketId === '100', kind + ': отправлен файл с тикетом');
     ok(post && post.player.nick === 'Ivan_Petrov' && post.player.static === '55123' && post.player.server === 'Orlando' && post.player.id === '42' && post.player.name === 'Иван' && /channels\/9\/100\/1$/.test(post.player.link), kind + ': данные игрока: ник, статик, сервер, Discord, ссылка (не саппорт)');
-    ok(/В анализаторе/.test(await p.textContent('.mla-btn >> nth=0')), kind + ': кнопка показывает, что отправлено');
+    ok(/В анализаторе/.test(await p.textContent('.mla-one >> nth=0')), kind + ': кнопка показывает, что отправлено');
     await p.evaluate(() => { window.__appUp = false; });
-    await p.click('.mla-btn >> nth=1'); await p.waitForTimeout(200);
-    ok(/очеред/i.test(await p.textContent('.mla-btn >> nth=1')), kind + ': приложение закрыто — файл в очереди');
+    await p.click('.mla-one >> nth=1'); await p.waitForTimeout(200);
+    ok(/очеред/i.test(await p.textContent('.mla-one >> nth=1')), kind + ': приложение закрыто — файл в очереди');
     await p.evaluate(() => { window.__appUp = true; });
     if (kind === 'BetterDiscord') await p.evaluate(() => window.__p.flush()); else { await p.evaluate(() => { window.__p.stop(); }); }
     if (kind === 'Vencord') { await p.evaluate(() => { window.__p.start(); }); }
     await p.waitForTimeout(300);
     if (kind === 'BetterDiscord') ok(await p.evaluate(() => window.__posts.some(x => x.name === 'crash.zip')), kind + ': очередь отправлена, когда приложение открылось');
     else { ok(await p.evaluate(() => /crash\.zip/.test(localStorage.getItem('MajesticLogImport.queue') || '')), kind + ': очередь сохранена до запуска приложения'); await p.waitForTimeout(20600); ok(await p.evaluate(() => window.__posts.some(x => x.name === 'crash.zip')), kind + ': очередь отправлена по таймеру, когда приложение открылось'); }
+    if (kind === 'BetterDiscord') {
+      await p.evaluate((src) => { window.__toasts = []; window.__newSrc = src.replace('@version 1.1.0', '@version 9.9.9'); return window.__p.checkUpdate(); }, BD);
+      ok(await p.evaluate(() => window.__toasts.some(t => /9\.9\.9/.test(t[0]))), kind + ': новая версия замечена');
+      await p.evaluate(() => { window.__toasts = []; window.__newSrc = 'alert(1) // @version 9.9.10'; return window.__p.checkUpdate(); });
+      ok(await p.evaluate(() => !window.__toasts.length), kind + ': чужой файл вместо плагина не принимается');
+    }
+    ok(/Все файлы тикета \(2\)/.test(await p.textContent('.mla-all').catch(() => '')) && await p.locator('.mla-all').count() === 1, kind + ': одна кнопка «Все файлы тикета (2)»');
+    await p.evaluate(() => { window.__posts = []; window.__toasts = []; });
+    await p.click('.mla-all'); await p.waitForTimeout(300);
+    const allp = await p.evaluate(() => window.__posts.map(x => x.name + '|' + x.ticket).sort().join(','));
+    ok(allp === 'client.log|ticket-1234,crash.zip|ticket-1234', kind + ': «Все файлы тикета» отправляет все логи и архивы ветки (' + allp + ')');
+    ok(await p.evaluate(() => window.__toasts.some(t => /отправлено 2/.test(t[0]))), kind + ': итог отправки показан');
     await p.evaluate(() => window.__p.stop());
     ok(await p.locator('.mla-btn').count() === 0, kind + ': при выключении плагина кнопки убираются');
     ok(!errs.length, kind + ': без ошибок страницы ' + errs.join(';'));
     await p.close();
   }
-  await b.close(); process.exit(bad ? 1 : 0);
+  await b.close(); process.exit(bad || process.exitCode ? 1 : 0);
 })();

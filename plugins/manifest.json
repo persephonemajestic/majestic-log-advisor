@@ -5,9 +5,22 @@
     {
       "id": "majesticLogImport",
       "title": "MajesticLogImport — кнопка «В анализатор» на логах в тикетах",
-      "version": "1.0.0",
-      "vencord": { "dir": "majesticLogImport", "path": "plugins/vencord/majesticLogImport", "files": ["index.tsx", "native.ts"] },
-      "betterdiscord": { "path": "plugins/betterdiscord", "files": ["MajesticLogImport.plugin.js"] }
+      "version": "1.1.0",
+      "vencord": {
+        "dir": "majesticLogImport",
+        "path": "plugins/vencord/majesticLogImport",
+        "files": [
+          "index.tsx",
+          "native.ts",
+          "extract.ts"
+        ]
+      },
+      "betterdiscord": {
+        "path": "plugins/betterdiscord",
+        "files": [
+          "MajesticLogImport.plugin.js"
+        ]
+      }
     }
   ]
 }

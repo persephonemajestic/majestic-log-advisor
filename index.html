@@ -589,6 +589,7 @@ body:not(.dnd) .arc-empty { display: none !important; }
 .pulse { height: 36px; }
 .tape-row .drop { grid-row: 1; align-self: start; min-height: 56px; }
 .cplayer { margin: 0; color: var(--ink2); font-size: 13px; } .cplayer a { color: var(--accent); }
+.phist { margin: 4px 0 0; font-size: 13px; color: var(--ink2); } .phist summary { cursor: pointer; color: var(--muted); } .phist ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 2px; } .phist a { color: var(--accent); } .linkbtn { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; text-decoration: underline; }
 @media (max-width: 860px) { .tape-row { grid-template-columns: minmax(0, 1fr); } .tape-row .drop { grid-column: 1; grid-row: auto; } }
 </style>
 
@@ -2625,9 +2626,10 @@ function replySteps(g) {
   var f = (g.fix || []).filter(function (x) { return !STAFF.test(x); });
   return f;
 }
+var REPLY_BYE = 'Выполните шаги выше, перезапустите лаунчер и напишите, получилось ли. Если проблема останется, пришлите свежие main.log и client.log.';
 function composeReply(sc, o) {
   o = o || {};
-  var hello = o.hello || 'Здравствуйте!', bye = o.bye || 'Выполните шаги выше, перезапустите лаунчер и напишите, получилось ли. Если проблема останется, пришлите свежие main.log и client.log.';
+  var hello = o.hello || 'Здравствуйте!', bye = o.bye || REPLY_BYE;
   var L = [hello, ''], n = 0, used = {};
   var probs = sc.findings.filter(function (g) { return SEV[g.sev] >= SEV.warn; });
   var mf = (sc.mods ? sc.mods.files.slice() : []), seenB = {};
@@ -2863,7 +2865,7 @@ function mask(s) {
     .replace(/\b((?:access_|refresh_|auth_|id_)?token|authorization|bearer|session_?id|api_?key)(["']?\s*[:=]\s*["']?|\s+)([A-Za-z0-9._~+\/=-]{12,})/gi, '$1$2***');
 }
 
-var LA = root.LA = { permCommand: permCommand, h32: h32, caseSummary: caseSummary, stripAnsi: stripAnsi, SEV: SEV, RULES: RULES, parse: parse, scan: scan, analyzeAsync: analyzeAsync, learn: learn, classify: classify, applyKB: applyKB, newKB: newKB, setCustomRules: setCustomRules, composeReply: composeReply, diffScans: diffScans, gameFolder: gameFolder, guessGamePaths: guessGamePaths, mask: mask, clusterReports: clusterReports, histTime: histTime, signature: signature, detectKind: detectKind, owner: owner, toMs: toMs };
+var LA = root.LA = { permCommand: permCommand, h32: h32, caseSummary: caseSummary, stripAnsi: stripAnsi, SEV: SEV, RULES: RULES, parse: parse, scan: scan, analyzeAsync: analyzeAsync, learn: learn, classify: classify, applyKB: applyKB, newKB: newKB, setCustomRules: setCustomRules, composeReply: composeReply, REPLY_BYE: REPLY_BYE, diffScans: diffScans, gameFolder: gameFolder, guessGamePaths: guessGamePaths, mask: mask, clusterReports: clusterReports, histTime: histTime, signature: signature, detectKind: detectKind, owner: owner, toMs: toMs };
 if (typeof module !== 'undefined' && module.exports) module.exports = root.LA;
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -4066,13 +4068,23 @@ function caseAskText(c) {
   if (!todo.length) return 'Здравствуйте! По вашему обращению все шаги выполнены. Если проблема осталась, пришлите, пожалуйста, свежие main.log и client.log.';
   return 'Здравствуйте! Чтобы продолжить разбор, выполните, пожалуйста:\n' + todo.map(function (a) { return (++n) + ') ' + a.text; }).join('\n');
 }
+/* Ответ игроку по делу: шаги по последнему неудачному логу и то, что ещё нужно прислать (неотмеченные просьбы) */
+function caseReplyText(c) {
+  var st = S.kb.settings || {}, todo = c.r.asks.filter(function (a) { return !c.checks[a.id]; }), hello = st.hello || 'Здравствуйте!';
+  if (c.r.status === 'ok') return hello + '\n\nПо последним логам всё в порядке: игра запустилась и подключилась к серверу. Если проблема повторится, пришлите свежие main.log и client.log сразу после неудачной попытки.';
+  var bad = c.fo.files.filter(function (x) { return x.sc.verdict.status !== 'ok'; }).sort(function (a, b) { return fileTime(a) - fileTime(b); }), last = bad[bad.length - 1];
+  if (!last) return caseAskText(c);
+  var more = todo.length ? 'Также, пожалуйста:\n' + todo.map(function (a, i) { return (i + 1) + ') ' + a.text; }).join('\n') + '\n\n' : '';
+  var rt = M(LA.composeReply(last.sc, { kb: S.kb, hello: st.hello, bye: '\u0001', extra: sysExtra(last), folderMods: folderMods(last) })).replace('\u0001', more + (st.bye || LA.REPLY_BYE));
+  return st.replyShort ? shortenReply(rt) : rt;
+}
 function renderCase(f) {
   var c = caseData(); if (!c) return renderDiag(f);
   var r = c.r, fo = c.fo, h = '', idOf = {};
   c.items.forEach(function (it) { idOf[it.label] = it.id; });
   h += '<div class="caseview"><div class="hero"><section class="card verdict v-' + r.status + '"><div class="vmeta"><span class="st st-' + r.status + '">' + STRU[r.status] + '</span><span class="nm">' + esc(fo.name) + '</span><span class="kind">' + GTYPE[fo.type] + '</span><span>логов: ' + c.items.length + '</span></div>';
   h += casePlayerHtml(fo.id) + '<h2>' + esc(M(r.headline)) + '</h2><div class="lines">' + r.lines.map(function (l, i) { return '<p>' + esc(M(l)) + '</p>'; }).join('') + '</div></section>';
-  h += '<aside class="card answer"><h3>Что попросить у игрока</h3>' + (r.asks.length ? '<ul class="asks">' + r.asks.map(function (a) { return '<li><label><input type="checkbox" data-act="caseck" data-gid="' + esc(fo.id) + '" data-id="' + a.id + '"' + (c.checks[a.id] ? ' checked' : '') + '><span>' + esc(M(a.text)) + '</span></label></li>'; }).join('') + '</ul>' : '<p class="hint">Просить больше нечего.</p>') + '<div class="row-actions"><button class="btn primary" data-act="caseask">Копировать сообщение игроку</button><button class="btn" data-act="solveOpen" title="Записать, что помогло, и закрыть дело">Проблема решена</button></div><p class="hint" style="margin:0">Отмеченные шаги в сообщение не попадают.</p></aside></div>';
+  h += '<aside class="card answer"><h3>Ответ игроку по делу</h3>' + (r.asks.length ? '<ul class="asks">' + r.asks.map(function (a) { return '<li><label><input type="checkbox" data-act="caseck" data-gid="' + esc(fo.id) + '" data-id="' + a.id + '"' + (c.checks[a.id] ? ' checked' : '') + '><span>' + esc(M(a.text)) + '</span></label></li>'; }).join('') + '</ul>' : '<p class="hint">Просить больше нечего.</p>') + '<div class="reply-pv" id="caseReplyPv">' + esc(caseReplyText(c)) + '</div><div class="row-actions"><button class="btn primary" data-act="caseReply" title="Шаги по последнему неудачному логу и неотмеченные просьбы">Копировать ответ игроку</button><button class="btn" data-act="caseask" title="Только список того, что прислать или сделать">Только просьбы</button><button class="btn" data-act="solveOpen" title="Записать, что помогло, и закрыть дело">Проблема решена</button></div><p class="hint" style="margin:0">Отмеченные пункты в ответ не попадают.</p></aside></div>';
   var ocv = (S.kb.settings.caseOutcome || {})[fo.id], cst = caseSt(fo.id);
   h += '<section class="card"><h3 class="sec" style="margin:0">Итог дела</h3><div class="oc"><label class="nl inl">Статус<select class="sel" data-act="cstatus" data-gid="' + esc(fo.id) + '">' + Object.keys(TST).map(function (k) { return '<option value="' + k + '"' + (cst.s === k ? ' selected' : '') + '>' + TST[k] + '</option>'; }).join('') + '</select></label>' + Object.keys(OUTC).map(function (k) { return '<button class="btn sm' + (ocv && ocv.res === k ? ' on' : '') + '" data-act="coutcome" data-gid="' + esc(fo.id) + '" data-res="' + k + '">' + OUTC[k] + '</button>'; }).join('') + '</div><label class="nl">Заметки к делу<textarea class="note" data-act="cnote" data-gid="' + esc(fo.id) + '" placeholder="Ник игрока, что делали, что ответил">' + esc((S.kb.settings.caseNotes || {})[fo.id] || '') + '</textarea></label><div class="row-actions" style="justify-content:flex-start"><button class="btn sm" data-act="caseexp">Скачать отчёт по делу (HTML)</button></div><p class="hint" style="margin:0">«Помогло» и «Не помогло» учитывают отмеченные выше шаги в статистике: потом рядом с шагом в диагнозе видно, как часто он помогал у вас.</p></section>';
   h += crossCard(c.items);
@@ -6013,9 +6025,9 @@ function playerLine(p) {
   if (p.nick) a.push('ник: ' + p.nick); if (p.static) a.push('статик: ' + p.static); if (p.server) a.push('сервер: ' + p.server);
   return a.join(' · ');
 }
-function savePlayer(gid, ticket, p) {
+function savePlayer(gid, ticket, p, hashes) {
   var st = S.kb.settings, cp = st.casePlayers = st.casePlayers || {}, old = cp[gid] || {};
-  var m = { ticket: ticket || old.ticket || '', at: Date.now() }; ['id', 'name', 'username', 'nick', 'static', 'server', 'link'].forEach(function (k) { m[k] = (p && p[k]) || old[k] || ''; });
+  var m = { ticket: ticket || old.ticket || '', at: Date.now(), hashes: (old.hashes || []).concat(hashes || []).filter(function (h, i, a) { return a.indexOf(h) === i; }).slice(-20) }; ['id', 'name', 'username', 'nick', 'static', 'server', 'link'].forEach(function (k) { m[k] = (p && p[k]) || old[k] || ''; });
   cp[gid] = m;
   var cn = st.caseNotes = st.caseNotes || {}, head = 'Тикет: ' + (m.ticket || '—') + (playerLine(m) ? '\n' + playerLine(m) : '') + (m.link ? '\nСообщение: ' + m.link : '');
   var cur = cn[gid] || '', mark = /^Тикет: [^\n]*(\n(Discord|ник|статик|сервер)[^\n]*)?(\nСообщение: [^\n]*)?/;
@@ -6033,15 +6045,42 @@ async function flushExt() {
     await readFiles(files);
     S.forceGroup = null;
     S.files.forEach(function (f) { if (!before[f.id] && f.group && f.group.id === gid && !S.kb.tags[f.hash]) S.kb.tags[f.hash] = name; });
-    savePlayer(gid, name, pl); saveKB();
+    savePlayer(gid, name, pl, S.files.filter(function (f) { return f.group && f.group.id === gid; }).map(function (f) { return f.hash; })); saveKB();
     status('Из Discord (' + name + '): ' + items.map(function (x) { return x.name; }).join(', ') + '.');
   }
   render();
 }
+/* Один и тот же игрок: по ID Discord; без него — по статику (и серверу, если указан у обоих) или по нику */
+function samePlayer(a, b) {
+  if (!a || !b) return false;
+  var lo = function (s) { return String(s || '').toLowerCase().replace(/[\s_]+/g, ''); };
+  if (a.id && b.id) return a.id === b.id;
+  if (a.static && b.static) return a.static === b.static && (!a.server || !b.server || lo(a.server) === lo(b.server));
+  if (a.nick && b.nick) return lo(a.nick) === lo(b.nick);
+  return false;
+}
+function playerHistory(gid) {
+  var cp = S.kb.settings.casePlayers || {}, me = cp[gid]; if (!me) return [];
+  return Object.keys(cp).filter(function (k) { return k !== gid && samePlayer(me, cp[k]); }).map(function (k) { return Object.assign({ gid: k }, cp[k]); }).sort(function (a, b) { return (b.at || 0) - (a.at || 0); }).slice(0, 10);
+}
+/* Сравнение «тот тикет → этот»: последние логи одного типа из двух дел */
+function compareCases(ga, gb) {
+  var fa = S.files.filter(function (f) { return f.group && f.group.id === ga; }), fb = S.files.filter(function (f) { return f.group && f.group.id === gb; });
+  if (!fa.length || !fb.length) return;
+  var by = function (l) { return l.slice().sort(function (a, b) { return fileTime(a) - fileTime(b); }); }, lb = by(fb), b = lb[lb.length - 1], la = by(fa.filter(function (f) { return f.sc.kind === b.sc.kind; })), a = la[la.length - 1] || by(fa)[fa.length - 1];
+  S.cmpA = a.id; S.cmpB = b.id; S.tab = 'cmp'; render(); window.scrollTo(0, 0);
+}
+function ddmm(ms) { var d = new Date(ms || 0), z = function (n) { return (n < 10 ? '0' : '') + n; }; return z(d.getDate()) + '.' + z(d.getMonth() + 1) + '.' + String(d.getFullYear()).slice(2); }
 function casePlayerHtml(gid) {
   var p = ((S.kb.settings.casePlayers || {})[gid]); if (!p) return '';
-  var line = playerLine(p);
-  return '<p class="cplayer"><b>Тикет ' + esc(p.ticket || '') + '</b>' + (line ? ' · ' + esc(line) : '') + (p.link ? ' · <a href="' + esc(p.link) + '" target="_blank" rel="noopener">открыть в Discord</a>' : '') + '</p>';
+  var line = playerLine(p), hist = playerHistory(gid), have = {};
+  folderList().forEach(function (fo) { have[fo.id] = 1; });
+  var h = '<p class="cplayer"><b>Тикет ' + esc(p.ticket || '') + '</b>' + (line ? ' · ' + esc(line) : '') + (p.link ? ' · <a href="' + esc(p.link) + '" target="_blank" rel="noopener">открыть в Discord</a>' : '') + '</p>';
+  if (hist.length) h += '<details class="phist"><summary>Прошлые тикеты этого игрока: ' + hist.length + '</summary><ul>' + hist.map(function (x) {
+    var hs = (x.hashes || []).map(function (k) { return S.kb.hist[k]; }).filter(Boolean), top = hs.find(function (s) { return s.status !== 'ok'; }) || hs[0];
+    return '<li><span class="mono">' + ddmm(x.at) + '</span> ' + (have[x.gid] ? '<button class="linkbtn" data-act="gcase" data-id="' + esc(x.gid) + '">' + esc(x.ticket || 'тикет') + '</button>' : '<b>' + esc(x.ticket || 'тикет') + '</b>') + (top ? ' — ' + esc(String(top.headline || '').slice(0, 140)) : '') + (have[x.gid] ? ' · <button class="linkbtn" data-act="cmpCase" data-a="' + esc(x.gid) + '" data-b="' + esc(gid) + '" title="Сравнить последний лог того тикета с последним логом этого">сравнить</button>' : '') + (x.link ? ' · <a href="' + esc(x.link) + '" target="_blank" rel="noopener">Discord</a>' : '') + '</li>';
+  }).join('') + '</ul></details>';
+  return h;
 }
 async function extSettingsHtml() {
   if (!window.nativeApp || !window.nativeApp.extInfo) return '';
@@ -6232,6 +6271,8 @@ document.addEventListener('click', function (ev) {
   else if (a === 'caseexp') { var cx = caseData(); if (cx) exportHtmlDoc('delo-' + cx.fo.name.replace(/[^\w.\-а-яё]+/gi, '_').slice(0, 40), caseHtml(cx), 'html'); }
   else if (a === 'coutcome') setOutcome(t.getAttribute('data-gid'), t.getAttribute('data-res'));
   else if (a === 'copen') { S.active = +t.getAttribute('data-fid'); S.tab = 'diag'; S.sel = -1; render(); }
+  else if (a === 'cmpCase') compareCases(t.getAttribute('data-a'), t.getAttribute('data-b'));
+  else if (a === 'caseReply') { var cr = caseData(); if (cr) copyText(caseReplyText(cr), 'Ответ игроку', 'Скопируйте и отправьте игроку.', 'Ответ игроку скопирован.'); }
   else if (a === 'caseask') { var ck = caseData(); if (ck) copyText(caseAskText(ck), 'Сообщение игроку', 'Скопируйте и отправьте игроку.', 'Сообщение игроку скопировано.'); }
   else if (a === 'addLogs') $('#fileIn').click();
   else if (a === 'gadd') { S.gAdd = t.getAttribute('data-id'); $('#fileInG').click(); }
@@ -6288,7 +6329,7 @@ document.addEventListener('change', function (ev) {
   else if (t.getAttribute && t.getAttribute('data-act') === 'rfcopy') { var cr = LA.RULES[+t.value]; if (cr) { $('#rfTitle').value = cr.title || ''; $('#rfCause').value = cr.cause || ''; $('#rfFix').value = (cr.fix || []).join('\n'); $('#rfSev').value = cr.sev === 'noise' ? 'info' : cr.sev; $('#rfKind').value = cr.kind; } }
   else if (t.getAttribute && t.getAttribute('data-act') === 'cnote') { var cn = S.kb.settings.caseNotes = S.kb.settings.caseNotes || {}; if (t.value.trim()) cn[t.getAttribute('data-gid')] = t.value; else delete cn[t.getAttribute('data-gid')]; saveKB(); }
   else if (t.getAttribute && t.getAttribute('data-act') === 'cstatus') setCaseStatus(t.getAttribute('data-gid'), t.value);
-  else if (t.getAttribute && t.getAttribute('data-act') === 'caseck') { var cs = S.kb.settings.caseChecks = S.kb.settings.caseChecks || {}, gm = cs[t.getAttribute('data-gid')] = cs[t.getAttribute('data-gid')] || {}; if (t.checked) gm[t.getAttribute('data-id')] = 1; else delete gm[t.getAttribute('data-id')]; saveKB(); }
+  else if (t.getAttribute && t.getAttribute('data-act') === 'caseck') { var cs = S.kb.settings.caseChecks = S.kb.settings.caseChecks || {}, gm = cs[t.getAttribute('data-gid')] = cs[t.getAttribute('data-gid')] || {}; if (t.checked) gm[t.getAttribute('data-id')] = 1; else delete gm[t.getAttribute('data-id')]; saveKB();  var cdx = caseData(), cpv = $('#caseReplyPv'); if (cdx && cpv) cpv.textContent = caseReplyText(cdx); }
   else if (t.id === 'sysIn') { ingestSys(Array.prototype.slice.call(t.files), []); t.value = ''; }
   else if (t.id === 'fileIn') { readFiles(t.files); t.value = ''; }
   else if (t.id === 'fileInG') { S.target = S.gAdd; readFiles(t.files); t.value = ''; }
