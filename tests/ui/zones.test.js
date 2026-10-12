@@ -7,7 +7,7 @@ const H = require('./helpers'), { ok } = H;
   ok(await p.locator('#flist .fi.isact').count() === 2, 'новые логи активные');
   await p.locator('#flist .fi:not(.folder) >> nth=0').dragTo(p.locator('#arcHd')); await p.waitForTimeout(300);
   ok(await p.locator('#flist2 .fi.isarc').count() === 1, 'перетаскивание в отложенные');
-  await p.locator('#flist2 .fi.isarc').dragTo(p.locator('#actWrap')); await p.waitForTimeout(300);
+  await p.locator('#flist2 .fi.isarc').dragTo(p.locator('#actHd')); await p.waitForTimeout(300);
   ok(await p.locator('#flist2 .fi').count() === 0, 'и обратно');
   await p.clock.fastForward('26:00:00'); await p.click('[data-tab=diag]'); await p.waitForTimeout(300);
   ok(await p.locator('#flist2 .fi.isarc').count() === 1, 'через сутки лог уходит в отложенные сам, открытый остаётся активным');

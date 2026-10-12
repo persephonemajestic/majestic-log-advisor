@@ -20,7 +20,7 @@ const H = require('./helpers'), { ok } = H, fs = require('fs');
   await p.evaluate(t => { const dt = new DataTransfer(); dt.items.add(new File([t], 'client_2026-10-06_21-00-00.log', { type: 'text/plain' })); document.querySelector('#flist .fi.folder').dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true })); }, fs.readFileSync(c3, 'utf8') + '[20:12:00.000] z\n');
   await p.waitForFunction(() => document.querySelectorAll('.fdraw .fi').length === 5, null, { timeout: 15000 }).then(() => ok(true, 'файл с компьютера на папку попадает в неё'), () => ok(false, 'файл с компьютера на папку попадает в неё'));
   await p.locator('#flist .fi.folder').dragTo(p.locator('#arcHd')); await p.waitForTimeout(300);
-  ok(await p.locator('#flist2 .fi.folder').count() === 1 && await p.locator('#drB .fdraw').count() === 1, 'папка уходит в «Отложенные» вместе с содержимым');
+  ok(await p.locator('#flist2 .fi.folder').count() === 1 && await p.locator('#flist2 .fdraw').count() === 1, 'папка уходит в архив вместе с содержимым');
   await p.reload(); await p.waitForTimeout(2500);
   ok(await p.locator('.fi.folder .nm:has-text("Игрок Иванов")').count() === 1, 'папка и название восстанавливаются после перезапуска');
   await H.done(b, errs);

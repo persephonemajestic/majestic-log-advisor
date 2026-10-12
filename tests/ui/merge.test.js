@@ -12,8 +12,8 @@ const H = require('./helpers'), { ok } = H;
   ok(await p.locator('#flist > li > .fi:not(.folder)').count() === 0, 'открытый лог не дублируется снаружи закрытой папки');
   // третий лог на плитку папки, и файл с диска прямо на плитку лога
   await H.load(p, [H.mainLog('c.log', { attempts: ['ok'], date: '2026-10-08' })]);
-  ok(await p.locator('#flist .fi:not(.folder)').count() === 1, 'третий лог лежит отдельно');
-  await p.locator('#flist .fi:not(.folder)').dragTo(p.locator('#flist .fi.folder')); await p.waitForTimeout(300);
+  ok(await p.locator('#flist > li > .fi:not(.folder)').count() === 1, 'третий лог лежит отдельно');
+  await p.locator('#flist > li > .fi:not(.folder)').dragTo(p.locator('#flist .fi.folder')); await p.waitForTimeout(300);
   ok(await p.locator('#flist > li > .fi:not(.folder)').count() === 0 && await p.locator('.fdraw .fi').count() === 3, 'лог на папку: он только внутри папки, без дубля снаружи');
   await H.load(p, [H.mainLog('d.log', { attempts: ['fail'], date: '2026-10-09' })]);
   const txt = require('fs').readFileSync(H.mainLog('e.log', { attempts: ['crash'], date: '2026-10-10' }), 'utf8');

@@ -16,17 +16,17 @@ function touchActive() {
 /* ---------- Отмена последнего действия со списком ---------- */
 function pushUndo(label) {
   var st = S.kb.settings;
-  S.undo = { label: label, groups: S.files.map(function (f) { return [f.hash, f.group ? JSON.parse(JSON.stringify(f.group)) : null]; }), arc: JSON.parse(JSON.stringify(st.arcHashes || {})), act: JSON.parse(JSON.stringify(st.actAt || {})) };
+  S.undo = { label: label, groups: S.files.map(function (f) { return [f.hash, f.group ? JSON.parse(JSON.stringify(f.group)) : null]; }), arc: JSON.parse(JSON.stringify(st.arcHashes || {})), act: JSON.parse(JSON.stringify(st.actAt || {})), folders: JSON.parse(JSON.stringify(st.folders || {})) };
 }
 function undoLast() {
   var u = S.undo; if (!u) return; var st = S.kb.settings, byHash = {};
   S.files.forEach(function (f) { byHash[f.hash] = f; });
   u.groups.forEach(function (x) { var f = byHash[x[0]]; if (!f) return; if (JSON.stringify(f.group || null) !== JSON.stringify(x[1])) putGroup(f, x[1]); });
-  st.arcHashes = u.arc; st.actAt = u.act; S.undo = null; saveKB(); status('Действие «' + u.label + '» отменено.'); renderList();
+  st.arcHashes = u.arc; st.actAt = u.act; if (u.folders) st.folders = u.folders; S.undo = null; saveKB(); status('Действие «' + u.label + '» отменено.'); renderList();
 }
 function allToArc() {
   var act = S.files.filter(function (f) { return isAct(f) && !S.pins[f.id] && f.id !== S.active; }); if (!act.length) { status('Нечего откладывать: остались только открытый и закреплённые логи.'); return; }
-  pushUndo('Все в отложенные'); var ar = S.kb.settings.arcHashes = S.kb.settings.arcHashes || {}; act.forEach(function (f) { ar[f.hash] = 1; }); saveKB(); status('В отложенные перенесено логов: ' + act.length + '. Открытый и закреплённые остались.'); renderList();
+  pushUndo('Всё в архив'); var ar = S.kb.settings.arcHashes = S.kb.settings.arcHashes || {}; act.forEach(function (f) { ar[f.hash] = 1; }); saveKB(); status('В архив убрано: ' + nLogs(act.length) + '. Открытый и закреплённые остались.'); renderList();
 }
 function mergeFolders(srcGid, tgtGid) {
   var fl = folderList(), a = fl.find(function (x) { return x.id === srcGid; }), b = fl.find(function (x) { return x.id === tgtGid && x.type === 'case'; }); if (!a || !b || a.id === b.id) return;
@@ -34,7 +34,7 @@ function mergeFolders(srcGid, tgtGid) {
   dzAll().forEach(function (x) { x.classList.remove('dropok'); }); status('Папки «' + a.name + '» и «' + b.name + '» объединены, логов: ' + (a.files.length + b.files.length) + '.'); renderList();
 }
 function moveZone(files, zone) {
-  pushUndo('Перенос между полосами');
+  pushUndo('Перенос в архив или в работу');
   dzAll().forEach(function (x) { x.classList.remove('dropok'); });
   var st = S.kb.settings, ar = st.arcHashes = st.arcHashes || {}, m = st.actAt = st.actAt || {};
   files.forEach(function (f) { if (zone === 'arc') ar[f.hash] = 1; else { delete ar[f.hash]; m[f.hash] = Date.now(); } });
@@ -53,18 +53,18 @@ function mergeLogs(src, tgt, zone) {
   pushUndo('Складывание логов в папку');
   var tg = groupOf(tgt), id, name;
   if (tg && tg.type === 'case') { id = tg.id; name = tg.name; }
-  else { var d = new Date(); id = 'c:' + Date.now(); name = 'Дело ' + String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); putGroup(tgt, { id: id, name: name, type: 'case' }); }
+  else { id = 'c:' + Date.now(); name = caseName(); putGroup(tgt, { id: id, name: name, type: 'case' }); }
   putGroup(src, { id: id, name: name, type: 'case' });
-  S.open[id] = 1;
+  S.open[id] = 1; S.animOpen = id;
   var st = S.kb.settings, ar = st.arcHashes = st.arcHashes || {}, m = st.actAt = st.actAt || {};
   [src, tgt].forEach(function (f) { if (zone === 'arc') ar[f.hash] = 1; else { delete ar[f.hash]; m[f.hash] = Date.now(); } });
   dzAll().forEach(function (x) { x.classList.remove('dropok'); }); saveKB();
-  status('Логи «' + src.label + '» и «' + tgt.label + '» сложены в папку «' + name + '».'); renderList();
+  status('Логи «' + src.label + '» и «' + tgt.label + '» сложены в папку «' + name + '». Переименовать: двойной щелчок по названию в папке или F2.'); renderList();
 }
 function ejectFile(f) { pushUndo('Лог вынут из папки'); var g = f.group; putGroup(f, null); if (g) status('Лог «' + f.label + '» вынут из папки «' + g.name + '».'); renderList(); }
 function saveFolderName(gid) {
   var inp = $('#gName'), nm = inp ? inp.value.replace(/\s+/g, ' ').trim().slice(0, 60) : ''; S.renaming = null;
-  if (nm) S.files.forEach(function (f) { if (f.group && f.group.id === gid) putGroup(f, { id: gid, name: nm, type: f.group.type }); });
+  if (nm) { S.files.forEach(function (f) { if (f.group && f.group.id === gid) putGroup(f, { id: gid, name: nm, type: f.group.type }); }); var mf = manualFolders(); if (mf[gid]) { mf[gid].name = nm; saveKB(); } }
   renderList();
 }
 var dragSrc = null;
@@ -97,7 +97,7 @@ document.addEventListener('drop', function (e) {
     var sf2 = S.files.find(function (x) { return x.id === dragSrc.id; }), tf = S.files.find(function (x) { return x.id === +tc.getAttribute('data-id'); });
     dragSrc = null; document.body.classList.remove('dnd'); if (sf2 && tf) mergeLogs(sf2, tf, zone); return;
   }
-  if (dragSrc.gid) { var fo = folderList().find(function (x) { return x.id === dragSrc.gid; }); if (fo) fs = fo.files; }
+  if (dragSrc.gid) { var fo = folderList().find(function (x) { return x.id === dragSrc.gid; }); if (fo) fs = fo.files; var mfz = manualFolders()[dragSrc.gid]; if (mfz) { if (zone === 'arc') mfz.arc = 1; else delete mfz.arc; saveKB(); if (!fs.length) { dragSrc = null; document.body.classList.remove('dnd'); renderList(); return; } } }
   else { var f = S.files.find(function (x) { return x.id === dragSrc.id; }); if (f) fs = [f]; }
   dragSrc = null; document.body.classList.remove('dnd'); if (fs.length) moveZone(fs, zone);
 });

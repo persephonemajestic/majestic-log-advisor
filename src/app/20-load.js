@@ -22,10 +22,10 @@ async function addTextsRun(items, meta) {
     if (tfo) { real.forEach(function (x) { x.group = { id: tfo.id, name: tfo.name, type: 'case' }; }); caseG = tfo; }
     else if (!mtId && real.length >= 2 && !real.some(function (x) { return x.group; })) {
       var dn = new Date(), pz = function (n) { return (n < 10 ? '0' : '') + n; };
-      caseG = { id: 'c:' + Date.now(), name: 'Дело ' + pz(dn.getDate()) + '.' + pz(dn.getMonth() + 1) + ' ' + pz(dn.getHours()) + ':' + pz(dn.getMinutes()), type: 'case' };
+      caseG = { id: 'c:' + Date.now(), name: caseName(dn), type: 'case' };
       real.forEach(function (x) { x.group = { id: caseG.id, name: caseG.name, type: 'case' }; });
     }
-    if (caseG) S.open[caseG.id] = 1;
+    if (caseG) { S.open[caseG.id] = 1; S.animOpen = caseG.id; }
   }
   if (items.some(function (x) { return !x.sample; })) S.files = S.files.filter(function (f) { return !f.sample; });
   for (var i = 0; i < items.length; i++) {

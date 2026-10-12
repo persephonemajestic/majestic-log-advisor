@@ -118,8 +118,11 @@ document.addEventListener('click', function (ev) {
   else if (a === 'ruleTeam') { var rt = S.kb.custom.find(function (x) { return String(x.id) === t.getAttribute('data-id'); }); if (rt) copyText(JSON.stringify({ id: 'r' + String(rt.id), kind: rt.kind, pattern: rt.pattern, title: rt.title, sev: rt.sev, cause: rt.cause, fix: rt.fix }, null, 2), 'Правило для команды', 'Добавьте этот блок в массив rules файла rules.json в репозитории проекта (или отправьте его администратору). После публикации правило появится у всех при запуске.'); }
   else if (a === 'weekCopy') copyText(weekText(), 'Недельный отчёт', 'Скопируйте отчёт и вставьте его в сообщение.', 'Отчёт скопирован.');
   else if (a === 'weekHtml') saveText('nedelya-' + fmtDT(Date.now()).slice(0, 10) + '.html', weekHtml());
-  else if (a === 'gopen') { var gid = t.getAttribute('data-id'); if (S.open[gid]) delete S.open[gid]; else S.open[gid] = 1; renderList(); }
-  else if (a === 'gcase') { var cg = t.getAttribute('data-id'), cfo = folderList().find(function (x) { return x.id === cg; }); if (cfo) { if (!cfo.files.some(function (x) { return x.id === S.active; })) S.active = cfo.files[cfo.files.length - 1].id; S.tab = 'case'; render(); window.scrollTo(0, 0); } }
+  else if (a === 'newFolder') newFolder();
+  else if (a === 'sideToggle') toggleSide();
+  else if (a === 'gdel') deleteFolder(t.getAttribute('data-id'));
+  else if (a === 'gopen') { if (ev.target.closest('#gName')) return; if (ev.detail > 1 && t.classList.contains('folder')) return; toggleFolder(t.getAttribute('data-id')); }
+  else if (a === 'gcase') openCaseTab(t.getAttribute('data-id'));
   else if (a === 'cjump') { var cf = +t.getAttribute('data-fid'); if (S.files.some(function (x) { return x.id === cf; })) { S.active = cf; jump(+t.getAttribute('data-line')); } }
   else if (a === 'caseexp') { var cx = caseData(); if (cx) exportHtmlDoc('delo-' + cx.fo.name.replace(/[^\w.\-а-яё]+/gi, '_').slice(0, 40), caseHtml(cx), 'html'); }
   else if (a === 'coutcome') setOutcome(t.getAttribute('data-gid'), t.getAttribute('data-res'));

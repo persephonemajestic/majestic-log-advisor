@@ -13,7 +13,7 @@ const H = require('./helpers'), { ok } = H;
   ok(await p.locator('#flist .fi.folder').count() === 1 && await p.locator('.fdraw .fi').count() === 4, 'папка на папку: объединились, в одной папке 4 лога');
   await p.click('[data-act=undo]'); await p.waitForTimeout(300);
   ok(await p.locator('#flist .fi.folder').count() === 2, 'отмена вернула две папки');
-  await p.click('[data-act=allArc]'); await p.waitForTimeout(300);
+  await p.click('#actHd .zmenu summary'); await p.click('[data-act=allArc]'); await p.waitForTimeout(300);
   ok(await p.locator('#flist2 .fi').count() >= 1, 'все активные ушли в отложенные');
   await p.click('[data-act=undo]'); await p.waitForTimeout(300);
   ok(await p.locator('#flist2 .fi').count() === 0, 'отмена вернула логи в активные');
