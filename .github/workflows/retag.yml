@@ -1,0 +1,19 @@
+# Одноразово: переносит все метки выпусков на текущий коммит main (выпуски и файлы в них сохраняются).
+name: Перенос меток
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/retag.yml']
+permissions:
+  contents: write
+jobs:
+  retag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Перенести метки
+        run: |
+          git fetch --force --tags origin
+          for t in $(git tag); do git tag -f "$t" "$GITHUB_SHA"; done
+          git push --force origin --tags
+          git ls-remote --tags origin
