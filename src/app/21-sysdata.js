@@ -50,7 +50,7 @@ function openSysOnly() {
   S.sysOnly = S.sysOnly || { label: 'Дамп без лога', sys: null };
   $('#panelHost').innerHTML = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" id="sysOnlyBox" aria-label="Разбор дампа без лога" data-act="noop" style="max-width:880px;width:100%;max-height:90vh;overflow:auto"><b>Разбор дампа или журнала без лога</b><p class="hint" style="margin:4px 0 8px">Перетащите сюда .dmp, .evtx, events.txt или zip краш-отчёта. Лог не нужен.</p><section id="sysBox">' + sysHtml(S.sysOnly) + '</section><div class="row-actions"><button class="btn sm" data-act="closePanel">Закрыть</button></div></div></div>';
 }
-async function readFiles(list, onlyLogs) {
+async function readFiles(list, onlyLogs, opts) {
   if (sysOnlyOn()) { await ingestSys(Array.prototype.slice.call(list), []); return; }
   var arr = Array.prototype.slice.call(list), items = [], sysFiles = [], sysTexts = [];
   if (onlyLogs) arr = arr.filter(function (x) { return /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i.test(x.name); });
@@ -74,7 +74,7 @@ async function readFiles(list, onlyLogs) {
       }
     } catch (e) { status('Не удалось прочитать ' + arr[i].name); }
   }
-  if (items.length) await addTexts(items);
+  if (items.length) await addTexts(items, opts && opts.forceGroup ? { forceGroup: opts.forceGroup } : undefined);
   if (sysFiles.length || sysTexts.length) await ingestSys(sysFiles, sysTexts);
 }
 function walkEntries(ents) {

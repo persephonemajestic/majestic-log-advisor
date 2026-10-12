@@ -55,6 +55,6 @@ jobs:
           code=0
           node tests/ui/run.js 2>&1 | tee ui.log || code=$?
           # строки с ошибками — в аннотации запуска, чтобы их было видно без скачивания журнала
-          grep -nE "FAIL|Error|Timeout|exceeded|Cannot|SKIP" ui.log | head -9 | sed 's/^/::error::/' || true
+          grep -E "^FAILED|^UI FAIL" ui.log | head -9 | sed 's/^/::error::/' || true
           tail -6 ui.log | sed 's/^/::warning::/' || true
           exit $code

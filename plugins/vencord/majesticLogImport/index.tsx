@@ -33,9 +33,11 @@ function messagesOf(channelId: string): any[] {
 }
 
 /* все логи и дампы из загруженных сообщений ветки */
+/* игрок ветки: автор первого сообщения не от бота (обычно тот, кто открыл тикет); файлы саппортов не берём */
+function playerIdOf(channelId: string) { const m = messagesOf(channelId).find(x => x?.author && !x.author.bot); return m ? String(m.author.id) : ""; }
 function attachmentsOf(channelId: string) {
-    const out: { messageId: string; url: string; name: string; }[] = [], seen: Record<string, 1> = {};
-    for (const m of messagesOf(channelId)) for (const a of m?.attachments ?? []) {
+    const out: { messageId: string; url: string; name: string; }[] = [], seen: Record<string, 1> = {}, pid = playerIdOf(channelId);
+    for (const m of messagesOf(channelId)) for (const a of (pid && m?.author?.id !== pid ? [] : m?.attachments ?? [])) {
         const name = a.filename ?? a.name ?? "", url = a.url ?? "";
         if (!FILE_RE.test(name) || !/^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//.test(url) || seen[url]) continue;
         seen[url] = 1; out.push({ messageId: m.id, url, name });
@@ -54,12 +56,12 @@ function playerOf(channelId: string, messageId: string) {
     /* текст пишет сам игрок; формы тикета присылает бот — их поля тоже берём, сообщения саппортов — нет */
     const texts = list.filter(x => x?.author?.id === au.id).map(x => String(x.content ?? ""));
     if (msg?.content) texts.push(String(msg.content));
-    const fields: { name: string; value: string; }[] = [];
+    const fields: { name: string; value: string; }[] = [], bot: string[] = [];
     for (const x of list) if (x?.author?.id === au.id || x?.author?.bot) for (const em of x.embeds ?? []) {
         for (const f of em.fields ?? []) fields.push({ name: f.name ?? f.rawName ?? "", value: f.value ?? f.rawValue ?? "" });
-        if (x?.author?.bot) texts.push(String(em.description ?? em.rawDescription ?? ""));
+        if (x?.author?.bot) bot.push(String(em.description ?? em.rawDescription ?? ""));
     }
-    return { ticket: ch?.name ?? "", ticketId: channelId, player: { ...base, ...extractPlayer(texts, fields) } };
+    return { ticket: ch?.name ?? "", ticketId: channelId, player: { ...base, ...extractPlayer(texts, fields, bot) } };
 }
 
 function loadQ(): { at: number; body: Body; }[] { try { return (JSON.parse(localStorage.getItem(QKEY) ?? "[]") as any[]).filter(x => Date.now() - x.at < MAX_AGE); } catch { return []; } }
@@ -143,7 +145,7 @@ function scan() {
     if (all && (!first || all.previousElementSibling !== first || all.dataset.ch !== ch || n < 2)) all.remove();
     if (first && n >= 2 && !document.querySelector(".mla-all")) {
         const b = document.createElement("button");
-        b.className = "mla-btn mla-all"; b.type = "button"; b.dataset.ch = ch; b.textContent = "Все файлы тикета (" + n + ")"; b.title = "Отправить в анализатор все логи и дампы из этой ветки";
+        b.className = "mla-btn mla-all"; b.type = "button"; b.dataset.ch = ch; b.textContent = "Все файлы тикета (" + n + ")"; b.title = "Отправить в анализатор все логи и дампы игрока из этой ветки (файлы саппортов не берутся)";
         b.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); sendAll(ch, b); });
         first.insertAdjacentElement("afterend", b);
     }

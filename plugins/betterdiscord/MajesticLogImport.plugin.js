@@ -15,27 +15,40 @@ const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
 const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.1.0";
 const UPDATE_URL = "https://raw.githubusercontent.com/persephonemajestic/majestic-log-advisor/main/plugins/betterdiscord/MajesticLogImport.plugin.js";
 
-/* Данные игрока из текста: подписанные поля («Ник:», «Статик:», «Сервер:») и ник вида Имя_Фамилия */
+/* Данные игрока из текста: подписанные поля («Ник:», «Статик:», «Сервер:») и ник вида Имя_Фамилия.
+   Сначала свои сообщения игрока, потом поля формы тикета, потом текст бота; строки про саппорта пропускаются. */
 const STOP = /\s*(?:[,;|/(]|\s-\s|\s—\s|$|\s+(?:ник|nick|статик|static|стат|id|сервер|server|discord|дискорд|проблема|описание)(?=[\s:.,;!?*-]|$))/i;
+const STAFF = /саппорт|support|модератор|администратор|админ|staff|принял|сотрудник|агент|хелпер|helper/i;
+const PRE = "(?:^|[^A-Za-zА-Яа-яЁё_])", SEP = "([\\s*]*[:\\-—№#][\\s*]*|\\s+)";
+const NICK_RE = new RegExp(PRE + "(?:ник(?:нейм)?|nick(?:name)?|имя\\s+(?:в\\s+игре|персонажа)|игровое\\s+имя)" + SEP + "([A-Za-zА-Яа-яЁё]{2,20}[ _][A-Za-zА-Яа-яЁё]{2,24})(?![A-Za-zА-Яа-яЁё])", "i");
+const STATIC_RE = new RegExp(PRE + "(?:статик|static(?:\\s*id)?|стат\\.?|статический\\s+(?:id|номер)|id\\s+персонажа|паспорт)[\\s:\\-—№#*]*(\\d{1,7})(?!\\d)", "i");
+const SERVER_RE = new RegExp(PRE + "(?:сервер|server)(?![A-Za-zА-Яа-яЁё])" + SEP + "([A-Za-zА-Яа-яЁё0-9][A-Za-zА-Яа-яЁё0-9 \\-]{0,30})", "i");
 function cut(v) { v = String(v || "").split(/\n|⏎/)[0]; const m = STOP.exec(v); return (m ? v.slice(0, m.index) : v).replace(/[*_`~]+$/, "").replace(/^[*_`~:\s-]+/, "").trim(); }
-function extractPlayer(texts, fields) {
+const punct = (s) => /[:\-—№#]/.test(s);
+function fromText(p, t, own) {
+    if (!p.nick) {
+        const n = NICK_RE.exec(t);
+        if (n && (punct(n[1]) || /^[A-Z][a-z]+[ _][A-Z][a-z]+$/.test(n[2]))) p.nick = n[2];
+        else if (own) { const u = /(?:^|[^A-Za-z_])([A-Z][a-z]{1,15}_[A-Z][a-z]{1,20})(?![A-Za-z_])/.exec(t); if (u) p.nick = u[1]; }
+    }
+    if (!p.static) { const s = STATIC_RE.exec(t); if (s) p.static = s[1]; }
+    if (!p.server) {
+        const v = SERVER_RE.exec(t);
+        if (v) { const x = cut(v[2]); if (x && x.length <= 24 && (punct(v[1]) || /^[A-Z0-9]/.test(x)) && !/^(не|нет|любой|все)(\s|$)/i.test(x)) p.server = x; }
+        if (!p.server) { const d = /(?:^|[^\d])(\d{1,2})\s*(?:-?(?:й|ой|ый|м|ом))?\s*сервер/i.exec(t); if (d) p.server = d[1]; }
+    }
+}
+function extractPlayer(texts, fields, botTexts) {
     const p = { nick: "", static: "", server: "" };
+    for (const t of texts || []) fromText(p, String(t || ""), true);
     for (const f of fields || []) {
-        const n = String(f.name || "").toLowerCase(), v = String(f.value || "").trim();
-        if (!p.nick && /ник|nick|имя/.test(n)) { const x = cut(v); if (/^[A-Za-zА-Яа-яЁё]{2,20}[ _][A-Za-zА-Яа-яЁё]{2,24}$/.test(x)) p.nick = x; }
-        else if (!p.static && /статик|static|паспорт|id\s*персонажа/.test(n)) { const d = /\d{1,7}/.exec(v); if (d) p.static = d[0]; }
-        else if (!p.server && /сервер|server/.test(n)) { const x = cut(v); if (x && x.length <= 24) p.server = x; }
+        const n = String(f.name || ""), v = String(f.value || "").trim();
+        if (STAFF.test(n)) continue;
+        if (!p.nick && /(?:^|[^а-яёa-z])ник|nick|игров\S*\s+имя|имя\s+(?:в\s+игре|персонажа)/i.test(n)) { const x = cut(v); if (/^[A-Za-zА-Яа-яЁё]{2,20}[ _][A-Za-zА-Яа-яЁё]{2,24}$/.test(x)) p.nick = x; }
+        else if (!p.static && /статик|static|паспорт|id\s*персонажа/i.test(n)) { const d = /\d{1,7}/.exec(v); if (d) p.static = d[0]; }
+        else if (!p.server && /сервер|server/i.test(n)) { const x = cut(v); if (x && x.length <= 24) p.server = x; }
     }
-    for (const t0 of texts) {
-        const t = String(t0 || "");
-        if (!p.nick) { const n = /(?:ник(?:нейм)?|nick(?:name)?|имя\s+(?:в\s+игре|персонажа)|игровое\s+имя)[\s:\-—*]*([A-Za-zА-Яа-яЁё]{2,20}[ _][A-Za-zА-Яа-яЁё]{2,24})(?![A-Za-zА-Яа-яЁё])/i.exec(t) || /\b([A-Z][a-z]{1,15}_[A-Z][a-z]{1,20})\b/.exec(t); if (n) p.nick = n[1]; }
-        if (!p.static) { const s = /(?:статик|static(?:\s*id)?|стат\.?|статический\s+(?:id|номер)|id\s+персонажа|паспорт)[\s:\-—№#*]*(\d{1,7})(?!\d)/i.exec(t); if (s) p.static = s[1]; }
-        if (!p.server) {
-            const v = /(?:сервер|server)(?![A-Za-zА-Яа-яЁё])[\s:\-—№#*]*([A-Za-zА-Яа-яЁё0-9][A-Za-zА-Яа-яЁё0-9 \-]{0,30})/i.exec(t);
-            if (v) { const x = cut(v[1]); if (x && !/^(не|нет|любой|все)(\s|$)/i.test(x)) p.server = x; }
-            else { const d = /(?:^|[^\d])(\d{1,2})\s*(?:-?(?:й|ой|ый|м|ом))?\s*сервер/i.exec(t); if (d) p.server = d[1]; }
-        }
-    }
+    for (const t of botTexts || []) for (const line of String(t || "").split(/\n/)) if (!STAFF.test(line)) fromText(p, line, false);
     return p;
 }
 const cmpVer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number); for (let i = 0; i < 3; i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d; } return 0; };
@@ -74,9 +87,11 @@ module.exports = class MajesticLogImport {
     }
     messages(channelId) { let list = []; try { const all = this.store("MessageStore")?.getMessages(channelId); list = all?.toArray ? all.toArray() : (all?._array || []); } catch (e) {} return list; }
     /* все логи и дампы из загруженных сообщений ветки */
+    /* игрок ветки: автор первого сообщения не от бота (обычно тот, кто открыл тикет) */
+    playerId(channelId) { const m = this.messages(channelId).find(x => x && x.author && !x.author.bot); return m ? m.author.id : ""; }
     attachments(channelId) {
-        const out = [], seen = {};
-        for (const m of this.messages(channelId)) for (const a of (m && m.attachments) || []) {
+        const out = [], seen = {}, pid = this.playerId(channelId);
+        for (const m of this.messages(channelId)) for (const a of (pid && m?.author?.id !== pid ? [] : (m && m.attachments) || [])) {
             const name = a.filename || a.name || "", url = a.url || "";
             if (!FILE_RE.test(name) || !/^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//.test(url) || seen[url]) continue;
             seen[url] = 1; out.push({ messageId: m.id, url, name });
@@ -108,7 +123,7 @@ module.exports = class MajesticLogImport {
         if (all && (!firstBtn || all.previousElementSibling !== firstBtn || all.dataset.ch !== firstCh || n < 2)) all.remove();
         if (firstBtn && n >= 2 && !document.querySelector(".mla-all")) {
             const b = document.createElement("button");
-            b.className = "mla-btn mla-all"; b.type = "button"; b.dataset.ch = firstCh; b.textContent = "Все файлы тикета (" + n + ")"; b.title = "Отправить в анализатор все логи и дампы из этой ветки";
+            b.className = "mla-btn mla-all"; b.type = "button"; b.dataset.ch = firstCh; b.textContent = "Все файлы тикета (" + n + ")"; b.title = "Отправить в анализатор все логи и дампы игрока из этой ветки (файлы саппортов не берутся)";
             b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); this.sendAll(firstCh, b); });
             firstBtn.insertAdjacentElement("afterend", b);
         }
@@ -123,12 +138,12 @@ module.exports = class MajesticLogImport {
         /* текст пишет сам игрок; формы тикета присылает бот — их поля тоже берём, сообщения саппортов — нет */
         const texts = list.filter(x => x?.author?.id === au.id).map(x => String(x.content || ""));
         if (msg?.content) texts.push(String(msg.content));
-        const fields = [];
+        const fields = [], bot = [];
         for (const x of list) if (x?.author?.id === au.id || x?.author?.bot) for (const em of x.embeds || []) {
             for (const f of em.fields || []) fields.push({ name: f.name || f.rawName || "", value: f.value || f.rawValue || "" });
-            if (x?.author?.bot) texts.push(String(em.description || em.rawDescription || ""));
+            if (x?.author?.bot) bot.push(String(em.description || em.rawDescription || ""));
         }
-        return { ticket: ch?.name || "", ticketId: channelId, player: Object.assign(base, extractPlayer(texts, fields)) };
+        return { ticket: ch?.name || "", ticketId: channelId, player: Object.assign(base, extractPlayer(texts, fields, bot)) };
     }
 
     async post(body) {
@@ -192,7 +207,7 @@ module.exports = class MajesticLogImport {
             const r = await this.fetch(UPDATE_URL + "?t=" + Date.now()); if (!r.ok) return;
             const src = await r.text(), v = (/@version\s+([\d.]+)/.exec(src) || [])[1];
             const cur = this.meta.version || VERSION;
-            if (!v || cmpVer(v, cur) <= 0 || !/@name\s+MajesticLogImport\b/.test(src) || !/module\.exports\s*=\s*class\s+MajesticLogImport/.test(src)) return;
+            if (!v || cmpVer(v, cur) <= 0 || src.length < 5000 || !/@name\s+MajesticLogImport\b/.test(src) || !/module\.exports\s*=\s*class\s+MajesticLogImport/.test(src) || !/module\.exports\.extractPlayer = extractPlayer;\s*$/.test(src)) return;
             if (BdApi.Data.load("MajesticLogImport", "updated") === v) return;
             let wrote = false;
             try {

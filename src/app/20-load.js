@@ -9,13 +9,16 @@ function bigPause(it, i, n, meta) {
     return yieldUI();
   };
 }
-async function addTexts(items, meta) {
+/* Загрузки идут строго по очереди: пока разбирается большой лог, следующая загрузка ждёт (без гонок дублей и папок) */
+var LOADQ = Promise.resolve();
+function addTexts(items, meta) { var run = function () { return addTextsRun(items, meta); }, p = LOADQ.then(run, run); LOADQ = p.catch(function () {}); return p; }
+async function addTextsRun(items, meta) {
   meta = meta || {}; var added = 0, skipped = [], newF = [], caseG = null, mtId = S.mergeTarget || null, touched = [];
   S.mergeTarget = null;
   if (!meta.restore) {
     var tgId = S.target; S.target = null;
     var real = items.filter(function (x) { return !x.sample; }), tfo = tgId && folderList().find(function (x) { return x.id === tgId && x.type === 'case'; });
-    if (!tfo && S.forceGroup) { var fg = S.forceGroup; tfo = folderList().find(function (x) { return x.id === fg.id; }) || fg; }
+    if (!tfo && meta.forceGroup) { var fg = meta.forceGroup; tfo = folderList().find(function (x) { return x.id === fg.id; }) || fg; }
     if (tfo) { real.forEach(function (x) { x.group = { id: tfo.id, name: tfo.name, type: 'case' }; }); caseG = tfo; }
     else if (!mtId && real.length >= 2 && !real.some(function (x) { return x.group; })) {
       var dn = new Date(), pz = function (n) { return (n < 10 ? '0' : '') + n; };
@@ -35,6 +38,7 @@ async function addTexts(items, meta) {
     if (it.text.length > 4000000) await yieldUI();
     var an = await LA.analyzeAsync(it.text, it.name, bigPause(it, i, items.length, meta)), parsed = an.parsed, sc = an.sc; an = null;
     if (it.text.length > 4000000) await yieldUI();
+    var dup2 = S.files.find(function (f) { return f.hash === hash; }); if (dup2) { touched.push(dup2); skipped.push(niceName(it.name) + ' (то же содержимое, что ' + dup2.label + ')'); continue; }
     var f = { id: ++S.uid, name: it.name, label: niceName(it.name), size: it.size, mtime: it.mtime || 0, added: it.added || Date.now(), group: it.group || null, hash: hash, sample: !!it.sample, text: it.text, parsed: parsed, sc: sc, view: null, marks: [] };
     if (it.sys) f.sys = it.sys;
     if (!f.sample) { LA.learn(S.kb, hash, sc); recordHist(f); }

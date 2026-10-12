@@ -16,7 +16,7 @@ const PAGE = `<!doctype html><html><body>
 const MOCK = () => {
   const ch = { 100: { id: '100', name: 'ticket-1234', guild_id: '9', type: 11, isThread: () => true }, 200: { id: '200', name: 'ticket-777', guild_id: '9', type: 11, isThread: () => true }, 300: { id: '300', name: 'general', guild_id: '9', type: 0, isThread: () => false } };
   const au = { id: '42', username: 'ivan', globalName: 'Иван' };
-  const msgs = { 100: [{ id: '0', author: au, content: 'Ник: Ivan_Petrov, статик 55123, сервер Orlando' }, { id: '1', author: au, content: 'вот лог', attachments: [{ filename: 'client.log', url: 'https://cdn.discordapp.com/attachments/100/5/client.log?ex=1' }, { filename: 'photo.png', url: 'https://cdn.discordapp.com/attachments/100/6/photo.png' }] }, { id: '2', author: { id: '7' }, content: 'Ник: Support_Guy', attachments: [{ filename: 'crash.zip', url: 'https://cdn.discordapp.com/attachments/100/7/crash.zip' }] }] };
+  const msgs = { 100: [{ id: '0', author: au, content: 'Ник: Ivan_Petrov, статик 55123, сервер Orlando' }, { id: '1', author: au, content: 'вот лог', attachments: [{ filename: 'client.log', url: 'https://cdn.discordapp.com/attachments/100/5/client.log?ex=1' }, { filename: 'photo.png', url: 'https://cdn.discordapp.com/attachments/100/6/photo.png' }] }, { id: '2', author: { id: '7' }, content: 'Ник: Support_Guy', attachments: [{ filename: 'crash.zip', url: 'https://cdn.discordapp.com/attachments/100/7/crash.zip' }] }, { id: '3', author: au, content: 'и ещё', attachments: [{ filename: 'main.log', url: 'https://cdn.discordapp.com/attachments/100/10/main.log' }] }] };
   window.__stores = { ChannelStore: { getChannel: (id) => ch[id] }, JoinedThreadsStore: { hasJoined: (id) => id === '100' || id === '300' },
     MessageStore: { getMessage: (c, m) => (msgs[c] || []).find(x => x.id === m), getMessages: (c) => ({ toArray: () => msgs[c] || [] }) } };
   window.__toasts = []; window.__posts = []; window.__appUp = true; window.__tokenOk = 'secret';
@@ -31,13 +31,21 @@ const EXCASES = [
   [['**Ник:** John_Smith\n**Сервер:** Los Angeles\n**Static ID:** 4433'], [], ['John_Smith', '4433', 'Los Angeles']],
   [[], [{ name: 'Игровой ник', value: 'Anna Lee' }, { name: 'Статик', value: '#7788' }, { name: 'Сервер', value: 'Chicago' }], ['Anna Lee', '7788', 'Chicago']],
   [['сервер не важен, ник: Max_Payne'], [], ['Max_Payne', '', '']],
-  [['Сервер - Detroit | ник - Bob_Marley'], [], ['Bob_Marley', '', 'Detroit']]
+  [['Сервер - Detroit | ник - Bob_Marley'], [], ['Bob_Marley', '', 'Detroit']],
+  [['в понедельник вылетает игра'], [], ['', '', '']],
+  [['Сотрудник Petr Ivanov помог'], [], ['', '', '']],
+  [['зашёл на сервер и вылетело'], [], ['', '', '']],
+  [['не могу зайти на сервер после обновления'], [], ['', '', '']],
+  [[], [{ name: 'Ник саппорта', value: 'Kate_Support' }, { name: 'Имя пользователя', value: 'ivan_petrov' }], ['', '', '']],
+  [['Ник: Ivan_Petrov'], [{ name: 'Игровой ник', value: 'Anna Lee' }], ['Ivan_Petrov', '', '']],
+  [[], [], ['John_Doe', '', ''], ['Тикет открыт\nНик: John_Doe\nПринял саппорт: Kate_Support']],
+  [[], [], ['', '', ''], ['Саппорт Kate_Support взял тикет']]
 ];
 {
   global.BdApi = {}; const bdx = require(path.join(ROOT, 'plugins/betterdiscord/MajesticLogImport.plugin.js')).extractPlayer; delete global.BdApi;
   let vcx = null; if (esb) { const o = path.join(require('os').tmpdir(), 'mla-ex.js'); require(esb).buildSync({ entryPoints: [path.join(ROOT, 'plugins/vencord/majesticLogImport/extract.ts')], bundle: true, format: 'cjs', platform: 'node', outfile: o, logLevel: 'warning' }); vcx = require(o).extractPlayer; }
   let exBad = 0;
-  for (const [t, f, e] of EXCASES) for (const [k, fn] of [['BetterDiscord', bdx], ['Vencord', vcx]]) { if (!fn) continue; const r = fn(t, f); if ([r.nick, r.static, r.server].join('|') !== e.join('|')) { exBad++; console.log('FAIL ' + k + ': ' + JSON.stringify(t.concat(f.map(x => x.name + ': ' + x.value))) + ' → ' + JSON.stringify(r)); } }
+  for (const [t, f, e, bt] of EXCASES) for (const [k, fn] of [['BetterDiscord', bdx], ['Vencord', vcx]]) { if (!fn) continue; const r = fn(t, f, bt); if ([r.nick, r.static, r.server].join('|') !== e.join('|')) { exBad++; console.log('FAIL ' + k + ': ' + JSON.stringify(t.concat(f.map(x => x.name + ': ' + x.value))) + ' → ' + JSON.stringify(r)); } }
   console.log((exBad ? 'FAIL ' : 'PASS ') + 'ник, статик и сервер из текста и формы тикета: ' + EXCASES.length + ' случаев' + (vcx ? ', обе версии' : ''));
   if (exBad) process.exitCode = 1;
 }
@@ -90,7 +98,7 @@ const EXCASES = [
     await p.evaluate(() => { window.__posts = []; window.__toasts = []; });
     await p.click('.mla-all'); await p.waitForTimeout(300);
     const allp = await p.evaluate(() => window.__posts.map(x => x.name + '|' + x.ticket).sort().join(','));
-    ok(allp === 'client.log|ticket-1234,crash.zip|ticket-1234', kind + ': «Все файлы тикета» отправляет все логи и архивы ветки (' + allp + ')');
+    ok(allp === 'client.log|ticket-1234,main.log|ticket-1234', kind + ': «Все файлы тикета» отправляет все файлы игрока, без файла саппорта (' + allp + ')');
     ok(await p.evaluate(() => window.__toasts.some(t => /отправлено 2/.test(t[0]))), kind + ': итог отправки показан');
     await p.evaluate(() => window.__p.stop());
     ok(await p.locator('.mla-btn').count() === 0, kind + ': при выключении плагина кнопки убираются');

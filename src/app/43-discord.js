@@ -2,7 +2,8 @@
    Оболочка скачивает вложение и присылает его сюда. Файлы одного тикета складываются в папку-дело с названием тикета,
    тикет становится меткой лога, данные игрока (Discord, ник, статик, сервер, ссылка) сохраняются в деле. Только локально. */
 var extQ = [], extT = 0;
-function onExtImport(it) { if (!it || !it.data) return; extQ.push(it); clearTimeout(extT); extT = setTimeout(flushExt, 700); }
+var EXTQ = Promise.resolve();
+function onExtImport(it) { if (!it || !it.data) return; extQ.push(it); clearTimeout(extT); extT = setTimeout(function () { EXTQ = EXTQ.then(flushExt, flushExt).catch(function () {}); }, 700); }
 function playerLine(p) {
   if (!p) return '';
   var a = [];
@@ -23,12 +24,11 @@ async function flushExt() {
   batch.forEach(function (it) { var k = it.ticketId || it.ticket || 'misc'; (by[k] = by[k] || []).push(it); });
   for (var k in by) {
     var items = by[k], t0 = items[0], gid = 'dc:' + (t0.ticketId || k), name = t0.ticket || 'Тикет Discord';
-    var pl = null; items.forEach(function (x) { if (x.player) pl = x.player; });
+    /* игрок дела — тот, чьих файлов больше (саппорт мог приложить свой файл в ту же ветку) */
+    var cnt = {}, pl = null, best = 0; items.forEach(function (x) { if (!x.player) return; var k = x.player.id || x.player.nick || '?'; cnt[k] = (cnt[k] || 0) + 1; if (cnt[k] > best) { best = cnt[k]; pl = x.player; } });
     var files = items.map(function (x) { return new File([x.data], x.name, { lastModified: Date.now() }); });
     var before = {}; S.files.forEach(function (f) { before[f.id] = 1; });
-    S.forceGroup = { id: gid, name: name, type: 'case' };
-    await readFiles(files);
-    S.forceGroup = null;
+    await readFiles(files, false, { forceGroup: { id: gid, name: name, type: 'case' } });
     S.files.forEach(function (f) { if (!before[f.id] && f.group && f.group.id === gid && !S.kb.tags[f.hash]) S.kb.tags[f.hash] = name; });
     savePlayer(gid, name, pl, S.files.filter(function (f) { return f.group && f.group.id === gid; }).map(function (f) { return f.hash; })); saveKB();
     status('Из Discord (' + name + '): ' + items.map(function (x) { return x.name; }).join(', ') + '.');

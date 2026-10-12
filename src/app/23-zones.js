@@ -255,8 +255,9 @@ function caseReplyText(c) {
   var bad = c.fo.files.filter(function (x) { return x.sc.verdict.status !== 'ok'; }).sort(function (a, b) { return fileTime(a) - fileTime(b); }), last = bad[bad.length - 1];
   if (!last) return caseAskText(c);
   var more = todo.length ? 'Также, пожалуйста:\n' + todo.map(function (a, i) { return (i + 1) + ') ' + a.text; }).join('\n') + '\n\n' : '';
-  var rt = M(LA.composeReply(last.sc, { kb: S.kb, hello: st.hello, bye: '\u0001', extra: sysExtra(last), folderMods: folderMods(last) })).replace('\u0001', more + (st.bye || LA.REPLY_BYE));
-  return st.replyShort ? shortenReply(rt) : rt;
+  var rt = M(LA.composeReply(last.sc, { kb: S.kb, hello: st.hello, bye: '\u0001', extra: sysExtra(last), folderMods: folderMods(last) }));
+  if (st.replyShort) rt = shortenReply(rt);
+  return rt.replace('\u0001', more + (st.bye || LA.REPLY_BYE));
 }
 function renderCase(f) {
   var c = caseData(); if (!c) return renderDiag(f);

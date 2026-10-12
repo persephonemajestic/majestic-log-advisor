@@ -3574,13 +3574,16 @@ function bigPause(it, i, n, meta) {
     return yieldUI();
   };
 }
-async function addTexts(items, meta) {
+/* Загрузки идут строго по очереди: пока разбирается большой лог, следующая загрузка ждёт (без гонок дублей и папок) */
+var LOADQ = Promise.resolve();
+function addTexts(items, meta) { var run = function () { return addTextsRun(items, meta); }, p = LOADQ.then(run, run); LOADQ = p.catch(function () {}); return p; }
+async function addTextsRun(items, meta) {
   meta = meta || {}; var added = 0, skipped = [], newF = [], caseG = null, mtId = S.mergeTarget || null, touched = [];
   S.mergeTarget = null;
   if (!meta.restore) {
     var tgId = S.target; S.target = null;
     var real = items.filter(function (x) { return !x.sample; }), tfo = tgId && folderList().find(function (x) { return x.id === tgId && x.type === 'case'; });
-    if (!tfo && S.forceGroup) { var fg = S.forceGroup; tfo = folderList().find(function (x) { return x.id === fg.id; }) || fg; }
+    if (!tfo && meta.forceGroup) { var fg = meta.forceGroup; tfo = folderList().find(function (x) { return x.id === fg.id; }) || fg; }
     if (tfo) { real.forEach(function (x) { x.group = { id: tfo.id, name: tfo.name, type: 'case' }; }); caseG = tfo; }
     else if (!mtId && real.length >= 2 && !real.some(function (x) { return x.group; })) {
       var dn = new Date(), pz = function (n) { return (n < 10 ? '0' : '') + n; };
@@ -3600,6 +3603,7 @@ async function addTexts(items, meta) {
     if (it.text.length > 4000000) await yieldUI();
     var an = await LA.analyzeAsync(it.text, it.name, bigPause(it, i, items.length, meta)), parsed = an.parsed, sc = an.sc; an = null;
     if (it.text.length > 4000000) await yieldUI();
+    var dup2 = S.files.find(function (f) { return f.hash === hash; }); if (dup2) { touched.push(dup2); skipped.push(niceName(it.name) + ' (то же содержимое, что ' + dup2.label + ')'); continue; }
     var f = { id: ++S.uid, name: it.name, label: niceName(it.name), size: it.size, mtime: it.mtime || 0, added: it.added || Date.now(), group: it.group || null, hash: hash, sample: !!it.sample, text: it.text, parsed: parsed, sc: sc, view: null, marks: [] };
     if (it.sys) f.sys = it.sys;
     if (!f.sample) { LA.learn(S.kb, hash, sc); recordHist(f); }
@@ -3711,7 +3715,7 @@ function openSysOnly() {
   S.sysOnly = S.sysOnly || { label: 'Дамп без лога', sys: null };
   $('#panelHost').innerHTML = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" id="sysOnlyBox" aria-label="Разбор дампа без лога" data-act="noop" style="max-width:880px;width:100%;max-height:90vh;overflow:auto"><b>Разбор дампа или журнала без лога</b><p class="hint" style="margin:4px 0 8px">Перетащите сюда .dmp, .evtx, events.txt или zip краш-отчёта. Лог не нужен.</p><section id="sysBox">' + sysHtml(S.sysOnly) + '</section><div class="row-actions"><button class="btn sm" data-act="closePanel">Закрыть</button></div></div></div>';
 }
-async function readFiles(list, onlyLogs) {
+async function readFiles(list, onlyLogs, opts) {
   if (sysOnlyOn()) { await ingestSys(Array.prototype.slice.call(list), []); return; }
   var arr = Array.prototype.slice.call(list), items = [], sysFiles = [], sysTexts = [];
   if (onlyLogs) arr = arr.filter(function (x) { return /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i.test(x.name); });
@@ -3735,7 +3739,7 @@ async function readFiles(list, onlyLogs) {
       }
     } catch (e) { status('Не удалось прочитать ' + arr[i].name); }
   }
-  if (items.length) await addTexts(items);
+  if (items.length) await addTexts(items, opts && opts.forceGroup ? { forceGroup: opts.forceGroup } : undefined);
   if (sysFiles.length || sysTexts.length) await ingestSys(sysFiles, sysTexts);
 }
 function walkEntries(ents) {
@@ -4085,8 +4089,9 @@ function caseReplyText(c) {
   var bad = c.fo.files.filter(function (x) { return x.sc.verdict.status !== 'ok'; }).sort(function (a, b) { return fileTime(a) - fileTime(b); }), last = bad[bad.length - 1];
   if (!last) return caseAskText(c);
   var more = todo.length ? 'Также, пожалуйста:\n' + todo.map(function (a, i) { return (i + 1) + ') ' + a.text; }).join('\n') + '\n\n' : '';
-  var rt = M(LA.composeReply(last.sc, { kb: S.kb, hello: st.hello, bye: '\u0001', extra: sysExtra(last), folderMods: folderMods(last) })).replace('\u0001', more + (st.bye || LA.REPLY_BYE));
-  return st.replyShort ? shortenReply(rt) : rt;
+  var rt = M(LA.composeReply(last.sc, { kb: S.kb, hello: st.hello, bye: '\u0001', extra: sysExtra(last), folderMods: folderMods(last) }));
+  if (st.replyShort) rt = shortenReply(rt);
+  return rt.replace('\u0001', more + (st.bye || LA.REPLY_BYE));
 }
 function renderCase(f) {
   var c = caseData(); if (!c) return renderDiag(f);
@@ -6041,7 +6046,8 @@ async function shareLogs(files) {
    Оболочка скачивает вложение и присылает его сюда. Файлы одного тикета складываются в папку-дело с названием тикета,
    тикет становится меткой лога, данные игрока (Discord, ник, статик, сервер, ссылка) сохраняются в деле. Только локально. */
 var extQ = [], extT = 0;
-function onExtImport(it) { if (!it || !it.data) return; extQ.push(it); clearTimeout(extT); extT = setTimeout(flushExt, 700); }
+var EXTQ = Promise.resolve();
+function onExtImport(it) { if (!it || !it.data) return; extQ.push(it); clearTimeout(extT); extT = setTimeout(function () { EXTQ = EXTQ.then(flushExt, flushExt).catch(function () {}); }, 700); }
 function playerLine(p) {
   if (!p) return '';
   var a = [];
@@ -6062,12 +6068,11 @@ async function flushExt() {
   batch.forEach(function (it) { var k = it.ticketId || it.ticket || 'misc'; (by[k] = by[k] || []).push(it); });
   for (var k in by) {
     var items = by[k], t0 = items[0], gid = 'dc:' + (t0.ticketId || k), name = t0.ticket || 'Тикет Discord';
-    var pl = null; items.forEach(function (x) { if (x.player) pl = x.player; });
+    /* игрок дела — тот, чьих файлов больше (саппорт мог приложить свой файл в ту же ветку) */
+    var cnt = {}, pl = null, best = 0; items.forEach(function (x) { if (!x.player) return; var k = x.player.id || x.player.nick || '?'; cnt[k] = (cnt[k] || 0) + 1; if (cnt[k] > best) { best = cnt[k]; pl = x.player; } });
     var files = items.map(function (x) { return new File([x.data], x.name, { lastModified: Date.now() }); });
     var before = {}; S.files.forEach(function (f) { before[f.id] = 1; });
-    S.forceGroup = { id: gid, name: name, type: 'case' };
-    await readFiles(files);
-    S.forceGroup = null;
+    await readFiles(files, false, { forceGroup: { id: gid, name: name, type: 'case' } });
     S.files.forEach(function (f) { if (!before[f.id] && f.group && f.group.id === gid && !S.kb.tags[f.hash]) S.kb.tags[f.hash] = name; });
     savePlayer(gid, name, pl, S.files.filter(function (f) { return f.group && f.group.id === gid; }).map(function (f) { return f.hash; })); saveKB();
     status('Из Discord (' + name + '): ' + items.map(function (x) { return x.name; }).join(', ') + '.');

@@ -79,6 +79,7 @@ async function checkTools() {
     } else say('Установите Git (https://git-scm.com) и Node.js LTS (https://nodejs.org), затем запустите установщик снова.');
     return false;
   }
+  if (!pnpm && AUTO) { say('pnpm не найден: автообновление Vencord пропущено, запустите установщик вручную.'); return false; }
   if (!pnpm) { say('\npnpm не найден, ставлю через npm…'); run('npm', ['install', '-g', 'pnpm']); pnpm = has('pnpm', ['-v']); if (!pnpm) { say('Не удалось поставить pnpm. Выполните «npm install -g pnpm» и запустите установщик снова.'); return false; } }
   return true;
 }
@@ -152,7 +153,13 @@ async function bdFlow(list) {
    «--auto»: без вопросов обновляет уже установленные плагины, если в репозитории вышла новая версия.
    Запускается при входе в Windows через раздел автозапуска текущего пользователя (без прав администратора). */
 const RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', RUN_NAME = 'MajesticPluginInstaller';
-function autoCmd() { return 'cmd /c start "" /min "' + process.execPath + '" --auto'; }
+/* Для автозапуска установщик копирует себя в свою папку данных: запуск не сломается, если исходный .exe удалят из «Загрузок» */
+function selfPath() {
+  if (!process.pkg) return process.execPath + '" "' + path.resolve(process.argv[1] || __filename);
+  const dst = path.join(DATA, 'Majestic-Plugin-Installer.exe');
+  try { if (path.resolve(process.execPath).toLowerCase() !== dst.toLowerCase()) { fs.mkdirSync(DATA, { recursive: true }); fs.copyFileSync(process.execPath, dst); } return dst; } catch (e) { return process.execPath; }
+}
+function autoCmd() { return 'cmd /c start "" /min "' + selfPath() + '" --auto'; }
 function autostartOn() { if (process.env.MPI_AUTOSTART) return exists(process.env.MPI_AUTOSTART); if (!WIN) return false; return cp.spawnSync('reg', ['query', RUN_KEY, '/v', RUN_NAME], { stdio: 'pipe' }).status === 0; }
 function setAutostart(on) {
   if (process.env.MPI_AUTOSTART) { if (on) fs.writeFileSync(process.env.MPI_AUTOSTART, autoCmd()); else fs.rmSync(process.env.MPI_AUTOSTART, { force: true }); return true; }
