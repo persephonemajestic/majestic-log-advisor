@@ -166,7 +166,7 @@ let obs: MutationObserver | null = null, timer = 0, scanT = 0, upT = 0, upTimer 
 export default definePlugin({
     name: "MajesticLogImport",
     description: "Кнопка «В анализатор» на логах и дампах в ваших тикетах: файл и данные игрока уходят в Majestic Log Advisor",
-    authors: [{ name: "persephonemajestic", id: 0n }],
+    authors: [{ name: "persephonemajestic", id: 1197438268187365488n }],
     settings,
     start() {
         style = document.createElement("style");
