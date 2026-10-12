@@ -29,6 +29,7 @@ const dump = () => H.dump();
   ok(c.length === 1 && c[0].opt.max === 1400, 'один запрос с ограничением длины ответа');
   ok(c[0].turns[1].content.length <= 3500 && /МИНИДАМП/.test(c[0].turns[1].content) && /ЖУРНАЛ СОБЫТИЙ/.test(c[0].turns[1].content), 'запрос короткий: сводка дампа и журнала');
   ok(!/c1\.log|Logger initialized/.test(c[0].turns[1].content), 'в запрос не попал сам лог');
+  await p.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.resolve() }, configurable: true }); });
   await p.click('[data-act=sysCopy]'); await p.waitForTimeout(300);
   await p.click('[data-act=sysClear]'); await p.waitForTimeout(200);
   ok(/Добавьте минидамп/.test(await p.textContent('#sysBox')), 'данные можно убрать');
