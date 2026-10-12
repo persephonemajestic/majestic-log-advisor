@@ -13,7 +13,7 @@ document.addEventListener('click', function (ev) {
   else if (a === 'tab') { var wt = S.tab; S.tab = t.getAttribute('data-tab'); render(); if (wt !== S.tab) animView(); }
   else if (a === 'jump') jump(+t.getAttribute('data-line'));
   else if (a === 'lcopy') { ev.stopPropagation(); copyLine(+t.getAttribute('data-line')); }
-  else if (a === 'pick') { if (rowsSelection()) return; S.sel = +t.getAttribute('data-line'); drawRows(); drawInspector(f); }
+  else if (a === 'pick') { if (rowsSelection()) return; S.sel = +t.getAttribute('data-line'); /* строки не перерисовываем: так работают двойной и тройной щелчок для выделения */ Array.prototype.forEach.call(document.querySelectorAll('#rows .ln.sel'), function (x) { x.classList.remove('sel'); }); t.classList.add('sel'); drawInspector(f); }
   else if (a === 'scope') { S.scope = t.getAttribute('data-v'); renderLogShell(f); }
   else if (a === 'quiet') { S.quiet = !S.quiet; renderLogShell(f); }
   else if (a === 'qSave') { var sq = savedQ().slice(), cq = S.q.trim(); if (cq && sq.indexOf(cq) < 0) { sq.unshift(cq); S.kb.settings.savedQ = sq.slice(0, 10); saveKB(); } drawSavedQ(); }
