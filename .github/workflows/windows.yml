@@ -43,6 +43,15 @@ jobs:
           grep -q "TOOLS OK v22" tools.log || code=1
           ls "$RUNNER_TEMP/mpi data/tools" | sed 's/^/::notice::tools: /'
           exit $code
+      - name: Сборка Vencord с плагином на переносных Node.js и Git
+        shell: bash
+        run: |
+          code=0
+          printf '1\n\n\n\n0\n' | MPI_FORCE_PORTABLE=1 MPI_NO_INJECT=1 MPI_LOCAL=. MPI_HOME="$RUNNER_TEMP/home" MPI_DATA="$RUNNER_TEMP/mpi data" node plugins/installer/installer.js > vc.log 2>&1 || code=$?
+          grep -E "BUILD OK|Сборка не удалась|Не удалось|✓" vc.log | sed 's/^/::notice::/' || true
+          grep -q "BUILD OK" vc.log || { tail -12 vc.log | sed 's/^/::error::/'; code=1; }
+          grep -lq "MajesticLogImport" "$RUNNER_TEMP/home/Vencord/dist/"*.js || { echo "::error::плагина нет в сборке Vencord"; code=1; }
+          exit $code
       - name: Снимки окна
         if: always()
         uses: actions/upload-artifact@v4

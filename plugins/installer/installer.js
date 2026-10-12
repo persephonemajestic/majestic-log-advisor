@@ -15,7 +15,7 @@ const APPDATA = process.env.APPDATA || path.join(os.homedir(), '.config');
 const HOME = process.env.MPI_HOME || os.homedir();
 const DATA = process.env.MPI_DATA || path.join(APPDATA, 'MajesticPluginInstaller');
 const CFG = path.join(DATA, 'config.json');
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const AUTO = process.argv.includes('--auto');
 
 /* ---------- ввод и вывод ---------- */
@@ -177,6 +177,7 @@ async function vencordFlow(list, localDir, opts) {
   }
   cfg.installed = cfg.installed || {}; list.forEach((p) => { cfg.installed[p.id] = Object.assign(cfg.installed[p.id] || {}, { vencord: p.version, at: Date.now() }); }); writeCfg(cfg);
   if (opts.auto) { say('Обновлено. Новая версия заработает после перезапуска Discord.'); return true; }
+  if (process.env.MPI_NO_INJECT) { say('BUILD OK'); return true; }
   say('\nВнедряю Vencord в Discord. Если спросит, выберите вашу версию Discord.');
   if (!run('pnpm', ['inject', '--branch', 'auto'], { cwd: vdir })) run('pnpm', ['inject'], { cwd: vdir });
   say('\nГотово. Полностью перезапустите Discord (закройте из трея), затем включите плагин в «Настройки» → «Vencord» → «Плагины».');
