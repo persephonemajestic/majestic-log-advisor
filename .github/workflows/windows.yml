@@ -1,0 +1,65 @@
+# Проверка на настоящей Windows: приложение целиком (оболочка, пути, большой лог, приёмник плагина, .exe)
+# и все UI-тесты в Chromium под Windows.
+name: Windows
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  app:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Сборка
+        shell: bash
+        run: |
+          python src/build.py
+          cp index.html app/index.html
+          cd app
+          npm install --no-audit --no-fund
+          npm run dist
+      - name: Playwright
+        shell: bash
+        run: npm install --no-save --no-audit --no-fund playwright@1.49.0
+      - name: Проверка приложения
+        shell: bash
+        run: |
+          set -o pipefail
+          node tests/win/e2e.js 2>&1 | tee win.log
+          code=$?
+          grep -E "FAIL|INFO" win.log | sed 's/^/::notice::/' || true
+          exit $code
+      - name: Снимки окна
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-screens
+          path: win-shots/
+          if-no-files-found: ignore
+  ui:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Playwright и Chromium
+        shell: bash
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.49.0
+          npx playwright install chromium
+      - name: Тесты ядра
+        run: node tests/run.js
+      - name: UI-тесты в Chromium под Windows
+        shell: bash
+        run: |
+          set -o pipefail
+          node tests/ui/run.js 2>&1 | tee ui.log
+          code=$?
+          grep -nE "FAIL|Error|Timeout" ui.log | head -25 | sed 's/^/::error::/' || true
+          exit $code

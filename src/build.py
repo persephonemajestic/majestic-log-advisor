@@ -4,7 +4,7 @@
 import hashlib
 import pathlib
 here = pathlib.Path(__file__).resolve().parent
-rd = lambda p: p.read_text(encoding='utf8')
+rd = lambda p: p.read_bytes().decode('utf8').replace('\r\n', '\n')
 t = rd(here / 'app.template.html')
 c = rd(here / 'core.js')
 cl = rd(here / 'utils' / 'logCleaner.js')
@@ -17,5 +17,5 @@ t = t.replace('/*#APP*/', app)
 pv = hashlib.sha1(pr.encode('utf8')).hexdigest()[:8]
 t = t.replace('/*#AI_PROMPT_VERSION*/', "'" + pv + "'").replace('/*#AI_PROMPT*/', pr)
 assert '/*CORE*/' in t and '</script>' not in c and '</script>' not in cl and '</script>' not in sd
-(here.parent / 'index.html').write_text(t.replace('/*CORE*/', cl + '\n' + sd + '\n' + c), encoding='utf8')
+(here.parent / 'index.html').write_bytes(t.replace('/*CORE*/', cl + '\n' + sd + '\n' + c).encode('utf8'))
 print('index.html built')

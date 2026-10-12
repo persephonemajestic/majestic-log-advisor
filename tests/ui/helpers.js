@@ -1,12 +1,12 @@
 // Общие помощники UI-тестов: запуск браузера, синтетические логи, проверки.
 const fs = require('fs'), os = require('os'), path = require('path');
 let chromium; try { chromium = require('playwright').chromium; } catch (e) { console.log('SKIP ui: установите playwright (npm i playwright)'); process.exit(0); }
-const INDEX = 'file://' + path.resolve(__dirname, '..', '..', 'index.html');
+const INDEX = require('url').pathToFileURL(path.resolve(__dirname, '..', '..', 'index.html')).href;
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'mla-'));
 let failed = 0;
 const ok = (c, m) => { if (!c) failed++; console.log((c ? 'PASS ' : 'FAIL ') + m); };
 async function launch(w, h) {
-  let b; try { b = await chromium.launch({ executablePath: process.env.CHROMIUM || '/opt/pw-browsers/chromium' }); } catch (e) { b = await chromium.launch(); }
+  let b; try { if (process.platform !== 'linux') throw 0; b = await chromium.launch({ executablePath: process.env.CHROMIUM || '/opt/pw-browsers/chromium' }); } catch (e) { b = await chromium.launch(); }
   const p = await (await b.newContext({ viewport: { width: w || 1360, height: h || 900 } })).newPage(); const errs = [];
   p.on('pageerror', e => errs.push(e.message)); await p.goto(INDEX); await p.waitForTimeout(700);
   return { b, p, errs };
