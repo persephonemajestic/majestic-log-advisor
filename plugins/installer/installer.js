@@ -15,7 +15,7 @@ const APPDATA = process.env.APPDATA || path.join(os.homedir(), '.config');
 const HOME = process.env.MPI_HOME || os.homedir();
 const DATA = process.env.MPI_DATA || path.join(APPDATA, 'MajesticPluginInstaller');
 const CFG = path.join(DATA, 'config.json');
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 const AUTO = process.argv.includes('--auto');
 
 /* ---------- ввод и вывод ---------- */
@@ -45,15 +45,38 @@ function get(url, n) {
 }
 
 /* ---------- команды ---------- */
+/* Программы ищутся по PATH самим установщиком и запускаются по полному пути.
+   Важно для .exe: упаковщик подменяет вызов «node» самим установщиком, поэтому «node» по имени не запускаем никогда. */
+function which(cmd) {
+  if (path.isAbsolute(cmd)) return exists(cmd) ? cmd : '';
+  const exts = WIN ? ['.exe', '.cmd', '.bat', '.com'] : [''], self = path.resolve(process.execPath).toLowerCase();
+  for (const d0 of (process.env.PATH || '').split(path.delimiter)) {
+    const d = d0.replace(/^"|"$/g, '').trim(); if (!d) continue;
+    for (const e of exts) {
+      const p = path.join(d, cmd + e);
+      try { if (fs.statSync(p).isFile() && path.resolve(p).toLowerCase() !== self) return p; } catch (er) {}
+    }
+  }
+  return '';
+}
+function spawnTool(cmd, args, opt) {
+  const exe = which(cmd); if (!exe) return { status: -1, stdout: '', error: new Error('not found') };
+  const o = Object.assign({ windowsHide: true }, opt, { env: Object.assign({}, process.env, (opt && opt.env) || {}) });
+  delete o.env.PKG_EXECPATH;
+  if (WIN && /\.(cmd|bat)$/i.test(exe)) {
+    /* .cmd запускается только через cmd.exe (Node сам обернёт строку для cmd /s /c): путь и аргументы с пробелами — в кавычках */
+    const q = (x) => /[\s"&|<>^()]/.test(x) ? '"' + String(x).replace(/"/g, '""') + '"' : x;
+    return cp.spawnSync([q(exe)].concat(args.map(q)).join(' '), [], Object.assign(o, { shell: true }));
+  }
+  return cp.spawnSync(exe, args, Object.assign(o, { shell: false }));
+}
 function run(cmd, args, opt) {
   opt = opt || {};
   say('  > ' + cmd + ' ' + args.join(' '));
-  /* на Windows команды идут через cmd.exe: аргументы с пробелами (пути вроде C:\\Users\\Имя Фамилия) берём в кавычки */
-  const a2 = WIN ? args.map((x) => /[\s"&|<>^]/.test(x) ? '"' + String(x).replace(/"/g, '\\"') + '"' : x) : args;
-  const r = cp.spawnSync(cmd, a2, { cwd: opt.cwd, stdio: opt.quiet ? 'pipe' : 'inherit', shell: WIN, env: Object.assign({}, process.env, opt.env || {}) });
+  const r = spawnTool(cmd, args, { cwd: opt.cwd, stdio: opt.quiet ? 'pipe' : 'inherit', env: opt.env });
   return r.status === 0;
 }
-function has(cmd, args) { const r = cp.spawnSync(cmd, args || ['--version'], { stdio: 'pipe', shell: WIN }); return r.status === 0 ? String(r.stdout || '').trim() : ''; }
+function has(cmd, args) { const r = spawnTool(cmd, args || ['--version'], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' }); return r.status === 0 ? String(r.stdout || '').trim().split(/\r?\n/)[0] : ''; }
 
 /* ---------- файлы ---------- */
 const exists = (p) => { try { fs.accessSync(p); return true; } catch (e) { return false; } };

@@ -24,6 +24,23 @@ jobs:
         run: |
           npx --yes @yao-pkg/pkg@6 plugins/installer/installer.js -t node22-win-x64 -o dist/Majestic-Plugin-Installer.exe
           ls -la dist
+      - name: Проверка собранного .exe (переносные Node.js и Git)
+        shell: bash
+        run: |
+          code=0
+          echo "" | MPI_FORCE_PORTABLE=1 MPI_DATA="$RUNNER_TEMP/exe data" ./dist/Majestic-Plugin-Installer.exe --setup-tools > tools.log 2>&1 || code=$?
+          grep -E "TOOLS|Не удалось|✓" tools.log | sed 's/^/::notice::/' || true
+          grep -q "TOOLS OK v22" tools.log || { tail -15 tools.log | sed 's/^/::error::/'; code=1; }
+          exit $code
+      - name: Проверка собранного .exe (сборка Vencord с плагином)
+        shell: bash
+        run: |
+          code=0
+          printf '1\n\n\n\n0\n' | MPI_NO_INJECT=1 MPI_LOCAL=. MPI_HOME="$RUNNER_TEMP/exe home" MPI_DATA="$RUNNER_TEMP/exe data" ./dist/Majestic-Plugin-Installer.exe > vc.log 2>&1 || code=$?
+          grep -E "BUILD OK|Сборка не удалась|Не удалось|✓" vc.log | sed 's/^/::notice::/' || true
+          grep -q "BUILD OK" vc.log || { tail -15 vc.log | sed 's/^/::error::/'; code=1; }
+          grep -lq "MajesticLogImport" "$RUNNER_TEMP/exe home/Vencord/dist/"*.js || { echo "::error::плагина нет в сборке Vencord"; code=1; }
+          exit $code
       - name: Выпуск
         shell: bash
         env:
