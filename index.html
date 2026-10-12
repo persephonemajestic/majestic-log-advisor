@@ -589,6 +589,7 @@ body:not(.dnd) .arc-empty { display: none !important; }
 .pulse { height: 36px; }
 .tape-row .drop { grid-row: 1; align-self: start; min-height: 56px; }
 .cplayer { margin: 0; color: var(--ink2); font-size: 13px; } .cplayer a { color: var(--accent); }
+.keys { border-collapse: collapse; font-size: 13px; } .keys td { padding: 3px 10px 3px 0; vertical-align: top; } .keys kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border: 1px solid var(--line2); border-bottom-width: 2px; border-radius: 4px; font: 12px/1.5 Consolas, monospace; text-align: center; background: var(--surface2); color: var(--ink); }
 .phist { margin: 4px 0 0; font-size: 13px; color: var(--ink2); } .phist summary { cursor: pointer; color: var(--muted); } .phist ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 2px; } .phist a { color: var(--accent); } .linkbtn { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; text-decoration: underline; }
 @media (max-width: 860px) { .tape-row { grid-template-columns: minmax(0, 1fr); } .tape-row .drop { grid-column: 1; grid-row: auto; } }
 </style>
@@ -2880,7 +2881,7 @@ var STRU = { ok: 'Успех', bad: 'Сбой', warn: 'Внимание', unk: '
 var SRCRU = { guide: 'из руководства', obs: 'по наблюдению в логах', infer: 'вывод, в руководстве нет', web: 'по открытым источникам', user: 'ваше правило', team: 'правило команды' };
 var SRCTIP = { team: 'Общее правило команды из файла rules.json в репозитории проекта', user: 'Правило, которое добавили вы или коллега через «Добавить решение»', guide: 'Правило взято из документа «Руководство по диагностике ошибок и работе с логами»', obs: 'Строка встречается в успешных заходах загруженных логов, поэтому считается шумом', web: 'Случая нет в руководстве. Объяснение собрано по справкам Rockstar, форумам RAGE и cfx.re и реальным логам. Проверяйте его', infer: 'Этого случая нет в руководстве. Объяснение построено по логам и общим признакам, проверяйте его' };
 var PSTEPS_UI = [['admin', 'Администратор'], ['pirate', 'Очистка файлов'], ['backup', 'Резервная копия'], ['patch', 'Патч игры'], ['job', 'Процесс игры'], ['inject', 'Внедрение'], ['injected', 'Клиент внедрён'], ['entry', 'Запуск клиента'], ['finished', 'Готово'], ['window', 'Окно игры']];
-var SAMPLE = null, APP_VERSION = '2026-10-12.105';
+var SAMPLE = null, APP_VERSION = '2026-10-12.106';
 var ROW = 20, KBKEY = 'majestic-log-advisor.kb.v1';
 
 var $ = function (s) { return document.querySelector(s); };
@@ -2915,6 +2916,15 @@ function niceName(n) { return n.replace(/^[0-9a-f]{8}-/i, ''); }
 function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ'; }
 /* ---------- Версия 13: отчёты, все логи, окно загрузки, команда, слежение ---------- */
 var CHANGELOG = [
+  { v: '2026-10-12.106', items: [
+    'Большие логи (100 МБ и больше) разбираются частями: окно не замирает, в строке состояния виден процент. Лог на 110 МБ открывается примерно за 6 секунд.',
+    'В деле появился «Ответ игроку по делу»: шаги по последнему неудачному логу и то, что ещё нужно прислать, одной кнопкой. Отмеченные пункты в ответ не попадают; «Только просьбы» осталось.',
+    'В деле из Discord видны прошлые тикеты того же игрока (по ID Discord, статику или нику): открыть прошлое дело или сравнить его логи с нынешними.',
+    'Плагин Discord 1.1: кнопка «Все файлы тикета» отправляет разом все логи и дампы ветки; ник, статик и сервер распознаются точнее, в том числе из формы тикета от бота. Версия для BetterDiscord обновляется сама.',
+    'Установщик плагинов: пункт «Автообновление при входе в Windows» тихо ставит новые версии ваших плагинов. Другие плагины не трогает.',
+    'Клавиши: ? — шпаргалка, / — поиск по логу, 1–9 — вкладки. R (и клавиша копирования ответа) на вкладке «Дело» копирует ответ по делу.',
+    'Приложение теперь проверяется на настоящей Windows: запуск, пути с кириллицей и пробелами, длинные пути, большой лог, плагин, перезагрузка при обновлении.'
+  ] },
   { v: '2026-10-12.105', items: [
     'Обновления применяются сами, когда вы не работаете в приложении: окно свёрнуто 2 минуты или 5 минут без действий, ни одно окно не открыто и курсор не в поле ввода. Пока вы работаете, обновление ждёт.',
     'После такого обновления приложение возвращает вас туда же: тот же лог, вкладка, поиск, фильтры, раскрытые папки и прокрутка.',
@@ -5466,9 +5476,23 @@ document.addEventListener('keydown', function (ev) {
   if (taken.indexOf(ev.code) >= 0) return;
   if (ev.code === 'KeyJ') { ev.preventDefault(); stepFile(1); }
   else if (ev.code === 'KeyK') { ev.preventDefault(); stepFile(-1); }
-  else if (ev.code === 'KeyR' && S.active) { var f = active(); if (f && !String(window.getSelection && window.getSelection())) { ev.preventDefault(); copyText(replyText(f, ''), 'Ответ игроку', 'Отправьте ответ игроку.', 'Ответ скопирован.'); } }
+  else if (ev.code === 'KeyR' && S.active) { var f = active(); if (f && !String(window.getSelection && window.getSelection())) { ev.preventDefault(); copyCurrentReply(f); } }
   else if (ev.code === 'KeyE' && S.active) { ev.preventDefault(); openSolve(); }
+  else if (ev.code === 'Slash' && !ev.shiftKey) { ev.preventDefault(); if (S.tab !== 'log') { var lt = $('#tabs [data-tab="log"]'); if (lt) lt.click(); } setTimeout(function () { var q = $('#logQ'); if (q) { q.focus(); q.select(); } }, 30); }
+  else if ((ev.code === 'Slash' && ev.shiftKey) || ev.key === '?') { ev.preventDefault(); showKeys(); }
+  else if (/^Digit[1-9]$/.test(ev.code) && S.active) { var tb = Array.prototype.filter.call(document.querySelectorAll('#tabs [data-tab]'), function (x) { return x.offsetParent !== null; })[+ev.code.slice(5) - 1]; if (tb) { ev.preventDefault(); tb.click(); } }
 }, true);
+/* Ответ игроку для текущего экрана: на вкладке «Дело» — ответ по делу, иначе — по логу */
+function copyCurrentReply(f) {
+  var cd = S.tab === 'case' && caseData();
+  if (cd) copyText(caseReplyText(cd), 'Ответ игроку', 'Отправьте ответ игроку.', 'Ответ по делу скопирован.');
+  else copyText(replyText(f, ''), 'Ответ игроку', 'Отправьте ответ игроку.', 'Ответ скопирован.');
+}
+/* Шпаргалка по клавишам: клавиша ? */
+function showKeys() {
+  var K = keyMap(), rows = Object.keys(KEYNAME).map(function (k) { return [codeLabel(K[k]), KEYNAME[k]]; }).concat([['J / K', 'Следующий / предыдущий лог'], ['R', 'Копировать ответ игроку (в деле — ответ по делу)'], ['E', 'Проблема решена'], ['/', 'Поиск по логу'], ['1–9', 'Вкладки по порядку'], ['Ctrl+K', 'Список команд'], ['Ctrl + / −', 'Масштаб лога'], ['Esc', 'Закрыть окно'], ['?', 'Эта шпаргалка']]);
+  $('#panelHost').innerHTML = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" aria-label="Горячие клавиши"><b>Горячие клавиши</b><table class="keys">' + rows.map(function (r) { return '<tr><td><kbd>' + esc(r[0]) + '</kbd></td><td>' + esc(r[1]) + '</td></tr>'; }).join('') + '</table><p class="hint" style="margin:0">Свои клавиши можно назначить в «Настройках».</p><div class="row-actions"><button class="btn" data-act="closePanel">Закрыть</button></div></div></div>';
+}
 
 /* Самодиагностика: что хранит приложение и как с ним связь */
 async function selfCheck() {
@@ -6312,7 +6336,7 @@ document.addEventListener('keydown', function (ev) {
   if (act === 'nextProb' || act === 'prevProb') { if (S.tab === 'log') navProblem(act === 'nextProb' ? 1 : -1); }
   else if (act === 'nextLog') { ev.preventDefault(); stepFile(1); } else if (act === 'prevLog') { ev.preventDefault(); stepFile(-1); }
   else if (act === 'pin' && S.active) { togglePin(S.active); }
-  else if (act === 'copy' && S.active && !String(window.getSelection && window.getSelection())) { var cf = active(); if (cf) copyText(replyText(cf, ''), 'Ответ игроку', 'Отправьте ответ игроку.', 'Ответ скопирован.'); }
+  else if (act === 'copy' && S.active && !String(window.getSelection && window.getSelection())) { var cf = active(); if (cf) copyCurrentReply(cf); }
 });
 document.addEventListener('input', function (ev) { if (ev.target && ev.target.id === 'palQ') { PAL.sel = 0; palRender(); } });
 document.addEventListener('change', function (ev) {
@@ -6369,7 +6393,7 @@ function openHelp() {
     sec('Лог', ['Перетащите <code>client.log</code>, <code>launcher.log</code>, <code>main.log</code>, zip с логами или целую папку в окно. Можно сразу несколько файлов.', 'Вкладка «Диагноз» называет причину, вкладка «Ответ» даёт готовый текст игроку, «Отчёт» собирает всё для тикета.', 'Строка в логе кликается: откроется контекст вокруг неё.']) +
     sec('Дамп краша и журнал Windows', ['Если в логе есть строка MINIDUMP, под диагнозом появится карточка «Дамп и журнал Windows». Добавьте туда <code>.dmp</code>, <code>.evtx</code> или zip краш-отчёта.', 'Дамп показывает модуль, где упал клиент, и код исключения. Журнал показывает синие экраны, сбои драйвера видеокарты, диска и памяти в те же минуты.', 'Если лога нет, нажмите «Только дамп» в меню «Ещё».', 'Кнопка «Разобрать с ИИ» шлёт в Gemini короткую сводку (несколько строк), а не весь файл.']) +
     sec('Папки (дела)', ['Бросьте лог на другой лог: оба окажутся в новой папке. Бросьте лог на плитку папки: он добавится в неё.', 'У дела есть статус, итог и таймер ожидания игрока. Логи с одним номером тикета собираются в папку сами.']) +
-    sec('Горячие клавиши', ['Ctrl+K открывает список команд, остальные клавиши в «Настройках».']) +
+    sec('Горячие клавиши', ['? показывает все клавиши, Ctrl+K открывает список команд, / — поиск по логу, 1–9 — вкладки. Свои клавиши назначаются в «Настройках».']) +
     '<div><h4 style="margin:6px 0 4px">Что попросить у игрока</h4><p class="hint" style="margin:0 0 6px">Готовое сообщение.</p><textarea readonly style="height:150px" id="askTxt">' + esc(PLAYER_ASK) + '</textarea></div>' +
     '<div class="row-actions"><button class="btn sm primary" data-act="helpAsk">Копировать сообщение</button><button class="btn sm ghost" data-act="closePanel">Закрыть</button></div></div></div>';
 }

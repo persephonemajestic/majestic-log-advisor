@@ -56,9 +56,23 @@ document.addEventListener('keydown', function (ev) {
   if (taken.indexOf(ev.code) >= 0) return;
   if (ev.code === 'KeyJ') { ev.preventDefault(); stepFile(1); }
   else if (ev.code === 'KeyK') { ev.preventDefault(); stepFile(-1); }
-  else if (ev.code === 'KeyR' && S.active) { var f = active(); if (f && !String(window.getSelection && window.getSelection())) { ev.preventDefault(); copyText(replyText(f, ''), 'Ответ игроку', 'Отправьте ответ игроку.', 'Ответ скопирован.'); } }
+  else if (ev.code === 'KeyR' && S.active) { var f = active(); if (f && !String(window.getSelection && window.getSelection())) { ev.preventDefault(); copyCurrentReply(f); } }
   else if (ev.code === 'KeyE' && S.active) { ev.preventDefault(); openSolve(); }
+  else if (ev.code === 'Slash' && !ev.shiftKey) { ev.preventDefault(); if (S.tab !== 'log') { var lt = $('#tabs [data-tab="log"]'); if (lt) lt.click(); } setTimeout(function () { var q = $('#logQ'); if (q) { q.focus(); q.select(); } }, 30); }
+  else if ((ev.code === 'Slash' && ev.shiftKey) || ev.key === '?') { ev.preventDefault(); showKeys(); }
+  else if (/^Digit[1-9]$/.test(ev.code) && S.active) { var tb = Array.prototype.filter.call(document.querySelectorAll('#tabs [data-tab]'), function (x) { return x.offsetParent !== null; })[+ev.code.slice(5) - 1]; if (tb) { ev.preventDefault(); tb.click(); } }
 }, true);
+/* Ответ игроку для текущего экрана: на вкладке «Дело» — ответ по делу, иначе — по логу */
+function copyCurrentReply(f) {
+  var cd = S.tab === 'case' && caseData();
+  if (cd) copyText(caseReplyText(cd), 'Ответ игроку', 'Отправьте ответ игроку.', 'Ответ по делу скопирован.');
+  else copyText(replyText(f, ''), 'Ответ игроку', 'Отправьте ответ игроку.', 'Ответ скопирован.');
+}
+/* Шпаргалка по клавишам: клавиша ? */
+function showKeys() {
+  var K = keyMap(), rows = Object.keys(KEYNAME).map(function (k) { return [codeLabel(K[k]), KEYNAME[k]]; }).concat([['J / K', 'Следующий / предыдущий лог'], ['R', 'Копировать ответ игроку (в деле — ответ по делу)'], ['E', 'Проблема решена'], ['/', 'Поиск по логу'], ['1–9', 'Вкладки по порядку'], ['Ctrl+K', 'Список команд'], ['Ctrl + / −', 'Масштаб лога'], ['Esc', 'Закрыть окно'], ['?', 'Эта шпаргалка']]);
+  $('#panelHost').innerHTML = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" aria-label="Горячие клавиши"><b>Горячие клавиши</b><table class="keys">' + rows.map(function (r) { return '<tr><td><kbd>' + esc(r[0]) + '</kbd></td><td>' + esc(r[1]) + '</td></tr>'; }).join('') + '</table><p class="hint" style="margin:0">Свои клавиши можно назначить в «Настройках».</p><div class="row-actions"><button class="btn" data-act="closePanel">Закрыть</button></div></div></div>';
+}
 
 /* Самодиагностика: что хранит приложение и как с ним связь */
 async function selfCheck() {

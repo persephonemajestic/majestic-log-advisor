@@ -165,7 +165,7 @@ document.addEventListener('keydown', function (ev) {
   if (act === 'nextProb' || act === 'prevProb') { if (S.tab === 'log') navProblem(act === 'nextProb' ? 1 : -1); }
   else if (act === 'nextLog') { ev.preventDefault(); stepFile(1); } else if (act === 'prevLog') { ev.preventDefault(); stepFile(-1); }
   else if (act === 'pin' && S.active) { togglePin(S.active); }
-  else if (act === 'copy' && S.active && !String(window.getSelection && window.getSelection())) { var cf = active(); if (cf) copyText(replyText(cf, ''), 'Ответ игроку', 'Отправьте ответ игроку.', 'Ответ скопирован.'); }
+  else if (act === 'copy' && S.active && !String(window.getSelection && window.getSelection())) { var cf = active(); if (cf) copyCurrentReply(cf); }
 });
 document.addEventListener('input', function (ev) { if (ev.target && ev.target.id === 'palQ') { PAL.sel = 0; palRender(); } });
 document.addEventListener('change', function (ev) {
@@ -222,7 +222,7 @@ function openHelp() {
     sec('Лог', ['Перетащите <code>client.log</code>, <code>launcher.log</code>, <code>main.log</code>, zip с логами или целую папку в окно. Можно сразу несколько файлов.', 'Вкладка «Диагноз» называет причину, вкладка «Ответ» даёт готовый текст игроку, «Отчёт» собирает всё для тикета.', 'Строка в логе кликается: откроется контекст вокруг неё.']) +
     sec('Дамп краша и журнал Windows', ['Если в логе есть строка MINIDUMP, под диагнозом появится карточка «Дамп и журнал Windows». Добавьте туда <code>.dmp</code>, <code>.evtx</code> или zip краш-отчёта.', 'Дамп показывает модуль, где упал клиент, и код исключения. Журнал показывает синие экраны, сбои драйвера видеокарты, диска и памяти в те же минуты.', 'Если лога нет, нажмите «Только дамп» в меню «Ещё».', 'Кнопка «Разобрать с ИИ» шлёт в Gemini короткую сводку (несколько строк), а не весь файл.']) +
     sec('Папки (дела)', ['Бросьте лог на другой лог: оба окажутся в новой папке. Бросьте лог на плитку папки: он добавится в неё.', 'У дела есть статус, итог и таймер ожидания игрока. Логи с одним номером тикета собираются в папку сами.']) +
-    sec('Горячие клавиши', ['Ctrl+K открывает список команд, остальные клавиши в «Настройках».']) +
+    sec('Горячие клавиши', ['? показывает все клавиши, Ctrl+K открывает список команд, / — поиск по логу, 1–9 — вкладки. Свои клавиши назначаются в «Настройках».']) +
     '<div><h4 style="margin:6px 0 4px">Что попросить у игрока</h4><p class="hint" style="margin:0 0 6px">Готовое сообщение.</p><textarea readonly style="height:150px" id="askTxt">' + esc(PLAYER_ASK) + '</textarea></div>' +
     '<div class="row-actions"><button class="btn sm primary" data-act="helpAsk">Копировать сообщение</button><button class="btn sm ghost" data-act="closePanel">Закрыть</button></div></div></div>';
 }
