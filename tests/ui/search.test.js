@@ -1,0 +1,31 @@
+// Поиск с «-слово» и «a | b», сохранённые запросы, полоса ошибок по минутам.
+const H = require('./helpers'), { ok } = H, fs = require('fs'), path = require('path');
+(async () => {
+  const { b, p, errs } = await H.launch(1360, 1000);
+  const L = ['[10:00:00.000] Logger initialized', '[10:00:05.000] Majestic Multiplayer inited'];
+  for (let m = 0; m < 10; m++) for (let s = 0; s < 6; s++) L.push('[10:' + String(1 + m).padStart(2, '0') + ':' + String(s * 10).padStart(2, '0') + '.000] ' + (m === 4 ? '[error] ERR_FIL_PACK_3 alpha ' + s : (s % 2 ? 'beta line ' : 'alpha line ') + m));
+  L.push('[10:20:00.000] Shutting down');
+  const f = path.join(H.TMP, 'client_2026-10-09_10-00-00.log'); fs.writeFileSync(f, L.join('\n') + '\n');
+  await H.load(p, [f]); await p.click('[data-tab=log]'); await p.click('[data-act=mode][data-mode=all]'); await p.waitForTimeout(300);
+  const cnt = async () => +/Показано\s+([\d\s  ]+)\s+из/.exec(await p.textContent('#logCnt'))[1].replace(/\D/g, '');
+  const q = async (v) => { await p.fill('#logQ', v); await p.waitForTimeout(250); return cnt(); };
+  const alpha = await q('alpha'), beta = await q('beta');
+  ok(alpha > 20 && beta > 20, 'обычный поиск (' + alpha + ', ' + beta + ')');
+  ok(await q('alpha | beta') === alpha + beta, '«a | b» ищет любое');
+  ok(await q('alpha -ERR_FIL') === alpha - 6, '«-слово» исключает (' + (await cnt()) + ')');
+  ok(await q('-alpha -beta') < 10, 'только исключения тоже работают');
+  await q('alpha | beta');
+  await p.click('[data-act=qSave]'); await p.waitForTimeout(150);
+  ok(await p.locator('#savedQ .qchip').count() === 1, 'запрос сохранён');
+  await q(''); await p.click('#savedQ [data-act=qUse]'); await p.waitForTimeout(250);
+  ok(await p.inputValue('#logQ') === 'alpha | beta' && await cnt() === alpha + beta, 'сохранённый запрос подставляется');
+  await p.click('#savedQ [data-act=qDel]'); await p.waitForTimeout(150);
+  ok(await p.locator('#savedQ .qchip').count() === 0, 'запрос удаляется');
+  await q('');
+  ok(await p.locator('#th').isVisible(), 'полоса ошибок по минутам видна');
+  const bars = await p.locator('#th .thc[data-act=jump]').count();
+  ok(bars >= 1 && bars <= 3, 'столбики только там, где были ошибки (' + bars + ')');
+  await p.click('#th .thc[data-act=jump] >> nth=0'); await p.waitForTimeout(300);
+  ok(/ERR_FIL_PACK_3/.test(await p.textContent('#ins')), 'клик по столбику переходит к ошибке');
+  await H.done(b, errs);
+})();

@@ -1,0 +1,27 @@
+const H = require('./helpers'), { ok } = H, fs = require('fs');
+(async () => {
+  const { b, p, errs } = await H.launch();
+  const m = H.mainLog('main.log', { attempts: ['fail', 'fail'] }), c1 = H.clientLog('client_2026-10-06_18-58-35.log', { crash: true }), c2 = H.clientLog('client_2026-10-06_19-24-25.log', { crash: true, extra: ['[19:25:00.000] x'] });
+  const c3 = H.clientLog('client_2026-10-06_20-10-00.log', { extra: ['[20:11:00.000] y'] }), other = H.mainLog('other.log', { attempts: ['ok'], date: '2026-10-07' });
+  await H.load(p, [m, c1, c2]);
+  ok(await p.locator('#flist .fi.folder').count() === 1, 'пакет логов падает в одну папку');
+  ok(await p.locator('.fdraw .fi').count() === 3, 'папка раскрыта, внутри 3 лога');
+  const [fc] = await Promise.all([p.waitForEvent('filechooser'), p.click('[data-act=gadd]')]); await fc.setFiles([c3]);
+  await p.waitForFunction(() => /Добавлено/.test(document.querySelector('#status').textContent)); await p.waitForTimeout(400);
+  ok(await p.locator('.fdraw .fi').count() === 4, 'кнопка «Добавить логи» кладёт в ту же папку');
+  await H.load(p, [other]);
+  ok(await p.locator('#flist > li > .fi:not(.folder)').count() === 1, 'одиночный лог остаётся отдельно');
+  await p.locator('#flist > li > .fi:not(.folder)').dragTo(p.locator('#flist .fi.folder')); await p.waitForTimeout(300);
+  ok(await p.locator('.fdraw .fi').count() === 5, 'перетаскивание на плитку добавляет в папку');
+  await p.locator('.fdraw .fi >> nth=4').hover(); await p.locator('.fdraw .fi >> nth=4').locator('.ej').click({ force: true }); await p.waitForTimeout(300);
+  ok(await p.locator('.fdraw .fi').count() === 4, 'лог вынимается из папки');
+  await p.click('[data-act=grename]'); await p.fill('#gName', 'Игрок Иванов'); await p.press('#gName', 'Enter'); await p.waitForTimeout(300);
+  ok(/Игрок Иванов/.test(await p.textContent('#flist .fi.folder .nm')), 'переименование');
+  await p.evaluate(t => { const dt = new DataTransfer(); dt.items.add(new File([t], 'client_2026-10-06_21-00-00.log', { type: 'text/plain' })); document.querySelector('#flist .fi.folder').dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true })); }, fs.readFileSync(c3, 'utf8') + '[20:12:00.000] z\n');
+  await p.waitForFunction(() => document.querySelectorAll('.fdraw .fi').length === 5, null, { timeout: 15000 }).then(() => ok(true, 'файл с компьютера на папку попадает в неё'), () => ok(false, 'файл с компьютера на папку попадает в неё'));
+  await p.locator('#flist .fi.folder').dragTo(p.locator('#arcHd')); await p.waitForTimeout(300);
+  ok(await p.locator('#flist2 .fi.folder').count() === 1 && await p.locator('#drB .fdraw').count() === 1, 'папка уходит в «Отложенные» вместе с содержимым');
+  await p.reload(); await p.waitForTimeout(2500);
+  ok(await p.locator('.fi.folder .nm:has-text("Игрок Иванов")').count() === 1, 'папка и название восстанавливаются после перезапуска');
+  await H.done(b, errs);
+})();

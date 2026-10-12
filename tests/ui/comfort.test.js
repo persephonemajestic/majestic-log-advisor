@@ -1,0 +1,37 @@
+// Мини-карта лога, шапка диагноза, горячие клавиши J/K/E/R, проверка приложения.
+const H = require('./helpers'), { ok } = H, fs = require('fs'), path = require('path');
+(async () => {
+  const { b, p, errs } = await H.launch(1360, 1000);
+  const L = ['[10:00:00.000] Logger initialized', '[10:00:05.000] Majestic Multiplayer inited'];
+  for (let i = 0; i < 300; i++) L.push('[10:00:' + String(10 + (i % 50)).padStart(2, '0') + '.000] строка ' + i);
+  L.push('[11:30:00.000][error] ERR_FIL_PACK_3 happened', '[11:30:01.000] MINIDUMP: Temporary dump saved to x');
+  const f1 = path.join(H.TMP, 'client_2026-10-07_10-00-00.log'); fs.writeFileSync(f1, L.join('\n') + '\n');
+  const f2 = path.join(H.TMP, 'client_2026-10-08_10-00-00.log'); fs.writeFileSync(f2, L.concat(['[12:00:00.000] ещё одна строка']).join('\n') + '\n');
+  await H.load(p, [f1, f2]); await p.click('[data-tab=log]'); await p.click('[data-act=mode][data-mode=all]'); await p.waitForTimeout(400);
+  ok(await p.locator('#mm').count() === 1, 'мини-карта лога есть');
+  ok(await p.locator('.lvh').count() === 1, 'шапка диагноза в логе есть');
+  const painted = await p.evaluate(() => { const c = document.getElementById('mm'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) return true; return false; });
+  ok(painted, 'на мини-карте что-то нарисовано');
+  const top0 = await p.evaluate(() => document.getElementById('sc').scrollTop);
+  await p.evaluate(() => document.getElementById('mm').scrollIntoView({ block: 'center' })); await p.waitForTimeout(100);
+  const box = await p.locator('#mm').boundingBox();
+  await p.mouse.click(box.x + 5, box.y + box.height * 0.8); await p.waitForTimeout(200);
+  const top1 = await p.evaluate(() => document.getElementById('sc').scrollTop);
+  ok(top1 > top0, 'клик по мини-карте прокручивает лог (' + top0 + ' → ' + top1 + ')');
+  await p.click('[data-act=tab][data-tab=diag]'); await p.waitForTimeout(200);
+  const a0 = await p.evaluate(() => document.querySelector('.fi.active') && document.querySelector('.fi.active').textContent);
+  await p.keyboard.press('KeyJ'); await p.waitForTimeout(200);
+  const a1 = await p.evaluate(() => document.querySelector('.fi.active') && document.querySelector('.fi.active').textContent);
+  ok(a0 !== a1, 'J переходит к другому логу');
+  await p.keyboard.press('KeyK'); await p.waitForTimeout(200);
+  const a2 = await p.evaluate(() => document.querySelector('.fi.active') && document.querySelector('.fi.active').textContent);
+  ok(a2 === a0, 'K возвращает обратно');
+  await p.keyboard.press('KeyE'); await p.waitForTimeout(300);
+  ok(await p.locator('[data-act=solveSave]').count() === 1, 'E открывает закрытие дела');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(150);
+  await p.evaluate(() => document.getElementById('btnSet').click()); await p.waitForTimeout(200);
+  await p.click('[data-act=selfCheck]'); await p.waitForTimeout(600);
+  const txt = await p.textContent('#panelHost');
+  ok(/Версия интерфейса/.test(txt) && /База знаний/.test(txt), 'проверка приложения показывает версию и базу');
+  await H.done(b, errs);
+})();

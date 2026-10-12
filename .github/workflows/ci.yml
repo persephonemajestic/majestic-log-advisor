@@ -1,0 +1,59 @@
+# Проверка при каждом пуше: тесты ядра, синтаксис оболочки, index.html собран из исходников
+name: Проверка
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Тесты ядра
+        run: node tests/run.js
+      - name: Синтаксис оболочки
+        run: |
+          node --check app/boot.js
+          node --check app/main.js
+          node --check app/preload.js
+          node --check plugins/installer/installer.js
+          node --check plugins/betterdiscord/MajesticLogImport.plugin.js
+          node tests/ext-receiver.test.js
+          node tests/plugins/installer.test.js
+      - name: index.html собран из исходников
+        run: |
+          python3 src/build.py
+          git diff --exit-code index.html
+      - name: Синтаксис скрипта интерфейса
+        run: |
+          python3 - <<'PY'
+          import re
+          t = open('index.html', encoding='utf-8').read()
+          open('/tmp/ui.js', 'w', encoding='utf-8').write(re.findall(r'<script>(.*?)</script>', t, re.S)[-1])
+          PY
+          node --check /tmp/ui.js
+      - name: rules.json корректен
+        run: |
+          node -e "const r=require('./rules.json'); if(r.v!==1||!Array.isArray(r.rules)) process.exit(1)"
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Установка playwright и chromium
+        run: |
+          npm install --no-save playwright@1.49.0
+          npx playwright install --with-deps chromium
+      - name: UI-тесты (синтетические логи)
+        shell: bash
+        run: |
+          set -o pipefail
+          node tests/ui/run.js 2>&1 | tee ui.log; code=$?
+          # строки с ошибками — в аннотации запуска, чтобы их было видно без скачивания журнала
+          grep -nE "FAIL|Error|Timeout|exceeded|Cannot" ui.log | head -25 | sed 's/^/::error::/' || true
+          exit $code

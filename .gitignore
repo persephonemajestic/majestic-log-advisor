@@ -1,0 +1,14 @@
+node_modules/
+dist/
+app/dist/
+app/index.html
+*.log
+public/
+node_modules/
+.wrangler/
+logs_preprocessed/
+
+# Внутренние заметки и отчёты не публикуются
+CLAUDE.md
+docs/*.md
+audit*.md

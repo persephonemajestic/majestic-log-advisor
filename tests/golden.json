@@ -1,0 +1,366 @@
+{
+ "main_3.log": {
+  "status": "ok",
+  "headline": "Последняя попытка: патчер отработал, запуск не оборвался",
+  "root": "",
+  "ids": [
+   "m-cancel",
+   "m-dl",
+   "m-ipcnet",
+   "m-manifest",
+   "m-n1",
+   "m-n10",
+   "m-n2",
+   "m-n3",
+   "m-n4",
+   "m-n5",
+   "m-n6",
+   "m-net",
+   "m-ok2"
+  ],
+  "crit": [
+   "m-manifest"
+  ],
+  "unknown": 0
+ },
+ "main_-_2026-10-11T175948.347.log": {
+  "status": "ok",
+  "headline": "Последняя попытка: патчер отработал, запуск не оборвался",
+  "root": "",
+  "ids": [
+   "m-clrfail",
+   "m-crashdet",
+   "m-maint",
+   "m-n10",
+   "m-n7",
+   "m-ok2"
+  ],
+  "crit": [],
+  "unknown": 0
+ },
+ "main__4_.log": {
+  "status": "ok",
+  "headline": "Последняя попытка успешна: игра запущена",
+  "root": "",
+  "ids": [
+   "m-gpu",
+   "m-n10",
+   "m-n3",
+   "m-n4",
+   "m-n5",
+   "m-n6",
+   "m-ok1",
+   "m-ok2"
+  ],
+  "crit": [],
+  "unknown": 0
+ },
+ "majestic-patcher__1_.log": {
+  "status": "ok",
+  "headline": "Патчер отработал: клиент внедрён, ждёт окно игры",
+  "root": "",
+  "ids": [],
+  "crit": [],
+  "unknown": 0
+ },
+ "client_2026-08-25_05-31-44.log": {
+  "status": "bad",
+  "headline": "Подключение к серверу не удалось: Server not responding",
+  "root": "",
+  "ids": [
+   "c-conn",
+   "c-n-auth",
+   "c-n-join400",
+   "c-n-loc",
+   "c-n-misc",
+   "c-n-split",
+   "c-n-store",
+   "c-ok1",
+   "c-shut"
+  ],
+  "crit": [
+   "c-conn"
+  ],
+  "unknown": 0
+ },
+ "main_16.log": {
+  "status": "ok",
+  "headline": "Последняя попытка: патчер отработал, запуск не оборвался",
+  "root": "",
+  "ids": [
+   "m-cancel",
+   "m-n10",
+   "m-n4",
+   "m-ok2"
+  ],
+  "crit": [],
+  "unknown": 0
+ },
+ "main_7.log": {
+  "status": "bad",
+  "headline": "Последняя попытка закончилась отказом: patcher-error (ERR_GAME_CRASHED)",
+  "root": "",
+  "ids": [
+   "m-blockmod",
+   "m-crashdet",
+   "m-gfxinject",
+   "m-handle6",
+   "m-launchfail",
+   "m-maint",
+   "m-n10",
+   "m-n2",
+   "m-n3",
+   "m-n5",
+   "m-n6",
+   "m-n7",
+   "m-n9",
+   "m-sac"
+  ],
+  "crit": [
+   "m-blockmod",
+   "m-sac"
+  ],
+  "unknown": 0
+ },
+ "main_17.log": {
+  "status": "ok",
+  "headline": "Последняя попытка: патчер отработал, запуск не оборвался",
+  "root": "",
+  "ids": [
+   "m-crashdet",
+   "m-launchfail",
+   "m-n10",
+   "m-n12",
+   "m-n2",
+   "m-n3",
+   "m-n6",
+   "m-n7",
+   "m-ok2",
+   "m-platform"
+  ],
+  "crit": [
+   "m-platform"
+  ],
+  "unknown": 0
+ },
+ "client_2026-10-06_18-58-35.log": {
+  "status": "bad",
+  "headline": "Краш на старте игры (MINIDUMP), кода ERR_ нет",
+  "root": "",
+  "ids": [
+   "c-dump",
+   "c-n-misc",
+   "c-n-script",
+   "c-shut"
+  ],
+  "crit": [
+   "c-dump"
+  ],
+  "unknown": 0
+ },
+ "main_5.log": {
+  "status": "bad",
+  "headline": "Последняя попытка закончилась отказом: patcher-error (The specified module could not be found.)",
+  "root": "install",
+  "ids": [
+   "m-dl",
+   "m-gpu",
+   "m-launchfail",
+   "m-n10",
+   "m-n2",
+   "m-n3",
+   "m-n4",
+   "m-n5",
+   "m-n6",
+   "m-n8",
+   "m-n9",
+   "m-net",
+   "m-ok2",
+   "m-patchmod"
+  ],
+  "crit": [
+   "m-patchmod"
+  ],
+  "unknown": 0
+ },
+ "main__8_.log": {
+  "status": "bad",
+  "headline": "Последняя попытка: игра запустилась и упала (ERR_SYS_FILELOAD)",
+  "root": "loop",
+  "ids": [
+   "m-cancel",
+   "m-crashdet",
+   "m-gpu",
+   "m-n10",
+   "m-n2",
+   "m-n3",
+   "m-n6",
+   "m-n7",
+   "m-net",
+   "m-ok2"
+  ],
+  "crit": [],
+  "unknown": 0
+ },
+ "client_2026-10-06_19-24-25.log": {
+  "status": "bad",
+  "headline": "Краш на старте игры (MINIDUMP), кода ERR_ нет",
+  "root": "",
+  "ids": [
+   "c-dump",
+   "c-lastasset",
+   "c-n-auth",
+   "c-n-find",
+   "c-n-hooks",
+   "c-n-join400",
+   "c-n-loc",
+   "c-n-misc",
+   "c-n-script",
+   "c-n-split",
+   "c-shut"
+  ],
+  "crit": [
+   "c-dump"
+  ],
+  "unknown": 0
+ },
+ "main_18.log": {
+  "status": "bad",
+  "headline": "Последняя попытка: игра запустилась и упала (ERR_FIL_PACK_3)",
+  "root": "loop",
+  "ids": [
+   "m-2fa",
+   "m-auth401",
+   "m-busy",
+   "m-cancel",
+   "m-crashdet",
+   "m-launchfail",
+   "m-maint",
+   "m-n1",
+   "m-n10",
+   "m-n11",
+   "m-n2",
+   "m-n3",
+   "m-n4",
+   "m-n5",
+   "m-n6",
+   "m-n7",
+   "m-n9",
+   "m-ok2",
+   "m-patchcrash",
+   "m-rendauth",
+   "m-timeout",
+   "m-tokverify"
+  ],
+  "crit": [
+   "m-busy",
+   "m-timeout"
+  ],
+  "unknown": 0
+ },
+ "client_2026-09-18_23-07-04.log": {
+  "status": "ok",
+  "headline": "Заход успешный: клиент подключился к серверу",
+  "root": "",
+  "ids": [
+   "c-n-auth",
+   "c-n-dup",
+   "c-n-find",
+   "c-n-hooks",
+   "c-n-join400",
+   "c-n-loc",
+   "c-n-misc",
+   "c-n-paired",
+   "c-n-pkt",
+   "c-n-script",
+   "c-n-split",
+   "c-n-srcdump",
+   "c-n-stack",
+   "c-n-store",
+   "c-n-tick",
+   "c-ok1",
+   "c-ok2"
+  ],
+  "crit": [],
+  "unknown": 0
+ },
+ "main_9.log": {
+  "status": "bad",
+  "headline": "Последняя попытка: игра запустилась и упала (ERR_SYS_FILELOAD)",
+  "root": "",
+  "ids": [
+   "m-cancel",
+   "m-crashdet",
+   "m-dl",
+   "m-n10",
+   "m-n11",
+   "m-n2",
+   "m-n4",
+   "m-n5",
+   "m-n6",
+   "m-n7",
+   "m-n9",
+   "m-net",
+   "m-ok2",
+   "m-patchcrash"
+  ],
+  "crit": [],
+  "unknown": 0
+ },
+ "majestic-patcher.log": {
+  "status": "ok",
+  "headline": "Патчер отработал: клиент внедрён, ждёт окно игры",
+  "root": "",
+  "ids": [],
+  "crit": [],
+  "unknown": 0
+ },
+ "main_10.log": {
+  "status": "bad",
+  "headline": "Последняя попытка: игра запустилась и упала (ERR_SYS_FILELOAD)",
+  "root": "",
+  "ids": [
+   "m-cancel",
+   "m-crashdet",
+   "m-dl",
+   "m-n10",
+   "m-n11",
+   "m-n2",
+   "m-n4",
+   "m-n5",
+   "m-n6",
+   "m-n7",
+   "m-n9",
+   "m-net",
+   "m-ok2",
+   "m-patchcrash"
+  ],
+  "crit": [],
+  "unknown": 0
+ },
+ "client_2026-10-04_18-06-17.log": {
+  "status": "ok",
+  "headline": "Заход успешный: клиент подключился к серверу",
+  "root": "",
+  "ids": [
+   "c-fileload",
+   "c-join-timeout",
+   "c-n-auth",
+   "c-n-dup",
+   "c-n-hooks",
+   "c-n-loc",
+   "c-n-misc",
+   "c-n-pkt",
+   "c-n-script",
+   "c-n-split",
+   "c-n-srcdump",
+   "c-n-stack",
+   "c-n-store",
+   "c-n-tick",
+   "c-ok1",
+   "c-ok2"
+  ],
+  "crit": [],
+  "unknown": 0
+ }
+}

@@ -1,0 +1,57 @@
+{
+  "name": "majestic-log-advisor",
+  "productName": "Majestic Log Advisor",
+  "version": "1.2.2",
+  "description": "Анализатор логов Majestic RP",
+  "main": "boot.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-packager . \"Majestic Log Advisor\" --platform=win32 --arch=x64 --out=dist --overwrite --icon=icon.ico --ignore=\"^/dist\" --ignore=\"^/node_modules/electron-packager\"",
+    "installer": "electron-builder --win nsis --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "@electron/packager": "18.3.6",
+    "electron-builder": "25.1.8"
+  },
+  "author": "Majestic Log Advisor",
+  "build": {
+    "appId": "ru.majestic.logadvisor",
+    "productName": "Majestic Log Advisor",
+    "directories": {
+      "output": "installer"
+    },
+    "files": [
+      "boot.js",
+      "main.js",
+      "preload.js",
+      "hwid.js",
+      "index.html",
+      "icon.png",
+      "icon.ico",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Анализатор логов Majestic",
+      "language": "1049",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Majestic-Log-Advisor-Setup.exe"
+    }
+  }
+}

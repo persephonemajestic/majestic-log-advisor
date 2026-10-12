@@ -1,0 +1,33 @@
+# Собирает Majestic-Plugin-Installer.exe и выкладывает его в выпуск «plugins-installer» (предварительный, чтобы не перебить
+# «последний выпуск» приложения). Запускается при изменении установщика или вручную.
+name: Установщик плагинов
+on:
+  push:
+    branches: [main]
+    paths: ['plugins/installer/**', '.github/workflows/plugins.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Проверка
+        shell: bash
+        run: node --check plugins/installer/installer.js
+      - name: Сборка .exe
+        shell: bash
+        run: |
+          npx --yes @yao-pkg/pkg@6 plugins/installer/installer.js -t node22-win-x64 -o dist/Majestic-Plugin-Installer.exe
+          ls -la dist
+      - name: Выпуск
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view plugins-installer >/dev/null 2>&1 || gh release create plugins-installer --prerelease --title "Установщик плагинов Discord" --notes "Majestic Plugin Installer: ставит и обновляет плагины для Vencord и BetterDiscord из plugins/manifest.json. Ваши другие плагины не трогает. Запустите .exe и следуйте подсказкам."
+          gh release upload plugins-installer dist/Majestic-Plugin-Installer.exe --clobber

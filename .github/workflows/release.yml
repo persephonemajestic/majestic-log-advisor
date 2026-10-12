@@ -1,0 +1,39 @@
+# Собирает приложение для Windows и публикует его в Releases при пуше тега вида v1.0.0
+name: Windows build
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Package
+        shell: bash
+        run: |
+          cp index.html app/index.html
+          cd app
+          npm install --no-audit --no-fund
+          npm run dist
+          cp README-RU.txt "dist/Majestic Log Advisor-win32-x64/ЧИТАЙ МЕНЯ.txt"
+          cd dist
+          powershell -NoProfile -Command "Compress-Archive -Path 'Majestic Log Advisor-win32-x64' -DestinationPath 'Majestic-Log-Advisor-win-x64.zip'"
+      - name: Installer
+        shell: bash
+        continue-on-error: true
+        run: |
+          cd app
+          npm run installer
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            app/installer/Majestic-Log-Advisor-Setup*.exe
+            app/dist/Majestic-Log-Advisor-win-x64.zip
+          generate_release_notes: true

@@ -1,0 +1,77 @@
+{
+ "22222222222.evtx": {
+  "total": 20935,
+  "findings": [
+   "app-crash"
+  ]
+ },
+ "_______1.evtx": {
+  "total": 3468,
+  "findings": [
+   "app-crash",
+   "app-hang"
+  ]
+ },
+ "adm.evtx": {
+  "total": 1,
+  "findings": []
+ },
+ "majestic_release_1.23.3_egs_0x8607612146_2026-9-7-15-36-56_2.dmp": {
+  "title": "Известная ошибка клиента на Windows 10 1809",
+  "fault": "majestic-client.dll+0x64bcf2",
+  "known": true,
+  "uptime": 196,
+  "lowMem": false,
+  "client": "1.23.3.0",
+  "frames": true
+ },
+ "majestic_release_1.23.3_egs_0x8607612146_2026-9-7-15-36-56_1.dmp": {
+  "title": "Известная ошибка клиента на Windows 10 1809",
+  "fault": "majestic-client.dll+0x64bcf2",
+  "known": true,
+  "uptime": 196,
+  "lowMem": false,
+  "client": "1.23.3.0",
+  "frames": true
+ },
+ "crashdump.dmp": {
+  "title": "Сбой в самом GTA5.exe",
+  "fault": "GTA5.exe+0x5cc0e7",
+  "known": false,
+  "uptime": 180,
+  "lowMem": true,
+  "client": "1.23.4.0",
+  "frames": true
+ },
+ "____.evtx": {
+  "total": 26163,
+  "findings": [
+   "bugcheck",
+   "kernel-power",
+   "unexpected-shutdown"
+  ]
+ },
+ "11111111.evtx": {
+  "total": 25806,
+  "findings": [
+   "bugcheck",
+   "kernel-power",
+   "net-link"
+  ]
+ },
+ "majestic_release_1.23.3_steam_0x20742288_2026-9-7-17-22-52.dmp": {
+  "title": "Сбой в самом GTA5.exe",
+  "fault": "GTA5.exe+0x13c8090",
+  "known": false,
+  "uptime": 28,
+  "lowMem": false,
+  "client": "1.23.3.0",
+  "frames": true
+ },
+ "_________.evtx": {
+  "total": 492,
+  "findings": [
+   "app-crash"
+  ]
+ }
+}

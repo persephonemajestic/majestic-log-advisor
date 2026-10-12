@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "about": "Список плагинов для установщика Majestic Plugin Installer. Новый плагин: добавить запись сюда и файлы в plugins/vencord/<dir> и plugins/betterdiscord. Установщик обновляет только эти папки и файлы, чужие плагины не трогает.",
+  "plugins": [
+    {
+      "id": "majesticLogImport",
+      "title": "MajesticLogImport — кнопка «В анализатор» на логах в тикетах",
+      "version": "1.0.0",
+      "vencord": { "dir": "majesticLogImport", "path": "plugins/vencord/majesticLogImport", "files": ["index.tsx", "native.ts"] },
+      "betterdiscord": { "path": "plugins/betterdiscord", "files": ["MajesticLogImport.plugin.js"] }
+    }
+  ]
+}

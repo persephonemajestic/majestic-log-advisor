@@ -1,0 +1,24 @@
+const H = require('./helpers'), { ok } = H;
+(async () => {
+  const { b, p, errs } = await H.launch(1360, 1000);
+  const m1 = H.mainLog('main_a.log', { attempts: ['fail', 'fail'] }), m2 = H.mainLog('main_b.log', { attempts: ['ok'], hour: 13 }), c1 = H.clientLog('client_2026-10-06_08-00-00.log', { crash: true });
+  await H.load(p, [m1, c1, m2]);
+  ok(await p.locator('.tab:has-text("Дело")').count() === 1, 'вкладка «Дело» появляется для папки');
+  await p.click('[data-act=gcase]'); await p.waitForTimeout(400);
+  ok(await p.locator('.caseview .tlr').count() >= 4, 'хронология заполнена');
+  ok(/решено|Помогло|успеш/i.test(await p.locator('.caseview').innerText()), 'итог: дело решено (последний запуск успешен)');
+  ok(await p.locator('.caseview').innerText().then(t => /До и после/.test(t)), 'блок «До и после»');
+  ok(await p.locator('.asks input').count() >= 1, 'список просьб игроку');
+  await p.locator('.asks input >> nth=0').check();
+  await p.click('[data-act=coutcome][data-res=ok]'); await p.waitForTimeout(300);
+  ok(await p.locator('[data-act=coutcome][data-res=ok].on').count() === 1, 'итог «Помогло» сохраняется');
+  await p.selectOption('[data-act=cstatus]', 'wait'); await p.waitForTimeout(300);
+  ok(/Ждём игрока/.test(await p.evaluate(() => document.body.innerText)), 'статус дела виден на плитке');
+  await p.fill('[data-act=cnote]', 'Иванов'); await p.press('[data-act=cnote]', 'Tab');
+  await p.evaluate(() => { window.__c = ''; Object.defineProperty(navigator, 'clipboard', { value: { writeText: t => { window.__c = t; return Promise.resolve(); } }, configurable: true }); });
+  await p.click('[data-act=caseexp]'); await p.waitForTimeout(500);
+  const t = await p.evaluate(() => window.__c); ok(/Дело:/.test(t) && /Иванов/.test(t) && /Хронология/.test(t), 'HTML-отчёт по делу содержит итог, заметки и хронологию');
+  await p.locator('.tlr button >> nth=0').click(); await p.waitForTimeout(500);
+  ok(await p.locator('#rows .ln').count() > 0, 'переход из хронологии открывает лог');
+  await H.done(b, errs);
+})();

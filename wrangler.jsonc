@@ -1,0 +1,11 @@
+{
+  "name": "majestic-log-advisor",
+  "main": "worker/worker.js",
+  "compatibility_date": "2025-10-01",
+  "workers_dev": true,
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+  "durable_objects": { "bindings": [{ "name": "PRESENCE", "class_name": "Presence" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Presence"] }],
+  "triggers": { "crons": ["0 21 * * *"] },
+  "kv_namespaces": [{ "binding": "ACCESS", "id": "771849790a7942ddb5ea61cf8c6d5486" }]
+}
