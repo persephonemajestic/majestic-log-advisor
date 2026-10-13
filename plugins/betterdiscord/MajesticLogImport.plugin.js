@@ -1,6 +1,6 @@
 /**
  * @name MajesticLogImport
- * @version 1.7.4
+ * @version 1.7.5
  * @description «Разбор» логов и скриншотов прямо в тикете: причина, как чинить и готовый ответ игроку одной кнопкой. «В анализатор» отправляет файл в Majestic Log Advisor. Ctrl+Shift+L — разбор последнего лога тикета.
  * @author persephonemajestic
  * @source https://github.com/persephonemajestic/majestic-log-advisor/tree/main/plugins/betterdiscord
@@ -14,7 +14,7 @@
    «Разбор» (логи, zip, скриншоты): файл разбирается в приложении, но не добавляется в список; ответ — окно поверх Discord.
    Значки на логах: плагин сам разбирает логи игрока в открытой ветке и подписывает итог рядом с файлом (можно выключить). */
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.4";
+const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.5";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 /* MLA-QUICKUI-START — общий код окна «Разбор» для Vencord и BetterDiscord (в BetterDiscord вставляется скриптом plugins/sync-quickui.py) */
@@ -436,8 +436,9 @@ module.exports = class MajesticLogImport {
         else { const d = await this.fetch(url); if (!d.ok) { const e = new Error("Discord не отдал файл (" + d.status + ")"); e.status = -1; throw e; } buf = new Uint8Array(await d.arrayBuffer()); }
         const ch = this.store("ChannelStore")?.getChannel(channelId);
         const meta = { name, url: key, ticket: ch?.name || "", guild: ch?.guild_id || "", set: set || "", msgAt: this.msgAt(channelId, messageId), siblings: this.attachments(channelId).map((x) => x.name), mode: mode || "full", noai: !!noai, player: messageId ? this.player(channelId, messageId).player : null, text: mode === "full" ? this.ticketText(channelId, 1500) : "" };
-        let r; try { r = await this.fetch(base + "/v1/quick", { method: "POST", headers: { "content-type": "application/octet-stream", "x-mla-token": c.token, "x-mla-meta": btoa(unescape(encodeURIComponent(JSON.stringify(meta)))) }, body: buf }); }
-        catch (e) { const er = new Error("down"); er.status = 0; throw er; }
+        /* как и при отправке файла: если запрос через BetterDiscord не прошёл, пробуем обычный запрос страницы (приложение разрешает его для discord.com) */
+        const req = { method: "POST", headers: { "content-type": "application/octet-stream", "x-mla-token": c.token, "x-mla-meta": btoa(unescape(encodeURIComponent(JSON.stringify(meta)))) }, body: buf };
+        let r; try { r = await this.fetch(base + "/v1/quick", req); } catch (e) { try { r = await fetch(base + "/v1/quick", req); } catch (e2) { const er = new Error("down"); er.status = 0; throw er; } }
         let j = {}; try { j = await r.json(); } catch (e) {}
         if (!r.ok || !j.ok) { const e = new Error(j.error || ""); e.status = r.status; throw e; }
         j._mode = mode || "full"; j._at = Date.now(); this.qres.set(ck, j); if (this.qres.size > 80) this.qres.delete(this.qres.keys().next().value);
@@ -446,7 +447,8 @@ module.exports = class MajesticLogImport {
     /* отметка «подходит / не подходит» или фраза к шаблону — в приложение, оттуда команде */
     async fb(o) {
         const c = this.cfg(); if (!c.token) return;
-        try { await this.fetch("http://127.0.0.1:" + (c.port || 47615) + "/v1/quick", { method: "POST", headers: { "content-type": "application/octet-stream", "x-mla-token": c.token, "x-mla-meta": btoa(unescape(encodeURIComponent(JSON.stringify({ name: "fb.txt", mode: "fb" })))) }, body: new TextEncoder().encode(JSON.stringify(o)) }); } catch (e) {}
+        const u = "http://127.0.0.1:" + (c.port || 47615) + "/v1/quick", req = { method: "POST", headers: { "content-type": "application/octet-stream", "x-mla-token": c.token, "x-mla-meta": btoa(unescape(encodeURIComponent(JSON.stringify({ name: "fb.txt", mode: "fb" })))) }, body: new TextEncoder().encode(JSON.stringify(o)) };
+        try { await this.fetch(u, req); } catch (e) { try { await fetch(u, req); } catch (e2) {} }
     }
     async openQuick(channelId, messageId, url, name, set) {
         const text = url.indexOf("ticket:") === 0;
