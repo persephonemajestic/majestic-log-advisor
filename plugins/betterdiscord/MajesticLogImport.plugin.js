@@ -1,6 +1,6 @@
 /**
  * @name MajesticLogImport
- * @version 1.7.1
+ * @version 1.7.2
  * @description «Разбор» логов и скриншотов прямо в тикете: причина, как чинить и готовый ответ игроку одной кнопкой. «В анализатор» отправляет файл в Majestic Log Advisor. Ctrl+Shift+L — разбор последнего лога тикета.
  * @author persephonemajestic
  * @source https://github.com/persephonemajestic/majestic-log-advisor/tree/main/plugins/betterdiscord
@@ -14,7 +14,7 @@
    «Разбор» (логи, zip, скриншоты): файл разбирается в приложении, но не добавляется в список; ответ — окно поверх Discord.
    Значки на логах: плагин сам разбирает логи игрока в открытой ветке и подписывает итог рядом с файлом (можно выключить). */
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.1";
+const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.2";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 /* MLA-QUICKUI-START — общий код окна «Разбор» для Vencord и BetterDiscord (в BetterDiscord вставляется скриптом plugins/sync-quickui.py) */
@@ -181,6 +181,9 @@ const UPDATE_URL = "https://raw.githubusercontent.com/persephonemajestic/majesti
 const STOP = /\s*(?:[,;|/(]|\s-\s|\s—\s|$|\s+(?:ник|nick|статик|static|стат|id|сервер|server|discord|дискорд|проблема|описание)(?=[\s:.,;!?*-]|$))/i;
 const STAFF = /саппорт|support|модератор|администратор|админ|staff|принял|сотрудник|агент|хелпер|helper/i;
 const TICKET_STAFF = /специалист|взял\S* .*обращени|саппорт|support|модератор|администратор|staff|принял|сотрудник|агент|хелпер|helper|меняет название|закрыл\S* (тикет|обращени)/i;
+/* приветствие бота тикетов — не описание проблемы */
+const TICKET_WELCOME = /благодарим вас за обращение|специалист поддержки присоединится|при необходимости, дополните|некорректного поведения|агент имеет право|будьте вежливы|^\s*здравствуйте,/i;
+const DESC_RE = /описание проблемы/i;
 const PRE = "(?:^|[^A-Za-zА-Яа-яЁё_])", SEP = "([\\s*]*[:\\-—№#][\\s*]*|\\s+)";
 const NICK_RE = new RegExp(PRE + "(?:ник(?:нейм)?|nick(?:name)?|имя\\s+(?:в\\s+игре|персонажа)|игровое\\s+имя)" + SEP + "([A-Za-zА-Яа-яЁё]{2,20}[ _][A-Za-zА-Яа-яЁё]{2,24})(?![A-Za-zА-Яа-яЁё])", "i");
 const STATIC_RE = new RegExp(PRE + "(?:статик|static(?:\\s*id)?|стат\\.?|статический\\s+(?:id|номер)|id\\s+персонажа|паспорт)[\\s:\\-—№#*]*(\\d{1,7})(?!\\d)", "i");
@@ -234,7 +237,7 @@ module.exports = class MajesticLogImport {
         this.ui = makeQuickUI({ insert: (t) => this.insert(t), copy: (t) => this.copy(t), toast: (t, k) => this.toast(t, k) });
         this.onKey = (e) => { if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyL") { e.preventDefault(); e.stopPropagation(); this.hotkey(); } };
         document.addEventListener("keydown", this.onKey, true);
-        if (BdApi.Data.load("MajesticLogImport", "told150") !== true) { BdApi.Data.save("MajesticLogImport", "told150", true); setTimeout(() => this.toast("MajesticLogImport 1.5: «Разбор» у логов и скриншотов, «Подобрать ответ» в тикете — готовый шаблон команды по тексту игрока. " + MLA_HOTKEY + " — разбор тикета с клавиатуры.", "info"), 4000); }
+        if (BdApi.Data.load("MajesticLogImport", "told150") !== true) { BdApi.Data.save("MajesticLogImport", "told150", true); setTimeout(() => this.toast("MajesticLogImport 1.5: «Разбор» у логов и скриншотов, «Анализировать» под описанием проблемы — готовый шаблон команды по тексту игрока. " + MLA_HOTKEY + " — разбор тикета с клавиатуры.", "info"), 4000); }
         BdApi.DOM.addStyle("MajesticLogImport", MLA_QCSS + ".mla-btn{margin-left:8px;padding:2px 8px;border-radius:4px;border:1px solid var(--button-outline-brand-border,#5865f2);background:transparent;color:var(--text-link,#00a8fc);font-size:12px;cursor:pointer;vertical-align:middle}.mla-btn:hover{background:rgba(88,101,242,.15)}.mla-btn[disabled]{opacity:.6;cursor:default}.mla-all{font-weight:600}");
     }
     stop() {
@@ -273,7 +276,7 @@ module.exports = class MajesticLogImport {
         for (const a of document.querySelectorAll('a[href*="/attachments/"]:not([data-mla])')) {
             a.setAttribute("data-mla", "1");
             let url; try { url = new URL(a.href); } catch (e) { continue; }
-            if (!/^(cdn\.discordapp\.com|media\.discordapp\.net)$/.test(url.hostname)) continue;
+            if (!/^(cdn\.discordapp\.com|media\.discordapp\.net)$/.test(url.hostname) || !/^\/attachments\//.test(url.pathname)) continue;
             const name = decodeURIComponent(url.pathname.split("/").pop() || "");
             const li = a.closest('[id^="chat-messages-"]'); if (!li) continue;
             const m = /^chat-messages-(\d+)-(\d+)$/.exec(li.id); if (!m) continue;
@@ -355,6 +358,7 @@ module.exports = class MajesticLogImport {
     }
 
     async send(channelId, messageId, url, name, btn) {
+        if (!CDN_RE.test(url)) return this.toast("В анализатор отправляются только файлы из тикета (логи, архивы, дампы)", "info");
         const body = Object.assign({ url, name }, this.player(channelId, messageId));
         if (btn) { btn.disabled = true; btn.textContent = "Отправляю…"; }
         try {
@@ -413,8 +417,8 @@ module.exports = class MajesticLogImport {
         for (const m of list) {
             if (m?.author?.id === pid && m.content) out.push(String(m.content));
             /* бот тикетов пишет описание проблемы обычным сообщением; служебные строки («Специалист … взял обращение») пропускаем */
-            if (m?.author?.bot && m.content) for (const line of String(m.content).split("\n")) if (line.trim() && !TICKET_STAFF.test(line)) out.push(line);
-            if (m?.author?.bot || m?.author?.id === pid) for (const em of m.embeds || []) { for (const f of em.fields || []) if (!STAFF.test(f.name || f.rawName || "")) out.push((f.name || f.rawName || "") + ": " + (f.value || f.rawValue || "")); if (m?.author?.bot && (em.description || em.rawDescription)) out.push(String(em.description || em.rawDescription)); }
+            if (m?.author?.bot && m.content) for (const line of String(m.content).split("\n")) if (line.trim() && !TICKET_STAFF.test(line) && !TICKET_WELCOME.test(line)) out.push(line);
+            if (m?.author?.bot || m?.author?.id === pid) for (const em of m.embeds || []) { for (const f of em.fields || []) if (!STAFF.test(f.name || f.rawName || "")) out.push((f.name || f.rawName || "") + ": " + (f.value || f.rawValue || "")); if (m?.author?.bot && (em.description || em.rawDescription)) for (const line of String(em.description || em.rawDescription).split("\n")) if (line.trim() && !TICKET_WELCOME.test(line) && !TICKET_STAFF.test(line)) out.push(line); }
         }
         const t = out.join("\n").trim(); return t.length > max ? t.slice(t.length - max) : t;
     }
@@ -447,7 +451,7 @@ module.exports = class MajesticLogImport {
         this.ui.loading(text ? "тикет" : name);
         try {
             const mode = text ? "text" : "full", key = url + "|" + (set || "");
-            const ctx = { key, open: FILE_RE.test(name) ? () => this.send(channelId, messageId, url, name, null) : null, reload: (s) => this.openQuick(channelId, messageId, url, name, s), fb: (o) => this.fb(o) };
+            const ctx = { key, open: !text && FILE_RE.test(name) ? () => this.send(channelId, messageId, url, name, null) : null, reload: (s) => this.openQuick(channelId, messageId, url, name, s), fb: (o) => this.fb(o) };
             const r = await this.quick(channelId, messageId, url, name, mode, set, true);
             this.ui.show(r, ctx);
             if (r.tpl && r.tpl.more) { try { const r2 = await this.quick(channelId, messageId, url, name, mode, set, false); this.ui.show(r2, Object.assign({}, ctx, { update: true })); } catch (e) {} }
@@ -470,15 +474,19 @@ module.exports = class MajesticLogImport {
         if (!this.ticketText(ch, 50)) return this.toast("Игрок в этом тикете ещё ничего не написал", "info");
         this.openQuick(ch, first ? first.id : "", "ticket:" + ch, "ticket.txt");
     }
-    /* кнопка «Подобрать ответ» у первого сообщения игрока в ветке */
-    /* «Подобрать ответ» — у первых трёх сообщений ветки (в том числе у описания от бота тикетов) */
+    /* кнопка «Анализировать» под описанием проблемы */
+    /* «Анализировать» — под описанием проблемы от бота тикетов; если описания нет — под первым сообщением игрока */
+    descId(ch) {
+        const list = this.messages(ch), d = list.find((m) => m?.author?.bot && DESC_RE.test(String(m.content || "") + " " + (m.embeds || []).map((e) => (e.title || "") + " " + (e.description || e.rawDescription || "") + " " + (e.fields || []).map((f) => f.name || f.rawName || "").join(" ")).join(" ")));
+        if (d) return d.id; const pid = this.playerId(ch), p = list.find((m) => m?.author?.id === pid); return p ? p.id : "";
+    }
     ticketButton(li, ch, mid) {
-        if (li.querySelector(".mla-tk") || !this.messages(ch).slice(0, 3).some((m) => m && m.id === mid)) return;
+        if (li.querySelector(".mla-tk") || this.descId(ch) !== mid) return;
         const acc = li.querySelector('[id^="message-accessories-"]') || li, b = document.createElement("button");
-        b.className = "mla-btn mla-tk"; b.type = "button"; b.textContent = "Подобрать ответ"; b.title = "Шаблон команды по тексту игрока (и логам, если они есть). " + MLA_HOTKEY + " — то же с клавиатуры";
+        b.className = "mla-btn mla-tk"; b.type = "button"; b.textContent = "Анализировать"; b.title = "Разбор обращения: логи и скриншоты игрока, если есть, и готовый шаблон команды по описанию проблемы. " + MLA_HOTKEY + " — то же с клавиатуры";
         b.style.marginLeft = "0"; b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); this.hotkey(ch); });
         const bar = document.createElement("div"); bar.className = "mla-imgbar mla-tkbar"; bar.appendChild(b); acc.appendChild(bar);
-        /* заранее подобрать шаблон без ИИ — окно «Подобрать ответ» откроется мгновенно */
+        /* заранее подобрать шаблон без ИИ — окно «Анализировать» откроется мгновенно */
         this.pre = this.pre || {}; if (!this.pre[ch] && !this.attachments(ch, LOG_RE).length && this.cfg().token && Date.now() > this.downUntil) { this.pre[ch] = 1; this.quick(ch, mid, "ticket:" + ch, "ticket.txt", "text", "", true).catch(() => {}); }
     }
     imgButton(li, channelId, messageId, url, name) {
