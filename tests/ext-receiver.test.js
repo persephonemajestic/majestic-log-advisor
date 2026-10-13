@@ -52,5 +52,17 @@ setTimeout(async () => {
   ons['ext-pair-answer'](null, ev2.d.id, false); const a2 = await w2;
   ok(a2.s === 403 && !a2.j.token, '«Отклонить» ключ не отдаёт');
   ok((await req({ path: '/v1/pair', body: {}, headers: { origin: 'https://evil.example' } })).s === 403, 'чужой сайт подключиться не может');
+  /* быстрый разбор: файл уходит в окно приложения, ответ — сводка; в список логов (ext-import) ничего не попадает */
+  const T3 = (await handlers['ext-info']()).token;
+  const qk = (tok, meta, data) => new Promise((res) => { const r = http.request({ host: '127.0.0.1', port: api.port, method: 'POST', path: '/v1/quick', headers: { 'content-type': 'application/octet-stream', 'x-mla-token': tok, 'x-mla-meta': Buffer.from(JSON.stringify(meta)).toString('base64') } }, (x) => { let b = ''; x.on('data', (c) => b += c); x.on('end', () => res({ s: x.statusCode, j: b ? JSON.parse(b) : {} })); }); r.write(data); r.end(); });
+  ok((await qk('wrong', { name: 'main.log' }, Buffer.from('x'))).s === 401, 'быстрый разбор: без ключа отказ');
+  ok((await qk(T3, { name: 'virus.exe' }, Buffer.from('x'))).s === 400, 'быстрый разбор: чужой тип файла отклонён');
+  ok((await qk(T3, { name: 'main.log' }, Buffer.from('x'))).j.error === 'old', 'быстрый разбор: старый интерфейс приложения — понятная ошибка');
+  ons['ext-quick-ready'](); const nI = sent.filter((x) => x.ch === 'ext-import').length;
+  const wq = qk(T3, { name: 'shot.png', url: 'https://cdn.discordapp.com/attachments/1/2/shot.png?ex=1', ticket: 't-5', msgAt: 123, siblings: ['main.log'], mode: 'badge', evil: 1 }, Buffer.from('PNG')); await new Promise((r) => setTimeout(r, 50));
+  const qe = sent.filter((x) => x.ch === 'ext-quick').pop();
+  ok(qe && qe.d.name === 'shot.png' && new TextDecoder().decode(qe.d.data) === 'PNG' && qe.d.meta.ticket === 't-5' && qe.d.meta.mode === 'badge' && !/\?/.test(qe.d.meta.url) && !('evil' in qe.d.meta), 'быстрый разбор: файл и очищенные данные переданы в окно');
+  ons['ext-quick-answer'](null, qe.d.id, { ok: true, cause: 'Моды' }); const qa = await wq;
+  ok(qa.s === 200 && qa.j.cause === 'Моды' && sent.filter((x) => x.ch === 'ext-import').length === nI, 'быстрый разбор: сводка вернулась плагину, в список логов ничего не добавлено');
   process.exit(bad ? 1 : 0);
 }, 200);

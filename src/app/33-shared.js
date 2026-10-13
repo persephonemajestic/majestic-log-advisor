@@ -13,13 +13,21 @@ function repliesCard(f) {
   return '<details class="card plain"><summary>Как отвечали коллеги (' + a.length + ')</summary>' + a.map(function (x, i) { var vs = x.votes || [], mine = vs.indexOf(S.me) >= 0; return '<div style="margin:8px 0"><div class="hint">' + esc(x.by) + (x.by === S.me ? ' (вы)' : '') + ', ' + esc(fmtDT(x.at).slice(0, 10)) + (x.v ? ', версия ' + esc(x.v) : '') + (vs.length ? ', помогло: ' + vs.length : '') + '</div><div style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;max-height:140px;overflow:auto">' + esc(M(x.text)) + '</div><button class="btn sm ghost" data-act="useReply" data-at="' + x.at + '">Подставить в ответ</button> <button class="btn sm' + (mine ? ' primary' : ' ghost') + '" data-act="voteReply" data-at="' + x.at + '" data-key="' + esc(key) + '" aria-pressed="' + mine + '">' + (mine ? 'Помогло (отмена)' : 'Помогло') + '</button></div>'; }).join('') + '</details>';
 }
 var RSTYLES = {
+  brief: { n: 'Краткий: только решение', hello: LA.BRIEF_HELLO, bye: LA.BRIEF_BYE, short: false, brief: true },
   std: { n: 'Стандартный', hello: 'Здравствуйте!', bye: 'Выполните шаги выше, перезапустите лаунчер и напишите, получилось ли. Если проблема останется, пришлите свежие main.log и client.log.', short: false },
   polite: { n: 'Вежливый', hello: 'Здравствуйте! Спасибо, что обратились в поддержку.', bye: 'Выполните шаги выше и напишите нам, получилось ли. Мы на связи и поможем дальше. Хорошего дня!', short: false },
   short: { n: 'Короткий', hello: 'Добрый день!', bye: 'Напишите, помогло ли.', short: true },
   esc: { n: 'С эскалацией', hello: 'Здравствуйте!', bye: 'Если после этих шагов проблема останется, пришлите свежие main.log и client.log (папка %appdata%\\majestic-launcher). Мы передадим обращение специалистам и вернёмся с ответом.', short: false }
 };
+/* Стиль ответа: по умолчанию краткий (на «Вы», только решение). Свои приветствие и прощание сохраняются, заготовки других стилей — нет */
+function isBrief() { return (S.kb.settings.replyStyle || 'brief') === 'brief'; }
+function replyOpts() {
+  var st = S.kb.settings || {}, pre = function (v, k) { return !v || Object.keys(RSTYLES).some(function (x) { return RSTYLES[x][k] === v; }); };
+  if (!isBrief()) return { hello: st.hello, bye: st.bye, brief: false };
+  return { hello: pre(st.hello, 'hello') ? LA.BRIEF_HELLO : st.hello, bye: pre(st.bye, 'bye') ? LA.BRIEF_BYE : st.bye, brief: true };
+}
 function styleSel() {
-  var cur = S.kb.settings.replyStyle || 'std';
+  var cur = S.kb.settings.replyStyle || 'brief';
   return '<label class="nl inl" style="max-width:240px">Стиль ответа<select class="sel" data-act="rstyle" aria-label="Стиль ответа">' + Object.keys(RSTYLES).map(function (k) { return '<option value="' + k + '"' + (cur === k ? ' selected' : '') + '>' + RSTYLES[k].n + '</option>'; }).join('') + '</select></label>';
 }
 function shortenReply(t) {

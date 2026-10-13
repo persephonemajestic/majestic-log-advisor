@@ -64,3 +64,18 @@ export async function checkToken(_: IpcMainInvokeEvent, port: number, token: str
     if (!okPort(port)) return "port";
     try { const r = await fetch(`http://127.0.0.1:${port}/v1/import`, { method: "POST", headers: { "content-type": "application/json", "x-mla-token": String(token || "") }, body: "{}" }); return r.status === 401 ? "token" : "ok"; } catch { return "down"; }
 }
+
+/* Быстрый разбор: Discord скачивает вложение (лог, zip или скриншот), приложение разбирает его и отвечает сводкой.
+   В список логов приложения файл не попадает. status 0 — приложение не запущено, -1 — Discord не отдал файл. */
+export async function quick(_: IpcMainInvokeEvent, port: number, token: string, url: string, meta: any) {
+    if (!okPort(port)) return { status: 0, j: { ok: false, error: "port" } };
+    if (!CDN.test(String(url || ""))) return { status: 400, j: { ok: false, error: "url" } };
+    let buf: Buffer;
+    try { const r = await fetch(url); if (!r.ok) return { status: -1, j: { ok: false, error: "Discord не отдал файл (" + r.status + ")" } }; buf = Buffer.from(await r.arrayBuffer()); }
+    catch (e: any) { return { status: -1, j: { ok: false, error: "Discord не отдал файл: " + String(e?.message || e) } }; }
+    try {
+        const r = await fetch(`http://127.0.0.1:${port}/v1/quick`, { method: "POST", headers: { "content-type": "application/octet-stream", "x-mla-token": String(token || ""), "x-mla-meta": Buffer.from(JSON.stringify(meta || {})).toString("base64") }, body: buf });
+        let j: any = {}; try { j = await r.json(); } catch { }
+        return { status: r.status, j };
+    } catch { return { status: 0, j: { ok: false, error: "down" } }; }
+}

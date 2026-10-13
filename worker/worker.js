@@ -144,16 +144,18 @@ export default {
       if (!env.GEMINI_API_KEY) return json({ ok: false, error: 'no_key' }, 503);
       let b = {}; try { b = await req.json(); } catch (e) {}
       const sys = String(b.system || '').slice(0, 20000), inp = String(b.input || '').slice(0, 60000); if (inp.length < 20) return json({ ok: false, error: 'bad' }, 400);
+      /* скриншот от игрока (быстрый разбор из плагина Discord): JPEG/PNG/WebP в base64, не больше ~4 МБ; в KV не сохраняется */
+      const img = b.image && /^image\/(jpeg|png|webp)$/.test(String(b.image.mime || '')) && typeof b.image.data === 'string' && b.image.data.length <= 6000000 && /^[A-Za-z0-9+/=]+$/.test(b.image.data.slice(0, 200)) ? { mime_type: b.image.mime, data: b.image.data } : null;
       const model = env.GEMINI_MODEL || 'gemini-3.8-flash';
       /* кэш: тот же запрос к той же модели и промпту отдаётся из KV и не тратит дневной лимит */
-      let ck = ''; try { const dg = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(model + '\n' + sys + '\n' + inp + '\n' + (parseInt(b.max, 10) || 0))); ck = 'ac:' + Array.from(new Uint8Array(dg)).slice(0, 16).map((x) => x.toString(16).padStart(2, '0')).join(''); } catch (e) {}
+      let ck = ''; try { const dg = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(model + '\n' + sys + '\n' + inp + '\n' + (parseInt(b.max, 10) || 0) + (img ? '\n' + img.data : ''))); ck = 'ac:' + Array.from(new Uint8Array(dg)).slice(0, 16).map((x) => x.toString(16).padStart(2, '0')).join(''); } catch (e) {}
       if (ck && !b.fresh) { try { const hit = await env.ACCESS.get(ck); if (hit) return json({ ok: true, text: hit, cached: true }); } catch (e) {} }
       const day = new Date().toISOString().slice(0, 10), qk = 'q:' + day + ':' + u.h; let q = 0; try { q = parseInt(await env.ACCESS.get(qk), 10) || 0; } catch (e) {}
       const lim = parseInt(env.AI_DAILY, 10) || 60; if (q >= lim) return json({ ok: false, error: 'limit' });
       try { await env.ACCESS.put(qk, String(q + 1), { expirationTtl: 172800 }); } catch (e) {}
       let r; try {
         r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent', { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
-          body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text: inp }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0.2, maxOutputTokens: Math.max(256, Math.min(parseInt(b.max, 10) || 8192, 8192)) } }) });
+          body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text: inp }].concat(img ? [{ inline_data: img }] : []) }], generationConfig: { responseMimeType: 'application/json', temperature: 0.2, maxOutputTokens: Math.max(256, Math.min(parseInt(b.max, 10) || 8192, 8192)) } }) });
       } catch (e) { return json({ ok: false, error: 'upstream', detail: 'нет связи с Gemini' }); }
       if (!r.ok) { let m = ''; try { m = ((await r.json()).error || {}).message || ''; } catch (e) {} return json({ ok: false, error: r.status === 429 ? 'rate' : 'upstream', detail: 'Gemini ' + r.status + (m ? ': ' + String(m).slice(0, 160) : '') }); }
       let j = {}; try { j = await r.json(); } catch (e) {}

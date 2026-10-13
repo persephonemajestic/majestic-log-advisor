@@ -2835,9 +2835,9 @@ var REPLY = {
 };
 REPLY['m-patcherr'] = REPLY['m-crashdet'];
 REPLY['m-crashdet:ERR_SYS_FILELOAD'] = ['Проверьте папку GTA V: в ней не должно быть модов (dxgi.dll, ReShade, ENB, DLSS-файлов nvngx_*.dll и т.п.). Перенесите их в папку модификаций лаунчера или удалите.', 'Запустите проверку файлов игры в вашей платформе (Steam/Epic/Rockstar), обновите драйвер видеокарты.', 'Если игра снова вылетит, сразу пришлите client.log и файл краш-отчёта: Win+R → %appdata%\\majestic-launcher\\Multiplayer\\crashdumps (самый свежий файл).'];
-REPLY['m-srvfiles:net'] = ['Загрузка файлов сервера оборвалась из-за связи: проверьте интернет, отключите VPN и прокси, добавьте лаунчер в исключения фаервола и антивируса, затем повторите запуск.'];
-REPLY['m-srvfiles:bad'] = ['Файл сервера скачался повреждённым: в настройках лаунчера очистите кеш и дождитесь полной перепроверки файлов, затем повторите запуск.'];
-REPLY['m-srvfiles:space'] = ['На диске с игрой закончилось место: освободите несколько гигабайт (или выберите другой диск для файлов лаунчера) и повторите запуск.'];
+REPLY['m-srvfiles:net'] = ['Проверьте интернет-соединение, отключите VPN и прокси, добавьте лаунчер в исключения брандмауэра и антивируса, затем повторите запуск.'];
+REPLY['m-srvfiles:bad'] = ['В настройках лаунчера очистите кеш и дождитесь полной перепроверки файлов, затем повторите запуск.'];
+REPLY['m-srvfiles:space'] = ['Освободите несколько гигабайт на диске с игрой (или выберите другой диск для файлов лаунчера) и повторите запуск.'];
 REPLY['c-platform'] = REPLY['m-platform'];
 function replySteps(g) {
   if (REPLY[g.key]) return REPLY[g.key];
@@ -2848,8 +2848,53 @@ function replySteps(g) {
   return f;
 }
 var REPLY_BYE = 'Выполните шаги выше, перезапустите лаунчер и напишите, получилось ли. Если проблема останется, пришлите свежие main.log и client.log.';
+/* Краткий ответ игроку: уважительно, на «Вы», только решение по факту — без названий ошибок и строк лога.
+   Шаги те же, что в подробном ответе (руководство и правила команды), но одним списком, не больше пяти. */
+var BRIEF_HELLO = '**Приветствую! Благодарим Вас за обращение в службу поддержки.**';
+var BRIEF_BYE = 'Если проблема сохранится, напишите нам, пожалуйста, — мы продолжим разбираться.';
+function capVy(s) { return String(s).replace(/(^|[^А-Яа-яЁё])(вы|вас|вам|вами|ваш[а-яё]*)(?=[^А-Яа-яЁё]|$)/g, function (m, a, w) { return a + w.charAt(0).toUpperCase() + w.slice(1); }); }
+function modList(sc, o) {
+  var mf = (sc.mods ? sc.mods.files.slice() : []), seenB = {};
+  ((o && o.folderMods) || []).forEach(function (x) { mf.push(x); });
+  return mf.filter(function (x) { var b = String(x).split(/[\\\/]/).filter(Boolean).pop().toLowerCase(); if (seenB[b]) return false; seenB[b] = 1; return true; });
+}
+function briefSteps(sc, o) {
+  o = o || {};
+  var out = [], asks = [], seen = {}, ASK = /пришлите|присылайте|отправьте нам/i;
+  var add = function (x) { x = String(x || '').replace(/\s+/g, ' ').trim(); if (!x) return; var k = x.toLowerCase().replace(/[^а-яёa-z0-9]+/g, '').slice(0, 70); if (seen[k]) return; seen[k] = 1; (ASK.test(x) ? asks : out).push(x); };
+  var mf = modList(sc, o);
+  if (o.only) mf = o.only === 'mods' ? mf : [];
+  if (mf.length) add('Удалите из папки с игрой сторонние файлы (или перенесите их в папку модификаций лаунчера): ' + mf.slice(0, 6).map(function (x) { return String(x).split(/[\\\/]/).filter(Boolean).pop(); }).join(', ') + (mf.length > 6 ? ' и другие' : '') + '.');
+  var probs = sc.findings.filter(function (g) { return SEV[g.sev] >= SEV.warn; });
+  if (o.only) probs = probs.filter(function (g) { return g.key === o.only; });
+  var strong = probs.filter(function (g) { return SEV[g.sev] >= SEV.err; }); if (strong.length) probs = strong;
+  var used = 0, full = false;
+  probs.forEach(function (g) {
+    if (used >= 2 || full || o.only === 'mods') return;
+    if (mf.length && (g.rule.id === 'm-patcherr' || g.rule.id === 'm-crashdet' || g.rule.id === 'm-blockmod' || g.rule.id === 'c-weapfirst')) return;
+    /* вторая проблема — только с готовыми шагами для игрока; первая с полным решением (top) закрывает список */
+    var st = used && !REPLY[g.key] && !REPLY[g.rule.id] ? null : replySteps(g); if (!st || !st.length) return;
+    used++; if (g.rule.top) full = true;
+    st.forEach(function (x) {
+      if (mf.length) { if (/^Проверьте папку GTA V: в ней не должно быть модов/.test(x)) return; x = x.replace(/^Уберите моды из папки игры,\s*/, function () { return ''; }); x = x.charAt(0).toUpperCase() + x.slice(1); }
+      add(x);
+    });
+  });
+  if (o.extra && !o.only) o.extra.slice(0, 1).forEach(function (x) { (x && x.steps || []).slice(0, 3).forEach(add); });
+  return out.slice(0, 5).concat(asks.slice(0, 1)).map(capVy);
+}
+function composeBrief(sc, o) {
+  o = o || {};
+  var hello = o.hello || BRIEF_HELLO, bye = o.bye || BRIEF_BYE, steps = briefSteps(sc, o), L = [hello, ''];
+  if (steps.length) { L.push('Для решения проблемы попробуйте:'); steps.forEach(function (x, i) { L.push((i + 1) + '. ' + x); }); }
+  else if (sc.verdict.status === 'ok') L.push('Судя по присланному логу, игра запустилась и подключилась к серверу. Уточните, пожалуйста, что именно у Вас не работает, и пришлите лог сразу после того, как проблема появится.');
+  else L.push('Пришлите, пожалуйста, свежие main.log и client.log сразу после неудачной попытки запуска, а также скриншот ошибки, если она появляется.');
+  L.push('', bye);
+  return L.join('\n');
+}
 function composeReply(sc, o) {
   o = o || {};
+  if (o.brief) return composeBrief(sc, o);
   var hello = o.hello || 'Здравствуйте!', bye = o.bye || REPLY_BYE;
   var L = [hello, ''], n = 0, used = {};
   var probs = sc.findings.filter(function (g) { return SEV[g.sev] >= SEV.warn; });
@@ -3086,7 +3131,7 @@ function mask(s) {
     .replace(/\b((?:access_|refresh_|auth_|id_)?token|authorization|bearer|session_?id|api_?key)(["']?\s*[:=]\s*["']?|\s+)([A-Za-z0-9._~+\/=-]{12,})/gi, '$1$2***');
 }
 
-var LA = root.LA = { permCommand: permCommand, h32: h32, caseSummary: caseSummary, stripAnsi: stripAnsi, SEV: SEV, RULES: RULES, parse: parse, scan: scan, analyzeAsync: analyzeAsync, learn: learn, classify: classify, applyKB: applyKB, newKB: newKB, setCustomRules: setCustomRules, composeReply: composeReply, REPLY_BYE: REPLY_BYE, diffScans: diffScans, gameFolder: gameFolder, guessGamePaths: guessGamePaths, mask: mask, clusterReports: clusterReports, histTime: histTime, signature: signature, detectKind: detectKind, owner: owner, toMs: toMs };
+var LA = root.LA = { permCommand: permCommand, h32: h32, caseSummary: caseSummary, stripAnsi: stripAnsi, SEV: SEV, RULES: RULES, parse: parse, scan: scan, analyzeAsync: analyzeAsync, learn: learn, classify: classify, applyKB: applyKB, newKB: newKB, setCustomRules: setCustomRules, composeReply: composeReply, composeBrief: composeBrief, briefSteps: briefSteps, BRIEF_HELLO: BRIEF_HELLO, BRIEF_BYE: BRIEF_BYE, rootCause: rootCause, REPLY_BYE: REPLY_BYE, diffScans: diffScans, gameFolder: gameFolder, guessGamePaths: guessGamePaths, mask: mask, clusterReports: clusterReports, histTime: histTime, signature: signature, detectKind: detectKind, owner: owner, toMs: toMs };
 if (typeof module !== 'undefined' && module.exports) module.exports = root.LA;
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -3101,7 +3146,7 @@ var STRU = { ok: 'Успех', bad: 'Сбой', warn: 'Внимание', unk: '
 var SRCRU = { guide: 'из руководства', obs: 'по наблюдению в логах', infer: 'вывод, в руководстве нет', web: 'по открытым источникам', user: 'ваше правило', team: 'правило команды' };
 var SRCTIP = { team: 'Общее правило команды из файла rules.json в репозитории проекта', user: 'Правило, которое добавили вы или коллега через «Добавить решение»', guide: 'Правило взято из документа «Руководство по диагностике ошибок и работе с логами»', obs: 'Строка встречается в успешных заходах загруженных логов, поэтому считается шумом', web: 'Случая нет в руководстве. Объяснение собрано по справкам Rockstar, форумам RAGE и cfx.re и реальным логам. Проверяйте его', infer: 'Этого случая нет в руководстве. Объяснение построено по логам и общим признакам, проверяйте его' };
 var PSTEPS_UI = [['admin', 'Администратор'], ['pirate', 'Очистка файлов'], ['backup', 'Резервная копия'], ['patch', 'Патч игры'], ['job', 'Процесс игры'], ['inject', 'Внедрение'], ['injected', 'Клиент внедрён'], ['entry', 'Запуск клиента'], ['finished', 'Готово'], ['window', 'Окно игры']];
-var SAMPLE = null, APP_VERSION = '2026-10-13.114';
+var SAMPLE = null, APP_VERSION = '2026-10-13.115';
 var ROW = 20, KBKEY = 'majestic-log-advisor.kb.v1';
 
 var $ = function (s) { return document.querySelector(s); };
@@ -3138,6 +3183,15 @@ function niceName(n) { return n.replace(/^[0-9a-f]{8}-/i, ''); }
 function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ'; }
 /* ---------- Версия 13: отчёты, все логи, окно загрузки, команда, слежение ---------- */
 var CHANGELOG = [
+  { v: '2026-10-13.115', items: [
+    'Разбор прямо в Discord (плагин 1.4): у логов и скриншотов игрока в тикете кнопка «Разбор» — окно с причиной, как чинить, ключевыми строками и готовым ответом игроку. Ответ можно поправить и вставить в чат одной кнопкой.',
+    'Ctrl+Shift+L в открытом тикете — разбор последнего лога игрока без поиска файла. Подсказка есть в окне разбора, в настройках плагина и в «Инструкции».',
+    'Значки рядом с логами в тикете: «МОД», «Сеть игрока», «Успех», «старый»… — итог виден ещё до клика (можно выключить в настройках плагина).',
+    'Тот ли файл: окно предупредит, если лог старый, в main.log нет попытки запуска, для краша не хватает client.log или это вообще не лог Majestic, — и подставит вежливую просьбу игроку.',
+    'Скриншоты: чёрные полосы по краям экрана находятся сразу (ответ — сбросить settings.xml и выставить разрешение монитора); текст ошибки на экране читает ИИ и сверяет с правилами анализатора.',
+    '«Передать дальше» вставляет в чат сводку для старших: причина, что уже предложено, ключевые строки.',
+    'Ответ игроку по умолчанию краткий: уважительно, на «Вы», только решение — без названий ошибок и строк лога. Прежние стили остались в «Стиль ответа».'
+  ] },
   { v: '2026-10-13.114', items: [
     'Краш с кодом ERR_SYS_FILELOAD: главная причина больше не противоречит сама себе, а игроку не уходит пометка «фоновый шум». В ответе — понятные шаги и просьба прислать client.log и файл из crashdumps.',
     'Шаги в ответе игроку теперь под конкретную причину: например, при обрыве загрузки файлов сервера (fetch failed) — про связь и VPN, а не про место на диске.',
@@ -4484,14 +4538,14 @@ function caseAskText(c) {
 }
 /* Ответ игроку по делу: шаги по последнему неудачному логу и то, что ещё нужно прислать (неотмеченные просьбы) */
 function caseReplyText(c) {
-  var st = S.kb.settings || {}, todo = c.r.asks.filter(function (a) { return !c.checks[a.id]; }), hello = st.hello || 'Здравствуйте!';
+  var st = S.kb.settings || {}, ro = replyOpts(), todo = c.r.asks.filter(function (a) { return !c.checks[a.id]; }), hello = ro.hello || 'Здравствуйте!';
   if (c.r.status === 'ok') return hello + '\n\nПо последним логам всё в порядке: игра запустилась и подключилась к серверу. Если проблема повторится, пришлите свежие main.log и client.log сразу после неудачной попытки.';
   var bad = c.fo.files.filter(function (x) { return x.sc.verdict.status !== 'ok'; }).sort(function (a, b) { return fileTime(a) - fileTime(b); }), last = bad[bad.length - 1];
   if (!last) return caseAskText(c);
   var more = todo.length ? 'Также, пожалуйста:\n' + todo.map(function (a, i) { return (i + 1) + ') ' + a.text; }).join('\n') + '\n\n' : '';
-  var rt = M(LA.composeReply(last.sc, { kb: S.kb, hello: st.hello, bye: '\u0001', extra: sysExtra(last), folderMods: folderMods(last) }));
-  if (st.replyShort) rt = shortenReply(rt);
-  return rt.replace('\u0001', more + (st.bye || LA.REPLY_BYE));
+  var rt = M(LA.composeReply(last.sc, { kb: S.kb, hello: ro.hello, bye: '\u0001', brief: ro.brief, extra: sysExtra(last), folderMods: folderMods(last) }));
+  if (st.replyShort && !ro.brief) rt = shortenReply(rt);
+  return rt.replace('\u0001', more + (ro.bye || LA.REPLY_BYE));
 }
 function renderCase(f) {
   var c = caseData(); if (!c) return renderDiag(f);
@@ -5108,13 +5162,21 @@ function repliesCard(f) {
   return '<details class="card plain"><summary>Как отвечали коллеги (' + a.length + ')</summary>' + a.map(function (x, i) { var vs = x.votes || [], mine = vs.indexOf(S.me) >= 0; return '<div style="margin:8px 0"><div class="hint">' + esc(x.by) + (x.by === S.me ? ' (вы)' : '') + ', ' + esc(fmtDT(x.at).slice(0, 10)) + (x.v ? ', версия ' + esc(x.v) : '') + (vs.length ? ', помогло: ' + vs.length : '') + '</div><div style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;max-height:140px;overflow:auto">' + esc(M(x.text)) + '</div><button class="btn sm ghost" data-act="useReply" data-at="' + x.at + '">Подставить в ответ</button> <button class="btn sm' + (mine ? ' primary' : ' ghost') + '" data-act="voteReply" data-at="' + x.at + '" data-key="' + esc(key) + '" aria-pressed="' + mine + '">' + (mine ? 'Помогло (отмена)' : 'Помогло') + '</button></div>'; }).join('') + '</details>';
 }
 var RSTYLES = {
+  brief: { n: 'Краткий: только решение', hello: LA.BRIEF_HELLO, bye: LA.BRIEF_BYE, short: false, brief: true },
   std: { n: 'Стандартный', hello: 'Здравствуйте!', bye: 'Выполните шаги выше, перезапустите лаунчер и напишите, получилось ли. Если проблема останется, пришлите свежие main.log и client.log.', short: false },
   polite: { n: 'Вежливый', hello: 'Здравствуйте! Спасибо, что обратились в поддержку.', bye: 'Выполните шаги выше и напишите нам, получилось ли. Мы на связи и поможем дальше. Хорошего дня!', short: false },
   short: { n: 'Короткий', hello: 'Добрый день!', bye: 'Напишите, помогло ли.', short: true },
   esc: { n: 'С эскалацией', hello: 'Здравствуйте!', bye: 'Если после этих шагов проблема останется, пришлите свежие main.log и client.log (папка %appdata%\\majestic-launcher). Мы передадим обращение специалистам и вернёмся с ответом.', short: false }
 };
+/* Стиль ответа: по умолчанию краткий (на «Вы», только решение). Свои приветствие и прощание сохраняются, заготовки других стилей — нет */
+function isBrief() { return (S.kb.settings.replyStyle || 'brief') === 'brief'; }
+function replyOpts() {
+  var st = S.kb.settings || {}, pre = function (v, k) { return !v || Object.keys(RSTYLES).some(function (x) { return RSTYLES[x][k] === v; }); };
+  if (!isBrief()) return { hello: st.hello, bye: st.bye, brief: false };
+  return { hello: pre(st.hello, 'hello') ? LA.BRIEF_HELLO : st.hello, bye: pre(st.bye, 'bye') ? LA.BRIEF_BYE : st.bye, brief: true };
+}
 function styleSel() {
-  var cur = S.kb.settings.replyStyle || 'std';
+  var cur = S.kb.settings.replyStyle || 'brief';
   return '<label class="nl inl" style="max-width:240px">Стиль ответа<select class="sel" data-act="rstyle" aria-label="Стиль ответа">' + Object.keys(RSTYLES).map(function (k) { return '<option value="' + k + '"' + (cur === k ? ' selected' : '') + '>' + RSTYLES[k].n + '</option>'; }).join('') + '</select></label>';
 }
 function shortenReply(t) {
@@ -5557,8 +5619,8 @@ function sysExtra(f) {
 }
 function replyText(f, only) {
   var st = S.kb.settings || {};
-  var rt = M(LA.composeReply(f.sc, { kb: S.kb, hello: st.hello, bye: st.bye, only: only, extra: sysExtra(f), folderMods: only && only !== 'mods' ? [] : folderMods(f) }));
-  return st.replyShort ? shortenReply(rt) : rt;
+  var ro = replyOpts(), rt = M(LA.composeReply(f.sc, { kb: S.kb, hello: ro.hello, bye: ro.bye, brief: ro.brief, only: only, extra: sysExtra(f), folderMods: only && only !== 'mods' ? [] : folderMods(f) }));
+  return st.replyShort && !ro.brief ? shortenReply(rt) : rt;
 }
 function openReply(f, only) {
   var st = S.kb.settings || {};
@@ -5921,7 +5983,7 @@ function copyCurrentReply(f) {
 }
 /* Шпаргалка по клавишам: клавиша ? */
 function showKeys() {
-  var K = keyMap(), L = function (k) { return codeLabel(K[k]); }, rows = [[L('nextLog') + ' / ' + L('prevLog') + '  или  J / K', 'Следующий / предыдущий лог'], [L('nextProb') + ' / ' + L('prevProb'), 'Следующая / предыдущая проблема в логе'], [L('pin'), KEYNAME.pin], [L('copy') + '  или  R', 'Копировать ответ игроку (в деле — ответ по делу)']].concat([ ['E', 'Проблема решена'], ['/', 'Поиск по логу'], ['1–9', 'Вкладки по порядку'], ['Ctrl+K', 'Список команд'], ['Ctrl + / −', 'Масштаб лога'], ['Esc', 'Закрыть окно'], ['?', 'Эта шпаргалка']]);
+  var K = keyMap(), L = function (k) { return codeLabel(K[k]); }, rows = [[L('nextLog') + ' / ' + L('prevLog') + '  или  J / K', 'Следующий / предыдущий лог'], [L('nextProb') + ' / ' + L('prevProb'), 'Следующая / предыдущая проблема в логе'], [L('pin'), KEYNAME.pin], [L('copy') + '  или  R', 'Копировать ответ игроку (в деле — ответ по делу)']].concat([ ['E', 'Проблема решена'], ['/', 'Поиск по логу'], ['1–9', 'Вкладки по порядку'], ['Ctrl+K', 'Список команд'], ['Ctrl + / −', 'Масштаб лога'], ['Esc', 'Закрыть окно'], ['?', 'Эта шпаргалка'], ['Ctrl+Shift+L', 'В Discord: разбор последнего лога открытого тикета (плагин MajesticLogImport)']]);
   $('#panelHost').innerHTML = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" aria-label="Горячие клавиши"><b>Горячие клавиши</b><table class="keys">' + rows.map(function (r) { return '<tr><td><kbd>' + esc(r[0]) + '</kbd></td><td>' + esc(r[1]) + '</td></tr>'; }).join('') + '</table><p class="hint" style="margin:0">Свои клавиши можно назначить в «Настройках».</p><div class="row-actions"><button class="btn" data-act="closePanel">Закрыть</button></div></div></div>';
 }
 
@@ -6554,7 +6616,7 @@ async function extSettingsHtml() {
   if (!window.nativeApp || !window.nativeApp.extInfo) return '';
   var i = null; try { i = await window.nativeApp.extInfo(); } catch (e) {}
   if (!i) return '';
-  return '<h4 style="margin:10px 0 2px">Плагин Discord</h4><p class="hint" style="margin:0">Кнопка «В анализатор» на вложениях в ваших тикетах отправляет файлы сюда. Вставьте этот ключ в настройки плагина (BetterDiscord или Vencord).' + (i.on ? ' Приёмник работает, порт ' + i.port + '.' : ' Приёмник не запустился.') + '</p><div class="lt"><code class="mono" id="extKey" style="flex:1;overflow-wrap:anywhere">' + esc(i.token) + '</code><button class="btn sm" data-act="extCopy">Скопировать ключ</button><button class="btn sm ghost" data-act="extReset" title="Старый ключ перестанет работать">Новый ключ</button></div>';
+  return '<h4 style="margin:10px 0 2px">Плагин Discord</h4><p class="hint" style="margin:0">«Разбор» у логов и скриншотов в тикете показывает причину и готовый ответ игроку прямо в Discord (окно, кнопка «Вставить ответ в чат»), <b>Ctrl+Shift+L</b> — разбор последнего лога открытого тикета. «В анализатор» отправляет файл сюда целиком. Вставьте этот ключ в настройки плагина (BetterDiscord или Vencord).' + (i.on ? ' Приёмник работает, порт ' + i.port + '.' : ' Приёмник не запустился.') + '</p><div class="lt"><code class="mono" id="extKey" style="flex:1;overflow-wrap:anywhere">' + esc(i.token) + '</code><button class="btn sm" data-act="extCopy">Скопировать ключ</button><button class="btn sm ghost" data-act="extReset" title="Старый ключ перестанет работать">Новый ключ</button></div>';
 }
 /* Плагин Discord просит подключиться: показываем окно, по «Разрешить» оболочка отдаёт плагину ключ */
 function showPair(d) {
@@ -6621,6 +6683,143 @@ function aaResume() {
   if (r.from && r.from !== APP_VERSION) status('Приложение обновилось до версии ' + APP_VERSION + ' и вернуло вас туда же. Что нового — кнопка «Что нового» вверху.');
   return true;
 }
+/* ---------- Быстрый разбор для плагина Discord (кнопка «Разбор», значки на вложениях, Ctrl+Shift+L) ----------
+   Плагин присылает файл: лог, zip с логами или скриншот. Приложение разбирает его, НЕ добавляя в список логов, и возвращает
+   коротко: вердикт, причину, как чинить, ключевые строки, «тот ли файл прислал игрок», краткий ответ игроку и текст для передачи дальше.
+   Логи разбираются только на этом компьютере. Скриншот уходит на распознавание ИИ (через сервер команды) — только по кнопке «Разбор». */
+var QIMG = /\.(png|jpe?g|webp|gif|bmp)$/i, QCACHE = {}, QCACHE_N = [];
+function qCache(k, v) { if (v === undefined) return QCACHE[k]; QCACHE[k] = v; QCACHE_N.push(k); if (QCACHE_N.length > 60) delete QCACHE[QCACHE_N.shift()]; return v; }
+function qDay(ms) { var d = new Date(ms); return ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2); }
+function qShort(t) { t = String(t || '').replace(/\s*\([^)]*\)\s*$/, '').replace(/^Краш игры:\s*/, 'Краш: '); return t.length > 34 ? t.slice(0, 32).replace(/\s+\S*$/, '') + '…' : t; }
+var QROOT = { protect: 'Защита Windows', install: 'Установка лаунчера', net: 'Сеть игрока', loop: 'Повторный краш' };
+
+async function quickAnalyze(q) {
+  var meta = q.meta || {}, name = String(q.name || 'file');
+  var key = (meta.url || name) + '|' + (q.data ? q.data.length : 0) + '|' + (meta.mode || '');
+  var hit = qCache(key); if (hit) return hit;
+  var r;
+  if (QIMG.test(name)) r = await quickImage(q);
+  else if (/\.zip$/i.test(name)) {
+    var z = (await unzipFile(new File([q.data], name))).filter(function (x) { return !x.bin && x.text; }).slice(0, 4);
+    if (!z.length) r = { ok: true, kind: 'none', status: 'unk', headline: 'В архиве нет логов', cause: 'В архиве нет .log или .txt', steps: [], reply: '', lines: [], warnings: [{ text: 'В архиве нет логов Majestic.', ask: 'Пришлите, пожалуйста, файлы main.log и client.log (папка %appdata%\\majestic-launcher).' }], badge: { t: 'Нет логов', tone: 'unk' } };
+    else {
+      var all = []; for (var i = 0; i < z.length; i++) all.push(await quickLog(z[i].text, z[i].name, meta, z.map(function (x) { return x.name; }).concat(meta.siblings || [])));
+      var rank = { bad: 3, warn: 2, unk: 1, ok: 0 }; all.sort(function (a, b) { return (rank[b.status] - rank[a.status]) || ((b.kind === 'client') - (a.kind === 'client')); });
+      r = all[0]; r.also = all.slice(1).map(function (x) { return x.name + ': ' + x.headline; });
+    }
+  } else r = await quickLog(await new File([q.data], name).text(), name, meta, meta.siblings || []);
+  return qCache(key, r);
+}
+
+async function quickLog(text, name, meta, siblings) {
+  var an = await LA.analyzeAsync(text, name, function () { return new Promise(function (res) { setTimeout(res, 0); }); }), sc = an.sc, parsed = an.parsed;
+  var st = sc.verdict.status, probs = sc.findings.filter(function (g) { return SEV[g.sev] >= SEV.warn; });
+  var strong = probs.filter(function (g) { return SEV[g.sev] >= SEV.err; }), top = (strong.length ? strong : probs)[0];
+  var mods = sc.mods ? sc.mods.files : [];
+  /* «как чинить» — по той же проблеме, что названа причиной */
+  var RG = { protect: /^(m-sac|m-gfxinject|m-inject|m-handle6)$/, install: /^m-patchmod$/, net: /^(m-net|m-dl|m-http5xx|c-conn)$/ };
+  if (sc.root) top = sc.root.id === 'loop' ? (sc.findings.find(function (g) { return g.loop; }) || top) : RG[sc.root.id] ? (sc.findings.find(function (g) { return RG[sc.root.id].test(g.rule.id); }) || top) : top;
+  var cause = sc.root ? sc.root.title.charAt(0).toUpperCase() + sc.root.title.slice(1) : mods.length ? 'Моды в папке игры' : top ? top.title : st === 'ok' ? 'Ошибок запуска нет' : 'Точная причина не найдена';
+  var why = sc.root ? sc.root.why : mods.length ? 'В папке игры: ' + mods.slice(0, 5).join(', ') : top ? top.cause : '';
+  var how = (mods.length ? ['Убрать моды из папки игры: ' + mods.slice(0, 4).map(function (x) { return String(x).split(/[\\\/]/).pop(); }).join(', ') + '.'] : []).concat(top ? (top.fix || []).slice(0, 4) : []).slice(0, 5);
+  /* ключевые строки: первая строка каждой из трёх главных проблем */
+  var lines = [], es = parsed.entries;
+  (strong.length ? strong : probs).slice(0, 4).forEach(function (g) { var e = es[g.entries[0]]; if (!e || lines.length >= 6) return; var t = String(parsed.lines[e.i] || '').replace(/\s+/g, ' ').trim(); lines.push({ n: e.i + 1, t: LA.mask(t.length > 220 ? t.slice(0, 220) + '…' : t), sev: g.sev }); });
+  /* тот ли файл прислал игрок */
+  var warns = [], low = text.slice(0, 300000);
+  var majestic = /majestic|Logger initialized|game\.play|crashService|patcher|MAJESTIC|Multiplayer inited/i.test(low);
+  if (!majestic || parsed.lines.length < 2) warns.push({ k: 'notlog', text: parsed.lines.length < 2 ? 'Файл почти пустой.' : 'Это не похоже на лог Majestic.', ask: 'Пришлите, пожалуйста, файлы main.log и client.log из папки %appdata%\\majestic-launcher (Win+R → %appdata%\\majestic-launcher) сразу после неудачной попытки запуска.' });
+  var lastDate = ((sc.range && /\d{4}-\d{2}-\d{2}/.exec(sc.range.to)) || /(\d{4}-\d{2}-\d{2})/.exec(name) || [])[0];
+  var lastMs = lastDate ? Date.parse(lastDate + 'T23:59:59') : 0, msgAt = +meta.msgAt || 0;
+  if (lastMs && msgAt && msgAt - lastMs > 36 * 3600000) warns.push({ k: 'stale', text: 'Лог старый: последняя запись ' + qDay(lastMs) + ', а сообщение от ' + qDay(msgAt) + '.', ask: 'Пришлите, пожалуйста, свежий лог: запустите игру ещё раз и сразу после ошибки отправьте файл. Присланный лог от ' + qDay(lastMs) + '.' });
+  var crashed = sc.findings.some(function (g) { return /^(m-crashdet|m-patchcrash)$/.test(g.rule.id); });
+  if (majestic && sc.kind === 'main' && crashed && !(siblings || []).some(function (x) { return /client/i.test(x); })) warns.push({ k: 'needclient', text: 'Игра упала, а причину краша покажет только client.log — его в тикете нет.', ask: 'Пришлите, пожалуйста, также файл client.log с той же попытки: Win+R → %appdata%\\majestic-launcher\\Multiplayer\\logs (самый свежий файл).' });
+  if (majestic && sc.kind === 'main' && !sc.patcher && !(sc.attempts || []).length) warns.push({ k: 'noattempt', text: 'В main.log нет ни одной попытки запуска игры.', ask: 'Пришлите, пожалуйста, main.log после попытки запуска: нажмите «Играть», дождитесь ошибки и сразу отправьте файл.' });
+  var ro = replyOpts(), reply = LA.composeReply(sc, { kb: S.kb, hello: ro.hello, bye: ro.bye, brief: true });
+  var stale = warns.some(function (w) { return w.k === 'stale'; }), notlog = warns.some(function (w) { return w.k === 'notlog'; });
+  var badge = notlog ? { t: 'Не лог Majestic', tone: 'unk' } : mods.length ? { t: 'МОД' + (stale ? ' · старый' : ''), tone: 'bad' } : st === 'ok' ? { t: 'Успех' + (stale ? ' · старый' : ''), tone: 'ok' } : { t: (sc.root && QROOT[sc.root.id] ? QROOT[sc.root.id] : qShort(top ? top.title : 'Неясно')) + (stale ? ' · старый' : ''), tone: st === 'bad' ? 'bad' : st === 'warn' ? 'warn' : 'unk' };
+  var res = { ok: true, kind: sc.kindName || sc.kind, name: name, status: st, headline: sc.verdict.headline, cause: cause, why: why, steps: how, reply: reply, lines: lines, warnings: warns, badge: badge, mods: mods.slice(0, 8) };
+  res.escalate = quickEscalate(res, meta);
+  return res;
+}
+
+/* Текст для передачи дальше: причина, что уже предложено игроку, файлы и ключевые строки */
+function quickEscalate(r, meta) {
+  var L = ['**Передаю дальше**' + (meta.ticket ? ' · ' + meta.ticket : ''), 'Причина по логу: ' + r.cause + (r.headline && r.headline !== r.cause ? ' (' + r.headline + ')' : '')];
+  if (r.steps.length) L.push('Уже предложено: ' + r.steps.slice(0, 3).join(' '));
+  L.push('Файл: ' + r.name + (r.kind && r.kind !== 'image' ? ' (' + r.kind + '.log)' : ''));
+  if (r.lines.length) L.push('```', r.lines.map(function (x) { return (x.n ? 'L' + x.n + ': ' : '') + x.t; }).join('\n').slice(0, 1500), '```');
+  return L.join('\n');
+}
+
+/* ---------- Скриншоты ----------
+   1) Сразу на этом компьютере: чёрные полосы по краям экрана (поле вокруг картинки игры).
+   2) ИИ читает текст ошибки со скриншота; найденный текст прогоняется через правила анализатора,
+      и если правило есть — шаги берутся из руководства, а не придумываются. */
+var BARS_STEPS = ['Удалите файл настроек графики settings.xml: Документы → Rockstar Games → GTA V (игра создаст его заново с настройками по умолчанию).', 'Запустите игру и в настройках графики выберите разрешение, равное разрешению Вашего монитора, и режим «Полноэкранный».'];
+async function imgCanvas(data, name) {
+  var url = URL.createObjectURL(new Blob([data], { type: /png$/i.test(name) ? 'image/png' : /webp$/i.test(name) ? 'image/webp' : 'image/jpeg' }));
+  try {
+    var im = await new Promise(function (res, rej) { var i = new Image(); i.onload = function () { res(i); }; i.onerror = function () { rej(new Error('image')); }; i.src = url; });
+    var k = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight)), w = Math.max(1, Math.round(im.naturalWidth * k)), h = Math.max(1, Math.round(im.naturalHeight * k));
+    var c = document.createElement('canvas'); c.width = w; c.height = h; var ctx = c.getContext('2d'); ctx.drawImage(im, 0, 0, w, h);
+    return { c: c, ctx: ctx, w: w, h: h };
+  } finally { URL.revokeObjectURL(url); }
+}
+/* Полосы: от края идут строки (столбцы) почти чистого чёрного цвета, с обеих сторон, а середина — обычная картинка */
+function blackBars(cv) {
+  var d = cv.ctx.getImageData(0, 0, cv.w, cv.h).data, W = cv.w, H = cv.h;
+  var dark = function (x0, y0, x1, y1) { var mx = 0, n = 0, sum = 0; for (var y = y0; y < y1; y += 2) for (var x = x0; x < x1; x += 2) { var o = (y * W + x) * 4, l = (d[o] * 3 + d[o + 1] * 6 + d[o + 2]) / 10; if (l > mx) mx = l; sum += l; n++; } return { mx: mx, avg: n ? sum / n : 0 }; };
+  var run = function (len, test) { var i = 0; while (i < len && test(i)) i++; return i; };
+  var top = run(H >> 1, function (y) { return dark(0, y, W, y + 1).mx < 14; }), bot = run(H >> 1, function (y) { return dark(0, H - 1 - y, W, H - y).mx < 14; });
+  var left = run(W >> 1, function (x) { return dark(x, 0, x + 1, H).mx < 14; }), right = run(W >> 1, function (x) { return dark(W - 1 - x, 0, W - x, H).mx < 14; });
+  var mid = dark(Math.round(W * .3), Math.round(H * .3), Math.round(W * .7), Math.round(H * .7));
+  var tb = top >= H * .04 && bot >= H * .04 && Math.abs(top - bot) < H * .06, lr = left >= W * .04 && right >= W * .04 && Math.abs(left - right) < W * .06;
+  return (tb || lr) && mid.avg > 25 ? { sides: tb && lr ? 'со всех сторон' : tb ? 'сверху и снизу' : 'слева и справа' } : null;
+}
+var IMG_SYS = 'Ты помогаешь поддержке Majestic RP (мультиплеер GTA V). На скриншоте от игрока — ошибка лаунчера или игры, либо проблема с картинкой. ' +
+  'Ответь ТОЛЬКО JSON: {"text": "дословно весь текст ошибок и кодов с экрана (ERR_..., сообщения окон), по строкам; пусто, если текста нет", ' +
+  '"visual": "одно из: error_window, black_bars, stretched, artifacts, black_screen, launcher, other, none", ' +
+  '"problem": "что видно, одно короткое предложение по-русски", ' +
+  '"steps": ["до 4 шагов решения для игрока: по-русски, на «Вы», повелительное наклонение, без воды и без пересказа ошибки"], "confident": true/false}. ' +
+  'Не выдумывай: если не уверен, ставь confident=false и давай только безопасные общие шаги.';
+async function quickImage(q) {
+  var name = String(q.name || 'screenshot.png'), cv = await imgCanvas(q.data, name), bars = blackBars(cv), ro = replyOpts();
+  var brief = function (steps) { return [ro.hello, '', 'Для решения проблемы попробуйте:'].concat(steps.map(function (x, i) { return (i + 1) + '. ' + x; })).concat(['', ro.bye]).join('\n'); };
+  var res = { ok: true, kind: 'image', name: name, status: 'unk', headline: '', cause: '', why: '', steps: [], reply: '', lines: [], warnings: [], badge: { t: 'Скриншот', tone: 'unk' }, source: '' };
+  if (bars) Object.assign(res, { status: 'warn', headline: 'Чёрные полосы ' + bars.sides, cause: 'Чёрные полосы по краям экрана', why: 'Игра выводит картинку не в разрешении монитора: сбились настройки графики (settings.xml).', steps: BARS_STEPS.slice(), reply: brief(BARS_STEPS), badge: { t: 'Чёрные полосы', tone: 'warn' }, source: 'на этом компьютере' });
+  if (!srvOn()) { if (!bars) Object.assign(res, { headline: 'Скриншот не распознан', cause: 'Текст со скриншота читает ИИ — он доступен в приложении с входом на сервер команды.' }); return res; }
+  /* скриншот для ИИ: JPEG до 1600 px */
+  var b64 = cv.c.toDataURL('image/jpeg', .82).split(',')[1], ai = null;
+  var a = await srv('/v1/ai', { body: { system: IMG_SYS, input: 'Разбери скриншот игрока.' + (bars ? ' На краях обнаружены чёрные полосы.' : ''), image: { mime: 'image/jpeg', data: b64 }, max: 1200 } });
+  if (a && a.ok) { try { ai = JSON.parse(String(a.text).replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch (e) { ai = null; } }
+  if (!ai) { if (!bars) Object.assign(res, { headline: 'Скриншот не распознан', cause: a && a.error === 'limit' ? 'Дневной лимит ИИ исчерпан.' : 'ИИ не ответил. Посмотрите скриншот сами или попросите у игрока логи.' }); return res; }
+  var txt = String(ai.text || '').trim();
+  res.lines = txt ? txt.split(/\n+/).slice(0, 8).map(function (t) { return { n: 0, t: t.slice(0, 220), sev: 'err' }; }) : [];
+  if (bars || ai.visual === 'black_bars') {
+    if (!bars) Object.assign(res, { status: 'warn', headline: 'Чёрные полосы по краям', cause: 'Чёрные полосы по краям экрана', why: 'Сбились настройки графики (settings.xml).', steps: BARS_STEPS.slice(), reply: brief(BARS_STEPS), badge: { t: 'Чёрные полосы', tone: 'warn' }, source: 'ИИ' });
+    return res;
+  }
+  /* текст ошибки — через правила анализатора: шаги из руководства */
+  if (txt) {
+    var L1 = txt.split(/\n+/), cl = L1.map(function (l) { return '[00:00:00.000][error] ' + l; }).join('\n'), mn = L1.map(function (l) { return '[2026-01-01 00:00:00.000] [error]  [ (game)              ] ' + l; }).join('\n');
+    var best = null;
+    [LA.scan(LA.parse('[00:00:00.000] Logger initialized\n' + cl, 'client.log')), LA.scan(LA.parse(mn, 'main.log'))].forEach(function (sc) {
+      var g = sc.findings.filter(function (x) { return SEV[x.sev] >= SEV.warn && !/^c-errcode$/.test(x.rule.id) || (x.rule.id === 'c-errcode' && x.rfix); })[0] || sc.findings.filter(function (x) { return SEV[x.sev] >= SEV.err; })[0];
+      if (g && (!best || SEV[g.sev] > SEV[best.g.sev])) best = { g: g, sc: sc };
+    });
+    if (best && LA.briefSteps(best.sc, {}).length) {
+      var steps = LA.briefSteps(best.sc, {});
+      return Object.assign(res, { status: 'bad', headline: ai.problem || best.g.title, cause: best.g.title, why: best.g.cause || '', steps: (best.g.fix || []).slice(0, 4), reply: brief(steps), badge: { t: qShort(best.g.title), tone: 'bad' }, source: 'текст со скриншота + правила анализатора' });
+    }
+  }
+  var as = (ai.steps || []).map(function (x) { return String(x).trim(); }).filter(Boolean).slice(0, 4);
+  return Object.assign(res, { status: ai.visual === 'none' ? 'unk' : 'warn', headline: ai.problem || 'Скриншот', cause: ai.problem || 'Проблема со скриншота', why: ai.confident ? '' : 'ИИ не уверен — проверьте сами.', steps: as, reply: as.length ? brief(as) : '', badge: { t: qShort(ai.problem || 'Скриншот'), tone: 'warn' }, source: 'ИИ' + (ai.confident ? '' : ', не уверен') });
+}
+
+if (window.nativeApp && window.nativeApp.onExtQuick) window.nativeApp.onExtQuick(function (q) {
+  quickAnalyze(q).then(function (r) { window.nativeApp.extQuickAnswer(q.id, r); }, function (e) { window.nativeApp.extQuickAnswer(q.id, { ok: false, error: String(e && e.message || e).slice(0, 200) }); });
+});
 /* ---------- События ---------- */
 document.addEventListener('click', function (ev) {
   var t = ev.target.closest('[data-act]'); if (!t) return;
@@ -6848,6 +7047,7 @@ function openHelp() {
   $('#panelHost').innerHTML = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" aria-label="Инструкция"><b>Как пользоваться</b>' +
     sec('Лог', ['Перетащите <code>client.log</code>, <code>launcher.log</code>, <code>main.log</code>, zip с логами или целую папку в окно. Можно сразу несколько файлов.', '«Диагноз» называет причину и сразу даёт готовый ответ игроку (кнопка «Копировать ответ» или клавиша R). «Лог» показывает сами строки, «Дело» собирает все логи одного игрока вместе.', 'Строка в логе кликается: справа появится объяснение. Выделенные строки копируются Ctrl+C.']) +
     sec('Дамп краша и журнал Windows', ['Под диагнозом есть строка «Дамп краша и журнал Windows». Добавьте туда <code>.dmp</code>, <code>.evtx</code> или zip краш-отчёта.', 'Дамп показывает модуль, где упал клиент, и код исключения. Журнал показывает синие экраны, сбои драйвера видеокарты, диска и памяти в те же минуты.', 'Если лога нет, нажмите «Только дамп» в меню «Ещё».', 'Кнопка «Разобрать с ИИ» отправляет короткую сводку (несколько строк), а не весь файл.']) +
+    sec('Discord (плагин MajesticLogImport)', ['У логов и скриншотов игрока в тикете — кнопка «Разбор»: окно с причиной, как чинить, ключевыми строками и готовым ответом игроку. Ответ можно поправить и вставить в чат одной кнопкой.', '<b>Ctrl+Shift+L</b> в открытой ветке тикета — разбор последнего лога игрока без поиска файла.', 'Значки рядом с логами («МОД», «Сеть игрока», «старый»…) — итог разбора ещё до клика. Окно предупредит, если лог старый или не хватает client.log, и подставит вежливую просьбу.', 'Скриншоты: чёрные полосы по краям находятся сразу, текст ошибки на экране читает ИИ и сверяет с правилами анализатора.', '«Передать дальше» вставляет в чат сводку для старших: причина, что уже предложено, ключевые строки.']) +
     sec('Папки (дела)', ['Бросьте лог на другой лог: оба окажутся в новой папке. Бросьте лог на плитку папки: он добавится в неё.', 'У дела есть статус, итог и таймер ожидания игрока. Логи с одним номером тикета собираются в папку сами.']) +
     sec('Горячие клавиши', ['? показывает все клавиши, Ctrl+K открывает список команд, / — поиск по логу, 1–9 — вкладки. Свои клавиши назначаются в «Настройках».']) +
     '<div><h4 style="margin:6px 0 4px">Что попросить у игрока</h4><p class="hint" style="margin:0 0 6px">Готовое сообщение.</p><textarea readonly style="height:150px" id="askTxt">' + esc(PLAYER_ASK) + '</textarea></div>' +

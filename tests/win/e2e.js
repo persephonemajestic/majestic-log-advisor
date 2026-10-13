@@ -57,6 +57,9 @@ async function devApp(F) {
   const info = await p.evaluate(() => window.nativeApp.extInfo());
   ok(info && info.on, 'приёмник плагина запущен');
   const pg = await ping(info.port); ok(pg && pg.ok, 'приёмник отвечает на 127.0.0.1:' + info.port);
+  const qr = await new Promise((res) => { const r = http.request({ host: '127.0.0.1', port: info.port, method: 'POST', path: '/v1/quick', timeout: 60000, headers: { 'content-type': 'application/octet-stream', 'x-mla-token': info.token, 'x-mla-meta': Buffer.from(JSON.stringify({ name: 'client.log', ticket: 'ticket-1', siblings: ['client.log'] })).toString('base64') } }, (x) => { let b = ''; x.on('data', (c) => b += c); x.on('end', () => { try { res(JSON.parse(b)); } catch (e) { res(null); } }); }); r.on('error', () => res(null)); r.end(fs.readFileSync(F.client)); });
+  ok(qr && qr.ok && /Приветствую/.test(qr.reply || '') && qr.status === 'bad', 'быстрый разбор для плагина работает в настоящем приложении' + (qr && !qr.ok ? ': ' + qr.error : ''));
+  const nList = await p.locator('#flist .fi').count(); ok(nList === 1, 'быстрый разбор не добавил файл в список (' + nList + ')');
 
   const t0 = Date.now();
   await p.setInputFiles('#fileIn', [F.big]);

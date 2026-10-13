@@ -1277,9 +1277,9 @@ var REPLY = {
 };
 REPLY['m-patcherr'] = REPLY['m-crashdet'];
 REPLY['m-crashdet:ERR_SYS_FILELOAD'] = ['Проверьте папку GTA V: в ней не должно быть модов (dxgi.dll, ReShade, ENB, DLSS-файлов nvngx_*.dll и т.п.). Перенесите их в папку модификаций лаунчера или удалите.', 'Запустите проверку файлов игры в вашей платформе (Steam/Epic/Rockstar), обновите драйвер видеокарты.', 'Если игра снова вылетит, сразу пришлите client.log и файл краш-отчёта: Win+R → %appdata%\\majestic-launcher\\Multiplayer\\crashdumps (самый свежий файл).'];
-REPLY['m-srvfiles:net'] = ['Загрузка файлов сервера оборвалась из-за связи: проверьте интернет, отключите VPN и прокси, добавьте лаунчер в исключения фаервола и антивируса, затем повторите запуск.'];
-REPLY['m-srvfiles:bad'] = ['Файл сервера скачался повреждённым: в настройках лаунчера очистите кеш и дождитесь полной перепроверки файлов, затем повторите запуск.'];
-REPLY['m-srvfiles:space'] = ['На диске с игрой закончилось место: освободите несколько гигабайт (или выберите другой диск для файлов лаунчера) и повторите запуск.'];
+REPLY['m-srvfiles:net'] = ['Проверьте интернет-соединение, отключите VPN и прокси, добавьте лаунчер в исключения брандмауэра и антивируса, затем повторите запуск.'];
+REPLY['m-srvfiles:bad'] = ['В настройках лаунчера очистите кеш и дождитесь полной перепроверки файлов, затем повторите запуск.'];
+REPLY['m-srvfiles:space'] = ['Освободите несколько гигабайт на диске с игрой (или выберите другой диск для файлов лаунчера) и повторите запуск.'];
 REPLY['c-platform'] = REPLY['m-platform'];
 function replySteps(g) {
   if (REPLY[g.key]) return REPLY[g.key];
@@ -1290,8 +1290,53 @@ function replySteps(g) {
   return f;
 }
 var REPLY_BYE = 'Выполните шаги выше, перезапустите лаунчер и напишите, получилось ли. Если проблема останется, пришлите свежие main.log и client.log.';
+/* Краткий ответ игроку: уважительно, на «Вы», только решение по факту — без названий ошибок и строк лога.
+   Шаги те же, что в подробном ответе (руководство и правила команды), но одним списком, не больше пяти. */
+var BRIEF_HELLO = '**Приветствую! Благодарим Вас за обращение в службу поддержки.**';
+var BRIEF_BYE = 'Если проблема сохранится, напишите нам, пожалуйста, — мы продолжим разбираться.';
+function capVy(s) { return String(s).replace(/(^|[^А-Яа-яЁё])(вы|вас|вам|вами|ваш[а-яё]*)(?=[^А-Яа-яЁё]|$)/g, function (m, a, w) { return a + w.charAt(0).toUpperCase() + w.slice(1); }); }
+function modList(sc, o) {
+  var mf = (sc.mods ? sc.mods.files.slice() : []), seenB = {};
+  ((o && o.folderMods) || []).forEach(function (x) { mf.push(x); });
+  return mf.filter(function (x) { var b = String(x).split(/[\\\/]/).filter(Boolean).pop().toLowerCase(); if (seenB[b]) return false; seenB[b] = 1; return true; });
+}
+function briefSteps(sc, o) {
+  o = o || {};
+  var out = [], asks = [], seen = {}, ASK = /пришлите|присылайте|отправьте нам/i;
+  var add = function (x) { x = String(x || '').replace(/\s+/g, ' ').trim(); if (!x) return; var k = x.toLowerCase().replace(/[^а-яёa-z0-9]+/g, '').slice(0, 70); if (seen[k]) return; seen[k] = 1; (ASK.test(x) ? asks : out).push(x); };
+  var mf = modList(sc, o);
+  if (o.only) mf = o.only === 'mods' ? mf : [];
+  if (mf.length) add('Удалите из папки с игрой сторонние файлы (или перенесите их в папку модификаций лаунчера): ' + mf.slice(0, 6).map(function (x) { return String(x).split(/[\\\/]/).filter(Boolean).pop(); }).join(', ') + (mf.length > 6 ? ' и другие' : '') + '.');
+  var probs = sc.findings.filter(function (g) { return SEV[g.sev] >= SEV.warn; });
+  if (o.only) probs = probs.filter(function (g) { return g.key === o.only; });
+  var strong = probs.filter(function (g) { return SEV[g.sev] >= SEV.err; }); if (strong.length) probs = strong;
+  var used = 0, full = false;
+  probs.forEach(function (g) {
+    if (used >= 2 || full || o.only === 'mods') return;
+    if (mf.length && (g.rule.id === 'm-patcherr' || g.rule.id === 'm-crashdet' || g.rule.id === 'm-blockmod' || g.rule.id === 'c-weapfirst')) return;
+    /* вторая проблема — только с готовыми шагами для игрока; первая с полным решением (top) закрывает список */
+    var st = used && !REPLY[g.key] && !REPLY[g.rule.id] ? null : replySteps(g); if (!st || !st.length) return;
+    used++; if (g.rule.top) full = true;
+    st.forEach(function (x) {
+      if (mf.length) { if (/^Проверьте папку GTA V: в ней не должно быть модов/.test(x)) return; x = x.replace(/^Уберите моды из папки игры,\s*/, function () { return ''; }); x = x.charAt(0).toUpperCase() + x.slice(1); }
+      add(x);
+    });
+  });
+  if (o.extra && !o.only) o.extra.slice(0, 1).forEach(function (x) { (x && x.steps || []).slice(0, 3).forEach(add); });
+  return out.slice(0, 5).concat(asks.slice(0, 1)).map(capVy);
+}
+function composeBrief(sc, o) {
+  o = o || {};
+  var hello = o.hello || BRIEF_HELLO, bye = o.bye || BRIEF_BYE, steps = briefSteps(sc, o), L = [hello, ''];
+  if (steps.length) { L.push('Для решения проблемы попробуйте:'); steps.forEach(function (x, i) { L.push((i + 1) + '. ' + x); }); }
+  else if (sc.verdict.status === 'ok') L.push('Судя по присланному логу, игра запустилась и подключилась к серверу. Уточните, пожалуйста, что именно у Вас не работает, и пришлите лог сразу после того, как проблема появится.');
+  else L.push('Пришлите, пожалуйста, свежие main.log и client.log сразу после неудачной попытки запуска, а также скриншот ошибки, если она появляется.');
+  L.push('', bye);
+  return L.join('\n');
+}
 function composeReply(sc, o) {
   o = o || {};
+  if (o.brief) return composeBrief(sc, o);
   var hello = o.hello || 'Здравствуйте!', bye = o.bye || REPLY_BYE;
   var L = [hello, ''], n = 0, used = {};
   var probs = sc.findings.filter(function (g) { return SEV[g.sev] >= SEV.warn; });
@@ -1528,6 +1573,6 @@ function mask(s) {
     .replace(/\b((?:access_|refresh_|auth_|id_)?token|authorization|bearer|session_?id|api_?key)(["']?\s*[:=]\s*["']?|\s+)([A-Za-z0-9._~+\/=-]{12,})/gi, '$1$2***');
 }
 
-var LA = root.LA = { permCommand: permCommand, h32: h32, caseSummary: caseSummary, stripAnsi: stripAnsi, SEV: SEV, RULES: RULES, parse: parse, scan: scan, analyzeAsync: analyzeAsync, learn: learn, classify: classify, applyKB: applyKB, newKB: newKB, setCustomRules: setCustomRules, composeReply: composeReply, REPLY_BYE: REPLY_BYE, diffScans: diffScans, gameFolder: gameFolder, guessGamePaths: guessGamePaths, mask: mask, clusterReports: clusterReports, histTime: histTime, signature: signature, detectKind: detectKind, owner: owner, toMs: toMs };
+var LA = root.LA = { permCommand: permCommand, h32: h32, caseSummary: caseSummary, stripAnsi: stripAnsi, SEV: SEV, RULES: RULES, parse: parse, scan: scan, analyzeAsync: analyzeAsync, learn: learn, classify: classify, applyKB: applyKB, newKB: newKB, setCustomRules: setCustomRules, composeReply: composeReply, composeBrief: composeBrief, briefSteps: briefSteps, BRIEF_HELLO: BRIEF_HELLO, BRIEF_BYE: BRIEF_BYE, rootCause: rootCause, REPLY_BYE: REPLY_BYE, diffScans: diffScans, gameFolder: gameFolder, guessGamePaths: guessGamePaths, mask: mask, clusterReports: clusterReports, histTime: histTime, signature: signature, detectKind: detectKind, owner: owner, toMs: toMs };
 if (typeof module !== 'undefined' && module.exports) module.exports = root.LA;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1,24 +1,29 @@
 /*
- * MajesticLogImport — кнопка «В анализатор» на логах и дампах в ваших тикетах.
- * Файл и данные игрока уходят в Majestic Log Advisor на этом компьютере.
+ * MajesticLogImport — «Разбор» логов и скриншотов прямо в тикете и кнопка «В анализатор» на логах и дампах.
+ * Файл и данные игрока уходят в Majestic Log Advisor на этом компьютере. Ctrl+Shift+L — разбор последнего лога тикета.
  * https://github.com/persephonemajestic/majestic-log-advisor/tree/main/plugins/vencord
  */
 
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
-import { Button, ChannelStore, JoinedThreadsStore, MessageStore, React, showToast } from "@webpack/common";
+import { insertTextIntoChatInputBox } from "@utils/discord";
+import { Button, ChannelStore, JoinedThreadsStore, MessageStore, React, SelectedChannelStore, showToast } from "@webpack/common";
 
 import { cmpVer, extractPlayer } from "./extract";
+import { makeQuickUI, MLA_HOTKEY, MLA_QCSS, quickErr } from "./quickui";
 
 const Native = VencordNative.pluginHelpers.MajesticLogImport as PluginNative<typeof import("./native")>;
 
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.3.1";
+const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.4.0";
+const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 const settings = definePluginSettings({
     token: { type: OptionType.STRING, description: "Ключ из Majestic Log Advisor («Настройки» → «Плагин Discord»)", default: "" },
     port: { type: OptionType.NUMBER, description: "Порт приложения (обычно 47615)", default: 47615 },
-    check: { type: OptionType.COMPONENT, description: "Проверить связь с Majestic Log Advisor и ключ", component: () => React.createElement(Button, { onClick: () => checkLink(), size: Button.Sizes?.SMALL }, "Проверить связь с анализатором") }
+    check: { type: OptionType.COMPONENT, description: "Проверить связь с Majestic Log Advisor и ключ", component: () => React.createElement(Button, { onClick: () => checkLink(), size: Button.Sizes?.SMALL }, "Проверить связь с анализатором") },
+    badges: { type: OptionType.BOOLEAN, description: "Значки на логах в тикетах: плагин сам разбирает логи игрока в открытой ветке и подписывает итог рядом с файлом («МОД», «Сеть игрока», «Успех», «старый»…). Нужен запущенный анализатор.", default: true },
+    hotkey: { type: OptionType.COMPONENT, description: "Горячая клавиша " + MLA_HOTKEY + ": в открытой ветке тикета — разбор последнего лога игрока (если логов нет — последнего скриншота)", component: () => React.createElement(Button, { onClick: () => hotkey(), size: Button.Sizes?.SMALL }, "Попробовать " + MLA_HOTKEY) }
 });
 
 /* Проверка связи: запущено ли приложение на этом компьютере и подходит ли ключ */
@@ -45,12 +50,12 @@ function messagesOf(channelId: string): any[] {
 /* все логи и дампы из загруженных сообщений ветки */
 /* игрок ветки: автор первого сообщения не от бота (обычно тот, кто открыл тикет); файлы саппортов не берём */
 function playerIdOf(channelId: string) { const m = messagesOf(channelId).find(x => x?.author && !x.author.bot); return m ? String(m.author.id) : ""; }
-function attachmentsOf(channelId: string) {
-    const out: { messageId: string; url: string; name: string; }[] = [], seen: Record<string, 1> = {}, pid = playerIdOf(channelId);
+function attachmentsOf(channelId: string, re: RegExp = FILE_RE) {
+    const out: { messageId: string; url: string; name: string; size: number; }[] = [], seen: Record<string, 1> = {}, pid = playerIdOf(channelId);
     for (const m of messagesOf(channelId)) for (const a of (pid && m?.author?.id !== pid ? [] : m?.attachments ?? [])) {
         const name = a.filename ?? a.name ?? "", url = a.url ?? "";
-        if (!FILE_RE.test(name) || !/^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//.test(url) || seen[url]) continue;
-        seen[url] = 1; out.push({ messageId: m.id, url, name });
+        if (!re.test(name) || !CDN_RE.test(url) || seen[url]) continue;
+        seen[url] = 1; out.push({ messageId: m.id, url, name, size: a.size ?? 0 });
     }
     return out;
 }
@@ -85,8 +90,9 @@ async function post(body: Body) {
 
 function enqueue(body: Body) { saveQ(loadQ().filter(x => x.body.url !== body.url).concat([{ at: Date.now(), body }])); }
 
-async function send(channelId: string, messageId: string, url: string, name: string, btn: HTMLButtonElement) {
+async function send(channelId: string, messageId: string, url: string, name: string, btn0: HTMLButtonElement | null) {
     const body: Body = { url, name, ...playerOf(channelId, messageId) };
+    const btn = btn0 ?? document.createElement("button");
     btn.disabled = true; btn.textContent = "Отправляю…";
     const r = await post(body);
     if (r.ok) { btn.textContent = r.dup ? "✓ Уже в анализаторе" : "✓ В анализаторе"; btn.disabled = false; btn.title = "Нажмите ещё раз, чтобы открыть файл в анализаторе снова"; showToast((r.dup ? "Уже в анализаторе: " : "Отправлено в анализатор: ") + name, "success"); return; }
@@ -116,6 +122,66 @@ async function sendAll(channelId: string, btn: HTMLButtonElement) {
     showToast("Файлы тикета: отправлено " + sent + (dup ? ", уже были " + dup : "") + (queued ? ", в очереди " + queued + " (приложение не отвечает)" : "") + (failed ? ", не приняты " + failed : ""), queued || failed ? "message" : "success");
 }
 
+/* ---------- Быстрый разбор: окно поверх Discord, значки на логах, Ctrl+Shift+L ---------- */
+function copyText(t: string) { try { (window as any).DiscordNative?.clipboard?.copy(t); return; } catch { } try { navigator.clipboard.writeText(t); } catch { } }
+const ui = makeQuickUI({ insert: (t: string) => { try { insertTextIntoChatInputBox(t); return true; } catch { return false; } }, copy: copyText, toast: (t: string, k: string) => showToast(t, k === "error" ? "failure" : k === "info" ? "message" : k) });
+const qres = new Map<string, any>();
+const keyOf = (u: string) => u.replace(/[?#].*$/, "");
+function msgAt(channelId: string, messageId: string) { try { const t: any = (MessageStore.getMessage(channelId, messageId) as any)?.timestamp; return t ? +new Date(t) : 0; } catch { return 0; } }
+async function quick(channelId: string, messageId: string, url: string, name: string, mode: string) {
+    const key = keyOf(url); if (qres.has(key)) return qres.get(key);
+    const { token, port } = settings.store; if (!token) throw Object.assign(new Error("token"), { status: 401 });
+    const ch: any = ChannelStore.getChannel(channelId);
+    const meta = { name, url: key, ticket: ch?.name ?? "", msgAt: msgAt(channelId, messageId), siblings: attachmentsOf(channelId).map(x => x.name), mode };
+    const r: any = await Native.quick(Number(port) || 47615, token, url, meta);
+    if (!r || r.status !== 200 || !r.j?.ok) throw Object.assign(new Error(r?.j?.error || ""), { status: r?.status ?? 0 });
+    qres.set(key, r.j); if (qres.size > 80) qres.delete(qres.keys().next().value as string);
+    return r.j;
+}
+async function openQuick(channelId: string, messageId: string, url: string, name: string) {
+    ui.loading(name);
+    try { const r = await quick(channelId, messageId, url, name, "full"); ui.show(r, { open: FILE_RE.test(name) ? () => send(channelId, messageId, url, name, null) : null }); }
+    catch (e: any) { ui.error(e.status === -1 ? e.message : quickErr(e.status, e.message)); }
+}
+function hotkey() {
+    const ch = SelectedChannelStore.getChannelId();
+    if (!ch || !joined(ch)) return showToast("Откройте ветку тикета, в которой вы участник, и нажмите " + MLA_HOTKEY + " ещё раз", "message");
+    const a = attachmentsOf(ch, LOG_RE).pop() ?? attachmentsOf(ch, IMG_RE).pop();
+    if (!a) return showToast("В этом тикете нет логов и скриншотов от игрока", "message");
+    openQuick(ch, a.messageId, a.url, a.name);
+}
+const onKey = (e: KeyboardEvent) => { if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyL") { e.preventDefault(); e.stopPropagation(); hotkey(); } };
+let bq: any[] = [], bBusy = false, downUntil = 0;
+function putBadge(anchor: HTMLElement, r: any, channelId: string, messageId: string, url: string, name: string) {
+    if (!anchor.isConnected || anchor.nextElementSibling?.classList.contains("mla-badge")) return;
+    anchor.insertAdjacentElement("afterend", ui.badge(r, () => ui.show(r, { open: () => send(channelId, messageId, url, name, null) })));
+}
+function queueBadge(channelId: string, messageId: string, url: string, name: string, anchor: HTMLElement) {
+    const done = qres.get(keyOf(url)); if (done) return putBadge(anchor, done, channelId, messageId, url, name);
+    const att = attachmentsOf(channelId, LOG_RE).find(x => keyOf(x.url) === keyOf(url));
+    if (!att || att.size > 40 * 1048576 || Date.now() < downUntil) return;
+    bq.push({ channelId, messageId, url, name, anchor }); pumpBadges();
+}
+async function pumpBadges() {
+    if (bBusy) return; bBusy = true;
+    try {
+        while (bq.length) {
+            const it = bq.shift(); if (!it.anchor.isConnected) continue;
+            try { putBadge(it.anchor, await quick(it.channelId, it.messageId, it.url, it.name, "badge"), it.channelId, it.messageId, it.url, it.name); }
+            catch (e: any) { if ([0, 401, 404, 501].includes(e.status)) { downUntil = Date.now() + 60000; bq = []; } }
+        }
+    } finally { bBusy = false; }
+}
+function imgButton(li: Element, channelId: string, messageId: string, url: string, name: string) {
+    const acc = li.querySelector('[id^="message-accessories-"]') ?? li, key = keyOf(url); let bar = li.querySelector<HTMLElement>(".mla-imgbar");
+    if (bar && Array.from(bar.children).some((x: any) => x.dataset.u === key)) return;
+    if (!bar) { bar = document.createElement("div"); bar.className = "mla-imgbar"; acc.appendChild(bar); }
+    const b = document.createElement("button"); b.className = "mla-btn"; b.type = "button"; b.dataset.u = key;
+    b.textContent = "Разбор скриншота" + (bar.children.length ? " " + (bar.children.length + 1) : ""); b.title = "Распознать ошибку на скриншоте (текст читает ИИ; чёрные полосы ищутся на этом компьютере) и предложить ответ игроку";
+    b.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); openQuick(channelId, messageId, url, name); });
+    bar.appendChild(b);
+}
+
 /* Новая версия: Vencord собирается из исходников, поэтому плагин только сообщает, а ставит её Majestic Plugin Installer */
 async function checkUpdate() {
     try {
@@ -140,14 +206,22 @@ function scan() {
         let url: URL; try { url = new URL(a.href); } catch { continue; }
         if (!/^(cdn\.discordapp\.com|media\.discordapp\.net)$/.test(url.hostname)) continue;
         const name = decodeURIComponent(url.pathname.split("/").pop() ?? "");
-        if (!FILE_RE.test(name)) continue;
         const li = a.closest('[id^="chat-messages-"]'); if (!li) continue;
         const m = /^chat-messages-(\d+)-(\d+)$/.exec(li.id); if (!m) continue;
+        if (IMG_RE.test(name)) { if (joined(m[1])) imgButton(li, m[1], m[2], a.href, name); continue; }
+        if (!FILE_RE.test(name)) continue;
         if (!joined(m[1])) continue;
+        if (LOG_RE.test(name)) {
+            const q = document.createElement("button");
+            q.className = "mla-btn mla-q"; q.type = "button"; q.textContent = "Разбор"; q.title = "Причина, как чинить и готовый ответ игроку — в окне поверх Discord. " + MLA_HOTKEY + " — разбор последнего лога тикета";
+            q.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); openQuick(m[1], m[2], a.href, name); });
+            a.insertAdjacentElement("afterend", q);
+            if (settings.store.badges !== false) queueBadge(m[1], m[2], a.href, name, a);
+        }
         const b = document.createElement("button");
         b.className = "mla-btn mla-one"; b.type = "button"; b.textContent = "В анализатор"; b.title = "Отправить файл и данные игрока в Majestic Log Advisor"; b.dataset.ch = m[1];
         b.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); send(m[1], m[2], a.href, name, b); });
-        a.insertAdjacentElement("afterend", b);
+        (a.nextElementSibling?.classList.contains("mla-q") ? a.nextElementSibling : a).insertAdjacentElement("afterend", b);
     }
     /* одна кнопка «Все файлы тикета» — у первого файла ветки на экране */
     const first = document.querySelector<HTMLButtonElement>(".mla-one"), ch = first?.dataset.ch ?? "";
@@ -165,12 +239,12 @@ let obs: MutationObserver | null = null, timer = 0, scanT = 0, upT = 0, upTimer 
 
 export default definePlugin({
     name: "MajesticLogImport",
-    description: "Кнопка «В анализатор» на логах и дампах в ваших тикетах: файл и данные игрока уходят в Majestic Log Advisor",
+    description: "«Разбор» логов и скриншотов в тикете: причина, как чинить и готовый ответ игроку. «В анализатор» отправляет файл в Majestic Log Advisor. Ctrl+Shift+L — разбор последнего лога тикета",
     authors: [{ name: "persephonemajestic", id: 1197438268187365488n }],
     settings,
     start() {
         style = document.createElement("style");
-        style.textContent = ".mla-btn{margin-left:8px;padding:2px 8px;border-radius:4px;border:1px solid var(--button-outline-brand-border,#5865f2);background:transparent;color:var(--text-link,#00a8fc);font-size:12px;cursor:pointer;vertical-align:middle}.mla-btn:hover{background:rgba(88,101,242,.15)}.mla-btn[disabled]{opacity:.6;cursor:default}.mla-all{font-weight:600}";
+        style.textContent = MLA_QCSS + ".mla-btn{margin-left:8px;padding:2px 8px;border-radius:4px;border:1px solid var(--button-outline-brand-border,#5865f2);background:transparent;color:var(--text-link,#00a8fc);font-size:12px;cursor:pointer;vertical-align:middle}.mla-btn:hover{background:rgba(88,101,242,.15)}.mla-btn[disabled]{opacity:.6;cursor:default}.mla-all{font-weight:600}";
         document.head.appendChild(style);
         obs = new MutationObserver(() => { clearTimeout(scanT); scanT = window.setTimeout(scan, 150); });
         obs.observe(document.body, { childList: true, subtree: true });
@@ -178,10 +252,13 @@ export default definePlugin({
         timer = window.setInterval(flush, 20000);
         upT = window.setTimeout(checkUpdate, 15000);
         upTimer = window.setInterval(checkUpdate, 6 * 3600 * 1000);
+        document.addEventListener("keydown", onKey, true);
+        if (localStorage.getItem("MajesticLogImport.told140") !== "1") { localStorage.setItem("MajesticLogImport.told140", "1"); setTimeout(() => showToast("MajesticLogImport 1.4: кнопка «Разбор» у логов и скриншотов в тикете — причина и готовый ответ игроку. " + MLA_HOTKEY + " — разбор последнего лога тикета.", "message"), 4000); }
     },
     stop() {
         obs?.disconnect(); obs = null; clearInterval(timer); clearTimeout(upT); clearInterval(upTimer); style?.remove(); style = null;
-        document.querySelectorAll(".mla-btn").forEach(b => b.remove());
+        document.removeEventListener("keydown", onKey, true); ui.close(); bq = [];
+        document.querySelectorAll(".mla-btn, .mla-badge, .mla-imgbar").forEach(b => b.remove());
         document.querySelectorAll("[data-mla]").forEach(a => a.removeAttribute("data-mla"));
     }
 });

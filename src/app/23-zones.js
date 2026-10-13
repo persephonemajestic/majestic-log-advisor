@@ -262,14 +262,14 @@ function caseAskText(c) {
 }
 /* Ответ игроку по делу: шаги по последнему неудачному логу и то, что ещё нужно прислать (неотмеченные просьбы) */
 function caseReplyText(c) {
-  var st = S.kb.settings || {}, todo = c.r.asks.filter(function (a) { return !c.checks[a.id]; }), hello = st.hello || 'Здравствуйте!';
+  var st = S.kb.settings || {}, ro = replyOpts(), todo = c.r.asks.filter(function (a) { return !c.checks[a.id]; }), hello = ro.hello || 'Здравствуйте!';
   if (c.r.status === 'ok') return hello + '\n\nПо последним логам всё в порядке: игра запустилась и подключилась к серверу. Если проблема повторится, пришлите свежие main.log и client.log сразу после неудачной попытки.';
   var bad = c.fo.files.filter(function (x) { return x.sc.verdict.status !== 'ok'; }).sort(function (a, b) { return fileTime(a) - fileTime(b); }), last = bad[bad.length - 1];
   if (!last) return caseAskText(c);
   var more = todo.length ? 'Также, пожалуйста:\n' + todo.map(function (a, i) { return (i + 1) + ') ' + a.text; }).join('\n') + '\n\n' : '';
-  var rt = M(LA.composeReply(last.sc, { kb: S.kb, hello: st.hello, bye: '\u0001', extra: sysExtra(last), folderMods: folderMods(last) }));
-  if (st.replyShort) rt = shortenReply(rt);
-  return rt.replace('\u0001', more + (st.bye || LA.REPLY_BYE));
+  var rt = M(LA.composeReply(last.sc, { kb: S.kb, hello: ro.hello, bye: '\u0001', brief: ro.brief, extra: sysExtra(last), folderMods: folderMods(last) }));
+  if (st.replyShort && !ro.brief) rt = shortenReply(rt);
+  return rt.replace('\u0001', more + (ro.bye || LA.REPLY_BYE));
 }
 function renderCase(f) {
   var c = caseData(); if (!c) return renderDiag(f);

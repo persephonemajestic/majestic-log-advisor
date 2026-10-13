@@ -29,5 +29,7 @@ contextBridge.exposeInMainWorld('nativeApp', {
   onExtImport: (cb) => ipcRenderer.on('ext-import', (e, d) => cb(d)),
   extReady: () => ipcRenderer.send('ext-ready'),
   onExtPair: (cb) => ipcRenderer.on('ext-pair', (e, d) => cb(d)),
-  extPairAnswer: (id, ok) => ipcRenderer.send('ext-pair-answer', id, !!ok)
+  extPairAnswer: (id, ok) => ipcRenderer.send('ext-pair-answer', id, !!ok),
+  onExtQuick: (cb) => { ipcRenderer.on('ext-quick', (e, d) => cb(d)); ipcRenderer.send('ext-quick-ready'); },
+  extQuickAnswer: (id, r) => ipcRenderer.send('ext-quick-answer', id, r)
 });

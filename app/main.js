@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, clipboard, Menu, shell, net, native
 const fs = require('fs');
 const path = require('path');
 
-const SHELL_VERSION = '2026-10-12.18';
+const SHELL_VERSION = '2026-10-13.19';
 const APPDIR = global.APP_DIR || __dirname;
 const bundled = () => path.join(APPDIR, 'index.html');
 const overrideFile = () => path.join(app.getPath('userData'), 'index-override.html');
@@ -294,6 +294,7 @@ async function extHandle(req, res) {
   if (p === '/v1/ping') return send(200, { ok: true, app: 'majestic-log-advisor', v: SHELL_VERSION });
   if (p === '/v1/upload' && req.method === 'POST') return extUpload(req, res, send);
   if (p === '/v1/pair' && req.method === 'POST') return extPair(req, send);
+  if (p === '/v1/quick' && req.method === 'POST') return extQuick(req, send);
   if (p !== '/v1/import' || req.method !== 'POST') return send(404, { ok: false });
   if (!extSame(req.headers['x-mla-token'], extToken())) return send(401, { ok: false, error: 'token' });
   let raw = ''; for await (const ch of req) { raw += ch; if (raw.length > 16384) return send(413, { ok: false }); }
@@ -347,6 +348,31 @@ async function extPair(req, send) {
   });
   return answer ? send(200, { ok: true, token: extToken() }) : send(403, { ok: false, error: 'denied' });
 }
+/* Быстрый разбор для плагина: файл (лог, zip или скриншот) разбирается в окне приложения, но в список логов не добавляется.
+   Ответ — короткая сводка (вердикт, причина, шаги, ответ игроку). Окно не всплывает и не мигает. */
+const EXT_QFILE = /\.(log|txt|zip|png|jpe?g|webp|gif|bmp)$/i, extQuicks = new Map(); let extQuickSeq = 0, extQuickOn = false;
+async function extQuick(req, send) {
+  if (!extSame(req.headers['x-mla-token'], extToken())) return send(401, { ok: false, error: 'token' });
+  let meta = {}; try { meta = JSON.parse(Buffer.from(String(req.headers['x-mla-meta'] || ''), 'base64').toString('utf8')) || {}; } catch (e) { return send(400, { ok: false, error: 'meta' }); }
+  const name = String(meta.name || '').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 120);
+  if (!EXT_QFILE.test(name)) { req.resume(); return send(400, { ok: false, error: 'type' }); }
+  const lim = /\.(png|jpe?g|webp|gif|bmp)$/i.test(name) ? 20 * 1048576 : 150 * 1048576, parts = []; let size = 0;
+  for await (const ch of req) { size += ch.length; if (size > lim) return send(413, { ok: false, error: 'size' }); parts.push(ch); }
+  if (!size) return send(400, { ok: false, error: 'empty' });
+  if (!mainWin || mainWin.isDestroyed() || !extReady) return send(503, { ok: false, error: 'window' });
+  if (!extQuickOn) return send(501, { ok: false, error: 'old' });
+  const m = { url: String(meta.url || '').replace(/[?#].*$/, '').slice(0, 300), ticket: String(meta.ticket || '').slice(0, 100), msgAt: Number(meta.msgAt) || 0, mode: meta.mode === 'badge' ? 'badge' : 'full',
+    siblings: Array.isArray(meta.siblings) ? meta.siblings.slice(0, 30).map((x) => String(x).slice(0, 120)) : [] };
+  const id = ++extQuickSeq, buf = Buffer.concat(parts);
+  const r = await new Promise((resolve) => {
+    const tm = setTimeout(() => { extQuicks.delete(id); resolve({ ok: false, error: 'timeout' }); }, 90000);
+    extQuicks.set(id, (v) => { clearTimeout(tm); extQuicks.delete(id); resolve(v); });
+    try { mainWin.webContents.send('ext-quick', { id, name, data: new Uint8Array(buf), meta: m }); } catch (e) { extQuicks.delete(id); clearTimeout(tm); resolve({ ok: false, error: 'window' }); }
+  });
+  return send(r && r.ok ? 200 : 500, r && typeof r === 'object' ? r : { ok: false });
+}
+ipcMain.on('ext-quick-answer', (e, id, r) => { const f = extQuicks.get(+id); if (f) f(r); });
+ipcMain.on('ext-quick-ready', () => { extQuickOn = true; });
 ipcMain.on('ext-pair-answer', (e, id, ok) => { const f = extPairs.get(+id); if (f) f(ok); });
 function extPlayer(p) { if (!p || typeof p !== 'object') return null; const t = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n), o = { id: t(p.id, 25).replace(/\D/g, ''), name: t(p.name, 64), username: t(p.username, 40), nick: t(p.nick, 48), static: t(p.static, 12).replace(/\D/g, ''), server: t(p.server, 32), link: /^https:\/\/((ptb|canary)\.)?discord\.com\/channels\/[\d/]+$/.test(String(p.link || '')) ? String(p.link) : '' }; return Object.values(o).some(Boolean) ? o : null; }
 function extStart() {

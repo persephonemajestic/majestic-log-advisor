@@ -4,15 +4,16 @@
   "plugins": [
     {
       "id": "majesticLogImport",
-      "title": "MajesticLogImport — кнопка «В анализатор» на логах в тикетах",
-      "version": "1.3.1",
+      "title": "MajesticLogImport — «Разбор» и «В анализатор» на логах и скриншотах в тикетах",
+      "version": "1.4.0",
       "vencord": {
         "dir": "majesticLogImport",
         "path": "plugins/vencord/majesticLogImport",
         "files": [
           "index.tsx",
           "native.ts",
-          "extract.ts"
+          "extract.ts",
+          "quickui.ts"
         ]
       },
       "betterdiscord": {

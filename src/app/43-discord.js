@@ -78,7 +78,7 @@ async function extSettingsHtml() {
   if (!window.nativeApp || !window.nativeApp.extInfo) return '';
   var i = null; try { i = await window.nativeApp.extInfo(); } catch (e) {}
   if (!i) return '';
-  return '<h4 style="margin:10px 0 2px">Плагин Discord</h4><p class="hint" style="margin:0">Кнопка «В анализатор» на вложениях в ваших тикетах отправляет файлы сюда. Вставьте этот ключ в настройки плагина (BetterDiscord или Vencord).' + (i.on ? ' Приёмник работает, порт ' + i.port + '.' : ' Приёмник не запустился.') + '</p><div class="lt"><code class="mono" id="extKey" style="flex:1;overflow-wrap:anywhere">' + esc(i.token) + '</code><button class="btn sm" data-act="extCopy">Скопировать ключ</button><button class="btn sm ghost" data-act="extReset" title="Старый ключ перестанет работать">Новый ключ</button></div>';
+  return '<h4 style="margin:10px 0 2px">Плагин Discord</h4><p class="hint" style="margin:0">«Разбор» у логов и скриншотов в тикете показывает причину и готовый ответ игроку прямо в Discord (окно, кнопка «Вставить ответ в чат»), <b>Ctrl+Shift+L</b> — разбор последнего лога открытого тикета. «В анализатор» отправляет файл сюда целиком. Вставьте этот ключ в настройки плагина (BetterDiscord или Vencord).' + (i.on ? ' Приёмник работает, порт ' + i.port + '.' : ' Приёмник не запустился.') + '</p><div class="lt"><code class="mono" id="extKey" style="flex:1;overflow-wrap:anywhere">' + esc(i.token) + '</code><button class="btn sm" data-act="extCopy">Скопировать ключ</button><button class="btn sm ghost" data-act="extReset" title="Старый ключ перестанет работать">Новый ключ</button></div>';
 }
 /* Плагин Discord просит подключиться: показываем окно, по «Разрешить» оболочка отдаёт плагину ключ */
 function showPair(d) {

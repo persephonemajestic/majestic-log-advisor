@@ -5,7 +5,7 @@ const fs = require('fs');
 /* Vencord-версия собирается esbuild с заглушками API Vencord (tests/plugins/stubs); без esbuild проверяется только BetterDiscord */
 const ROOT = path.join(__dirname, '..', '..'), BD = fs.readFileSync(path.join(ROOT, 'plugins/betterdiscord/MajesticLogImport.plugin.js'), 'utf8');
 let esb = ''; try { esb = require.resolve('esbuild'); } catch (e) { esb = ['/opt/npm-tools/node_modules/esbuild'].find((p) => fs.existsSync(p)) || ''; }
-let VC = ''; if (esb) { const out = path.join(require('os').tmpdir(), 'mla-vc.js'); require(esb).buildSync({ entryPoints: [path.join(ROOT, 'plugins/vencord/majesticLogImport/index.tsx')], bundle: true, format: 'iife', outfile: out, logLevel: 'warning', alias: { '@api/Settings': path.join(__dirname, 'stubs/settings.ts'), '@utils/types': path.join(__dirname, 'stubs/types.ts'), '@webpack/common': path.join(__dirname, 'stubs/common.ts') } }); VC = fs.readFileSync(out, 'utf8'); }
+let VC = ''; if (esb) { const out = path.join(require('os').tmpdir(), 'mla-vc.js'); require(esb).buildSync({ entryPoints: [path.join(ROOT, 'plugins/vencord/majesticLogImport/index.tsx')], bundle: true, format: 'iife', outfile: out, logLevel: 'warning', alias: { '@api/Settings': path.join(__dirname, 'stubs/settings.ts'), '@utils/types': path.join(__dirname, 'stubs/types.ts'), '@webpack/common': path.join(__dirname, 'stubs/common.ts'), '@utils/discord': path.join(__dirname, 'stubs/discord.ts') } }); VC = fs.readFileSync(out, 'utf8'); }
 const PAGE = `<!doctype html><html><body>
 <ol>
  <li id="chat-messages-100-1"><div><a href="https://cdn.discordapp.com/attachments/100/5/client.log?ex=1">client.log</a> <a href="https://cdn.discordapp.com/attachments/100/6/photo.png">photo.png</a></div></li>
@@ -22,6 +22,9 @@ const MOCK = () => {
   window.__toasts = []; window.__posts = []; window.__appUp = true; window.__tokenOk = 'secret';
   const reply = (body, token) => { if (!window.__appUp) return { status: 0 }; if (token !== window.__tokenOk) return { status: 401, j: { ok: false, error: 'token' } }; window.__posts.push(body); return { status: 200, j: { ok: true } }; };
   window.__reply = reply;
+  /* быстрый разбор: ответ приложения */
+  window.__quickRes = { ok: true, status: 'bad', headline: 'Сбой запуска', cause: 'Моды в папке игры', steps: ['Убрать моды'], reply: '**Приветствую!**\n\n1. Удалите dinput8.dll', lines: [{ n: 3, t: 'строка лога' }], warnings: [{ text: 'Лог старый', ask: 'Пришлите свежий лог' }], badge: { t: 'МОД', tone: 'bad' }, escalate: '**Передаю дальше**' };
+  window.__quick = (meta, token) => { window.__quicks = (window.__quicks || []).concat([meta]); if (!window.__appUp) return { status: 0, j: { ok: false } }; if (token !== window.__tokenOk) return { status: 401, j: { ok: false, error: 'token' } }; return { status: 200, j: window.__quickRes }; };
 };
 /* Разбор ника, статика и сервера: одинаковый в обеих версиях */
 const EXCASES = [
@@ -49,6 +52,11 @@ const EXCASES = [
   console.log((exBad ? 'FAIL ' : 'PASS ') + 'ник, статик и сервер из текста и формы тикета: ' + EXCASES.length + ' случаев' + (vcx ? ', обе версии' : ''));
   if (exBad) process.exitCode = 1;
 }
+{ /* общий код окна «Разбор» одинаковый в обеих версиях (plugins/sync-quickui.py) */
+  const cut = (t) => { t = t.replace(/\r\n/g, '\n'); return t.slice(t.indexOf('/* MLA-QUICKUI-START'), t.indexOf('/* MLA-QUICKUI-END */')).replace(/^export /gm, ''); };
+  const same = cut(BD) === cut(fs.readFileSync(path.join(ROOT, 'plugins/vencord/majesticLogImport/quickui.ts'), 'utf8'));
+  console.log((same ? 'PASS ' : 'FAIL ') + 'окно «Разбор» одинаковое в BetterDiscord и Vencord' + (same ? '' : ': запустите python3 plugins/sync-quickui.py')); if (!same) process.exitCode = 1;
+}
 (async () => {
   let b; try { b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' }); } catch (e) { b = await chromium.launch(); }
   let bad = 0; const ok = (c, m) => { if (!c) bad++; console.log((c ? 'PASS ' : 'FAIL ') + m); };
@@ -57,19 +65,21 @@ const EXCASES = [
     await p.route('https://discord.com/**', r => r.fulfill({ contentType: 'text/html', body: PAGE })); await p.goto('https://discord.com/channels/9/100'); await p.evaluate(MOCK);
     if (kind === 'BetterDiscord') {
       await p.evaluate((src) => {
-        const data = {}; window.BdApi = { Data: { load: (a, k) => data[a + k], save: (a, k, v) => { data[a + k] = v; } }, Webpack: { getStore: (n) => window.__stores[n] }, UI: { showToast: (m, o) => window.__toasts.push([m, o.type]) }, DOM: { addStyle() {}, removeStyle() {} },
-          Net: { fetch: async (url, o) => { if (/^https:\/\/cdn\.discordapp\.com\//.test(url)) { window.__dl = (window.__dl || 0) + 1; return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode('LOG').buffer }; } if (/\/v1\/upload$/.test(url)) { const meta = JSON.parse(decodeURIComponent(escape(atob(o.headers['x-mla-meta'])))); window.__bytes = o.body && o.body.length; const r = window.__reply(meta, o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } if (/\/v1\/pair$/.test(url)) { window.__pairs = (window.__pairs || 0) + 1; return window.__pairOk ? { ok: true, status: 200, json: async () => ({ ok: true, token: window.__pairOk }) } : { ok: false, status: 403, json: async () => ({ ok: false, error: 'denied' }) }; } if (/raw\.githubusercontent/.test(url)) return { ok: true, status: 200, text: async () => window.__newSrc || '' }; if (/ping$/.test(url)) return { ok: true, status: 200, json: async () => ({ ok: true }) }; const r = window.__reply(JSON.parse(o.body), o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } } };
+        const data = {}; window.BdApi = { Data: { load: (a, k) => data[a + k], save: (a, k, v) => { data[a + k] = v; } }, Webpack: { getStore: (n) => n === 'SelectedChannelStore' ? { getChannelId: () => window.__selCh || '' } : window.__stores[n], getModule: () => ({ dispatchToLastSubscribed: (ev, o) => { if (ev === 'INSERT_TEXT') (window.__ins = window.__ins || []).push(o.plainText); }, emitter: { listeners: () => [1] } }) }, UI: { showToast: (m, o) => window.__toasts.push([m, o.type]) }, DOM: { addStyle() {}, removeStyle() {} },
+          Net: { fetch: async (url, o) => { if (/^https:\/\/cdn\.discordapp\.com\//.test(url)) { window.__dl = (window.__dl || 0) + 1; return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode('LOG').buffer }; } if (/\/v1\/quick$/.test(url)) { const meta = JSON.parse(decodeURIComponent(escape(atob(o.headers['x-mla-meta'])))); const r = window.__quick(meta, o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } if (/\/v1\/upload$/.test(url)) { const meta = JSON.parse(decodeURIComponent(escape(atob(o.headers['x-mla-meta'])))); window.__bytes = o.body && o.body.length; const r = window.__reply(meta, o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } if (/\/v1\/pair$/.test(url)) { window.__pairs = (window.__pairs || 0) + 1; return window.__pairOk ? { ok: true, status: 200, json: async () => ({ ok: true, token: window.__pairOk }) } : { ok: false, status: 403, json: async () => ({ ok: false, error: 'denied' }) }; } if (/raw\.githubusercontent/.test(url)) return { ok: true, status: 200, text: async () => window.__newSrc || '' }; if (/ping$/.test(url)) return { ok: true, status: 200, json: async () => ({ ok: true }) }; const r = window.__reply(JSON.parse(o.body), o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } } };
         const module = { exports: {} }; new Function('module', 'exports', src)(module, module.exports);
         const P = module.exports; window.__p = new P({}); window.__setTok = (t) => BdApi.Data.save('MajesticLogImport', 'settings', { token: t, port: 47615 }); window.__p.start();
       }, BD);
     } else {
       await p.evaluate((src) => {
-        window.VencordNative = { pluginHelpers: { MajesticLogImport: { ping: async () => window.__appUp, checkToken: async (port, token) => token === window.__tokenOk ? 'ok' : 'token', sendFile: async (port, token, body) => { const r = window.__reply(body, token); return r.status ? { status: r.status, ok: r.status === 200, dup: false, error: r.j.error || '' } : { status: 0, ok: false, error: 'down' }; }, send: async (port, token, body) => { const r = window.__reply(body, token); return r.status ? { status: r.status, ok: r.status === 200, dup: false, error: r.j.error || '' } : { status: 0, ok: false, error: 'down' }; }, ping: async () => true } } };
+        window.VencordNative = { pluginHelpers: { MajesticLogImport: { ping: async () => window.__appUp, checkToken: async (port, token) => token === window.__tokenOk ? 'ok' : 'token', sendFile: async (port, token, body) => { const r = window.__reply(body, token); return r.status ? { status: r.status, ok: r.status === 200, dup: false, error: r.j.error || '' } : { status: 0, ok: false, error: 'down' }; }, quick: async (port, token, url, meta) => window.__quick(meta, token), send: async (port, token, body) => { const r = window.__reply(body, token); return r.status ? { status: r.status, ok: r.status === 200, dup: false, error: r.j.error || '' } : { status: 0, ok: false, error: 'down' }; }, ping: async () => true } } };
         new Function(src)(); window.__p = window.__vcPlugin; window.__setTok = (t) => { window.__vcSettings.token = t; }; window.__p.start();
       }, VC);
     }
     await p.waitForTimeout(400);
-    const btns = await p.$$eval('.mla-one', (x) => x.map(b => b.previousElementSibling.textContent));
+    const btns = await p.$$eval('.mla-one', (x) => x.map(b => { let e = b.previousElementSibling; while (e && e.tagName !== 'A') e = e.previousElementSibling; return e ? e.textContent : '?'; }));
+    ok(await p.$$eval('.mla-q', (x) => x.length) === 2, kind + ': «Разбор» у логов и архивов (не у дампов)');
+    ok(await p.locator('.mla-imgbar .mla-btn').count() === 1, kind + ': у скриншота игрока есть «Разбор скриншота»');
     ok(btns.join(',') === 'client.log,crash.zip', kind + ': кнопки только у логов и архивов в своей ветке-тикете (' + btns.join(',') + ')');
     await p.click('.mla-one >> nth=0'); await p.waitForTimeout(200);
     if (kind === 'BetterDiscord') {
@@ -123,8 +133,34 @@ const EXCASES = [
         BdApi.Data.save('MajesticLogImport', 'settings', { token: 'secret', port: 47615 });
         return { ids, saved, pasted, inField };
       });
-      ok(r.ids === 'token,port,pair,paste,check' && r.saved === 'abcabcabcabcabcabcabcabcabcabcab', kind + ': настройки на полях BetterDiscord, ключ сохраняется (' + r.ids + ')');
+      ok(r.ids === 'token,port,pair,paste,check,badges,hotkey' && r.saved === 'abcabcabcabcabcabcabcabcabcabcab', kind + ': настройки на полях BetterDiscord, ключ сохраняется (' + r.ids + ')');
       ok(r.pasted === '0123456789abcdef0123456789abcdef' && r.inField === r.pasted, kind + ': «Вставить ключ из буфера» сохраняет ключ');
+    }
+    /* быстрый разбор */
+    await p.evaluate(() => { window.__ins = []; window.__quicks = []; window.__tokenOk = 'secret'; window.__setTok('secret'); });
+    await p.click('.mla-q >> nth=0'); await p.waitForSelector('.mla-pop textarea', { timeout: 3000 }).catch(() => {});
+    const pop = await p.evaluate(() => { const b = document.querySelector('.mla-pop'); return b ? { t: b.textContent, ta: (b.querySelector('textarea') || {}).value, warn: !!b.querySelector('.mla-warn [data-ask]') } : null; });
+    ok(pop && /Моды в папке игры/.test(pop.t) && pop.ta === '**Приветствую!**\n\n1. Удалите dinput8.dll' && pop.warn && /Ctrl\+Shift\+L/.test(pop.t), kind + ': «Разбор» открывает окно: причина, предупреждение, ответ игроку, подсказка про клавишу');
+    const qm = await p.evaluate(() => window.__quicks[0]);
+    ok(qm && qm.name === 'client.log' && qm.ticket === 'ticket-1234' && qm.siblings.indexOf('main.log') >= 0 && !/\?/.test(qm.url), kind + ': в разбор уходят имя, тикет и остальные файлы тикета');
+    await p.click('.mla-pop [data-ask]'); await p.waitForTimeout(100);
+    await p.evaluate(() => { document.querySelector('.mla-pop textarea').value = 'Поправленный ответ'; });
+    await p.click('.mla-pop [data-a=ins]'); await p.waitForTimeout(100);
+    ok(await p.evaluate(() => window.__ins.join('|') === 'Пришлите свежий лог|Поправленный ответ' && !document.querySelector('.mla-pop')), kind + ': «Попросить» и «Вставить ответ в чат» вставляют текст в поле сообщения (с правками)');
+    await p.evaluate(() => { window.__selCh = '100'; window.__quicks = []; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'L', code: 'KeyL', ctrlKey: true, shiftKey: true, bubbles: true })); }); await p.waitForTimeout(300);
+    ok(await p.evaluate(() => !!document.querySelector('.mla-pop') && window.__quicks.length === 1 && window.__quicks[0].name === 'main.log'), kind + ': Ctrl+Shift+L разбирает последний лог игрока в открытом тикете');
+    await p.click('.mla-pop [data-a=esc]'); await p.waitForTimeout(100);
+    ok(await p.evaluate(() => window.__ins.pop() === '**Передаю дальше**'), kind + ': «Передать дальше» вставляет сводку для старших');
+    await p.evaluate(() => { window.__appUp = false; }); await p.click('.mla-imgbar .mla-btn'); await p.waitForTimeout(300);
+    ok(/не запущен/.test(await p.textContent('.mla-pop').catch(() => '')), kind + ': приложение закрыто — окно говорит, что делать');
+    await p.keyboard.press('Escape'); await p.evaluate(() => { window.__appUp = true; }); await p.waitForTimeout(100);
+    ok(!(await p.locator('.mla-pop').count()), kind + ': Esc закрывает окно');
+    if (kind === 'BetterDiscord') {
+      await p.evaluate(() => { window.__p.stop(); window.__p.qres.clear(); window.__p.downUntil = 0; window.__p.start(); }); await p.waitForTimeout(600);
+      const bdg = await p.evaluate(() => [...document.querySelectorAll('.mla-badge')].map(x => x.textContent).join(','));
+      ok(bdg === 'МОД', kind + ': значок с итогом разбора у лога игрока, у файла саппорта значка нет (' + bdg + ')');
+      await p.click('.mla-badge >> nth=0'); await p.waitForTimeout(100);
+      ok(await p.locator('.mla-pop').count() === 1, kind + ': клик по значку открывает разбор'); await p.keyboard.press('Escape');
     }
     ok(/Все файлы тикета \(2\)/.test(await p.textContent('.mla-all').catch(() => '')) && await p.locator('.mla-all').count() === 1, kind + ': одна кнопка «Все файлы тикета (2)»');
     await p.evaluate(() => { window.__posts = []; window.__toasts = []; });

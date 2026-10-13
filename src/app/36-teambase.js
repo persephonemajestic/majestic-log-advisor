@@ -87,8 +87,8 @@ function sysExtra(f) {
 }
 function replyText(f, only) {
   var st = S.kb.settings || {};
-  var rt = M(LA.composeReply(f.sc, { kb: S.kb, hello: st.hello, bye: st.bye, only: only, extra: sysExtra(f), folderMods: only && only !== 'mods' ? [] : folderMods(f) }));
-  return st.replyShort ? shortenReply(rt) : rt;
+  var ro = replyOpts(), rt = M(LA.composeReply(f.sc, { kb: S.kb, hello: ro.hello, bye: ro.bye, brief: ro.brief, only: only, extra: sysExtra(f), folderMods: only && only !== 'mods' ? [] : folderMods(f) }));
+  return st.replyShort && !ro.brief ? shortenReply(rt) : rt;
 }
 function openReply(f, only) {
   var st = S.kb.settings || {};
