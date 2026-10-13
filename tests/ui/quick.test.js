@@ -8,7 +8,7 @@ const H = require('./helpers'), { ok } = H, fs = require('fs'), path = require('
   /* оболочка-заглушка: всё, чего нет, отвечает «ничего»; быстрый разбор ловим */
   await p.addInitScript(() => {
     const TPLS = { at: 5, by: 'тест', sets: [{ name: 'Majestic RP', items: [{ t: 'Проблемы с донатом', body: '**Приветствую!**\nДОНАТ: напишите на почту.' }, { t: 'Обращение к администрации', body: '**Приветствую!**\nАДМИН: обратитесь к администрации.' }, { t: 'Черный экран', body: 'ЭКРАН' }, { t: 'Если способы выше не помогли', body: 'Активатор - ссылка', hide: true }] }, { name: 'Россия Онлайн', items: [{ t: 'Проблемы с донатом', body: 'РО-ДОНАТ' }] }] };
-    const own = { kbLoad: () => JSON.stringify({ v: 1, sigs: {}, ruleNotes: {}, seen: {}, files: 0, custom: [], tags: {}, hist: {}, merged: {}, settings: { tplCache: TPLS } }), kbSave() {}, copy() {}, onExtQuick: (cb) => { window.__qcb = cb; }, extQuickAnswer: (id, r) => { (window.__qans = window.__qans || {})[id] = r; }, onExtImport() {}, onExtPair() {}, onWatch() {}, extReady() {}, appOk() {},
+    const own = { kbLoad: () => JSON.stringify({ v: 1, sigs: {}, ruleNotes: {}, seen: {}, files: 0, custom: [], tags: {}, hist: {}, merged: {}, settings: { tplCache: TPLS, tplHints: { hints: { 'Majestic RP': { 'Черный экран': { say: ['картинка не появляется, всё темно'], when: '' } } }, stats: {}, pending: [] } } }), kbSave() {}, copy() {}, onExtQuick: (cb) => { window.__qcb = cb; }, extQuickAnswer: (id, r) => { (window.__qans = window.__qans || {})[id] = r; }, onExtImport() {}, onExtPair() {}, onWatch() {}, extReady() {}, appOk() {},
       shellInfo: async () => ({ version: 'test', hwid: 'X' }), updateInfo: async () => ({ version: '', bundled: '', override: '', url: '' }), extInfo: async () => ({ on: true, port: 47615, token: 'x' }), watchInfo: async () => ({ dir: '', downloads: '' }), findLogs: async () => ({ files: [] }) };
     window.nativeApp = new Proxy(own, { get: (t, k) => (k in t ? t[k] : (() => Promise.resolve(null))) });
   });
@@ -49,5 +49,9 @@ const H = require('./helpers'), { ok } = H, fs = require('fs'), path = require('
   ok(!t1.tpl.all.some((x) => /Активатор/.test(x.body)), 'шаблон со ссылкой на активатор не предлагается');
   const t5 = await ask(9, 'main.log', [...Buffer.from(crash)], { guild: MJ, text: 'у меня чёрный экран после запуска' });
   ok(t5.tpl && t5.tpl.pick.some((x) => x.t === 'Черный экран'), 'к разбору лога добавлены шаблоны по тексту игрока');
+  const t6 = await ask(10, 'ticket.txt', [...Buffer.from('после запуска всё темно и картинка не появляется')], { mode: 'text', guild: MJ });
+  ok(t6.tpl.pick[0] && t6.tpl.pick[0].t === 'Черный экран', 'фраза-пример команды помогает подобрать шаблон без ключевых слов');
+  const t7 = await ask(11, 'fb.txt', [...Buffer.from(JSON.stringify({ kind: 'fit', set: 'Majestic RP', t: 'Черный экран', v: 1 }))], { mode: 'fb' });
+  ok(t7 && t7.kind === 'fb', 'отметка из окна «Разбор» принята приложением');
   await H.done(b, errs);
 })();

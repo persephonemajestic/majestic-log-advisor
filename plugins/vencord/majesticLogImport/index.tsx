@@ -15,7 +15,7 @@ import { makeQuickUI, MLA_HOTKEY, MLA_QCSS, quickErr } from "./quickui";
 const Native = VencordNative.pluginHelpers.MajesticLogImport as PluginNative<typeof import("./native")>;
 
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.5.0";
+const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.6.0";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 const settings = definePluginSettings({
@@ -149,10 +149,12 @@ async function quick(channelId: string, messageId: string, url: string, name: st
     r.j._mode = mode; qres.set(ck, r.j); if (qres.size > 80) qres.delete(qres.keys().next().value as string);
     return r.j;
 }
+/* отметка «подходит / не подходит» или фраза к шаблону — в приложение, оттуда команде */
+async function fb(o: any) { const { token, port } = settings.store; if (!token) return; try { await Native.quick(Number(port) || 47615, token, "", { name: "fb.txt", mode: "fb" }, JSON.stringify(o)); } catch { } }
 async function openQuick(channelId: string, messageId: string, url: string, name: string, set = "") {
     const text = url.startsWith("ticket:");
     ui.loading(text ? "тикет" : name);
-    try { const r = await quick(channelId, messageId, url, name, text ? "text" : "full", set); ui.show(r, { open: FILE_RE.test(name) ? () => send(channelId, messageId, url, name, null) : null, reload: (s: string) => openQuick(channelId, messageId, url, name, s) }); }
+    try { const r = await quick(channelId, messageId, url, name, text ? "text" : "full", set); ui.show(r, { open: FILE_RE.test(name) ? () => send(channelId, messageId, url, name, null) : null, reload: (s: string) => openQuick(channelId, messageId, url, name, s), fb }); }
     catch (e: any) { ui.error(e.status === -1 ? e.message : quickErr(e.status, e.message)); }
 }
 /* тикет без файлов: подобрать шаблон команды по тому, что написал игрок */

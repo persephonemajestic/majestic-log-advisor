@@ -16,6 +16,7 @@ export const MLA_QCSS = ".mla-pop{position:fixed;right:18px;top:64px;z-index:100
     ".mla-imgbar{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}.mla-imgbar .mla-btn{margin-left:0}.mla-src{font-size:12px;color:var(--text-muted,#949ba4)}" +
     ".mla-tp{border:1px solid var(--background-modifier-accent,#4e5058);border-radius:6px;padding:7px 9px;display:grid;gap:6px;margin-top:6px}.mla-tp-h{display:flex;gap:8px;align-items:center}.mla-tp-h b{flex:1;font-size:13px}.mla-tp pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.45 var(--font-primary,inherit);max-height:180px;overflow:auto;color:var(--text-muted,#b5bac1)}" +
     ".mla-sets{display:inline-flex;gap:4px;margin-left:6px;text-transform:none;letter-spacing:0}.mla-sets button{font-size:11px;padding:1px 7px;border-radius:9px;border:1px solid var(--background-modifier-accent,#4e5058);background:none;color:var(--text-muted,#b5bac1);cursor:pointer}.mla-sets button.on{background:#5865f2;border-color:#5865f2;color:#fff}" +
+    ".mla-tp-f{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.mla-mini{font-size:12px;padding:2px 8px;border-radius:5px;border:1px solid var(--background-modifier-accent,#4e5058);background:none;color:var(--text-muted,#b5bac1);cursor:pointer}.mla-mini:hover{color:var(--text-normal,#dbdee1)}.mla-fit{font-size:11px;color:#23a55a;white-space:nowrap}" +
     ".mla-tq{box-sizing:border-box;width:100%;margin-top:8px;padding:6px 9px;border-radius:6px;border:1px solid var(--background-modifier-accent,#4e5058);background:var(--background-secondary,#2b2d31);color:var(--text-normal,#dbdee1);font:inherit;font-size:13px}";
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -54,7 +55,10 @@ export function makeQuickUI(env) {
         if (r.steps && r.steps.length) h += '<div class="mla-sec"><span>Как чинить</span><ol>' + r.steps.map((x) => "<li>" + esc(x) + "</li>").join("") + "</ol></div>";
         if (r.also && r.also.length) h += '<div class="mla-sec"><span>Другие файлы архива</span><div class="mla-why">' + r.also.map(esc).join("<br>") + "</div></div>";
         if (r.lines && r.lines.length) h += '<details class="mla-sec"><summary style="cursor:pointer;color:var(--header-secondary,#b5bac1);font-size:12px;font-weight:600;text-transform:uppercase">' + (r.kind === "image" ? "Текст со скриншота" : "Строки лога") + " (" + r.lines.length + ')</summary><div class="mla-lines">' + r.lines.map((x) => (x.n ? "L" + x.n + "  " : "") + esc(x.t)).join("\n") + "</div></details>";
-        const tp = r.tpl, tpl = (x, i) => '<div class="mla-tp"><div class="mla-tp-h"><b>' + esc(x.t) + '</b><button class="mla-b p" type="button" data-tpi="' + i + '">Вставить</button><button class="mla-b" type="button" data-tpv="' + i + '">Текст</button></div><pre hidden>' + esc(x.body) + "</pre></div>";
+        const fitTxt = (x) => x.up + x.down ? '<span class="mla-fit" title="Отметки саппортов">подходит ' + x.up + " из " + (x.up + x.down) + "</span>" : "";
+        const tp = r.tpl, tpl = (x, i) => '<div class="mla-tp"><div class="mla-tp-h"><b>' + esc(x.t) + "</b>" + fitTxt(x) + '<button class="mla-b p" type="button" data-tpi="' + i + '">Вставить</button><button class="mla-b" type="button" data-tpv="' + i + '">Текст</button></div>' +
+            (ctx.fb ? '<div class="mla-tp-f"><button class="mla-mini" type="button" data-fit="1" data-i="' + i + '">👍 Подходит</button><button class="mla-mini" type="button" data-fit="-1" data-i="' + i + '">👎 Не подходит</button><button class="mla-mini" type="button" data-say="' + i + '" title="Добавить к шаблону фразу: как игроки обычно описывают эту проблему (своими словами, без ников)">+ фраза</button></div>' : "") +
+            "<pre hidden>" + esc(x.body) + "</pre></div>";
         if (tp) {
             h += '<div class="mla-sec"><span>Шаблоны команды' + (tp.sets && tp.sets.length > 1 && ctx.reload ? '<span class="mla-sets">' + tp.sets.map((n) => '<button type="button" data-set="' + esc(n) + '" class="' + (n === tp.set ? "on" : "") + '">' + esc(n) + "</button>").join("") + "</span>" : "") + "</span>";
             if (tp.ask) h += '<div class="mla-warn"><div>❓ Уточните у игрока: ' + esc(tp.ask) + '</div><button class="mla-b" type="button" data-tpask="1">Спросить</button></div>';
@@ -68,7 +72,16 @@ export function makeQuickUI(env) {
         body.querySelectorAll("[data-ask]").forEach((x) => x.addEventListener("click", () => put(r.warnings[+x.getAttribute("data-ask")].ask, "Текст")));
         if (tp) {
             const wire = (root, list) => {
-                root.querySelectorAll("[data-tpi]").forEach((x) => x.addEventListener("click", () => { put(list[+x.getAttribute("data-tpi")].body, "Шаблон"); close(); }));
+                const marked = {};
+                const fit = (it, v, btn) => { if (marked[it.t] || !ctx.fb) return; marked[it.t] = 1; ctx.fb({ kind: "fit", set: tp.set, t: it.t, v }); if (btn) { const f = btn.closest(".mla-tp-f"); if (f) f.innerHTML = '<span class="mla-why">' + (v > 0 ? "Спасибо: отмечено «подходит»" : "Отмечено «не подходит» — найдите нужный шаблон поиском ниже") + "</span>"; } if (v < 0) { const q0 = body.querySelector(".mla-tq"); if (q0) q0.focus(); } };
+                root.querySelectorAll("[data-tpi]").forEach((x) => x.addEventListener("click", () => { const it = list[+x.getAttribute("data-tpi")]; fit(it, 1, null); put(it.body, "Шаблон"); close(); }));
+                root.querySelectorAll("[data-fit]").forEach((x) => x.addEventListener("click", () => fit(list[+x.getAttribute("data-i")], +x.getAttribute("data-fit"), x)));
+                root.querySelectorAll("[data-say]").forEach((x) => x.addEventListener("click", () => {
+                    const it = list[+x.getAttribute("data-say")], f = x.closest(".mla-tp-f");
+                    f.innerHTML = '<input class="mla-tq" style="margin:0" placeholder="Как игроки описывают это (своими словами, без ников)" maxlength="140"><button class="mla-mini" type="button">Отправить</button>';
+                    const inp = f.querySelector("input"), go = () => { const v = inp.value.trim(); if (v.length < 4) return; ctx.fb({ kind: "say", set: tp.set, t: it.t, say: v }); f.innerHTML = '<span class="mla-why">Фраза отправлена администратору на проверку</span>'; };
+                    f.querySelector("button").addEventListener("click", go); inp.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); }); inp.focus();
+                }));
                 root.querySelectorAll("[data-tpv]").forEach((x) => x.addEventListener("click", () => { const pre = x.closest(".mla-tp").querySelector("pre"); pre.hidden = !pre.hidden; x.textContent = pre.hidden ? "Текст" : "Скрыть"; }));
             };
             wire(body.querySelector(".mla-sec:has(.mla-tq)") || body, tp.pick);

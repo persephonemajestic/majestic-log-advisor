@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, clipboard, Menu, shell, net, native
 const fs = require('fs');
 const path = require('path');
 
-const SHELL_VERSION = '2026-10-13.20';
+const SHELL_VERSION = '2026-10-13.21';
 const APPDIR = global.APP_DIR || __dirname;
 const bundled = () => path.join(APPDIR, 'index.html');
 const overrideFile = () => path.join(app.getPath('userData'), 'index-override.html');
@@ -361,7 +361,7 @@ async function extQuick(req, send) {
   if (!size) return send(400, { ok: false, error: 'empty' });
   if (!mainWin || mainWin.isDestroyed() || !extReady) return send(503, { ok: false, error: 'window' });
   if (!extQuickOn) return send(501, { ok: false, error: 'old' });
-  const m = { url: String(meta.url || '').replace(/[?#].*$/, '').slice(0, 300), ticket: String(meta.ticket || '').slice(0, 100), msgAt: Number(meta.msgAt) || 0, mode: meta.mode === 'badge' || meta.mode === 'text' ? meta.mode : 'full', text: String(meta.text || '').slice(0, 4000), guild: String(meta.guild || '').replace(/\D/g, '').slice(0, 25), set: String(meta.set || '').slice(0, 60),
+  const m = { url: String(meta.url || '').replace(/[?#].*$/, '').slice(0, 300), ticket: String(meta.ticket || '').slice(0, 100), msgAt: Number(meta.msgAt) || 0, mode: meta.mode === 'badge' || meta.mode === 'text' || meta.mode === 'fb' ? meta.mode : 'full', text: String(meta.text || '').slice(0, 4000), guild: String(meta.guild || '').replace(/\D/g, '').slice(0, 25), set: String(meta.set || '').slice(0, 60),
     siblings: Array.isArray(meta.siblings) ? meta.siblings.slice(0, 30).map((x) => String(x).slice(0, 120)) : [] };
   const id = ++extQuickSeq, buf = Buffer.concat(parts);
   const r = await new Promise((resolve) => {

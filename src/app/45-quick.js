@@ -10,6 +10,8 @@ var QROOT = { protect: 'Защита Windows', install: 'Установка ла
 
 async function quickAnalyze(q) {
   var meta = q.meta || {}, name = String(q.name || 'file');
+  /* отметка из окна «Разбор»: подходит / не подходит или фраза-пример для шаблона */
+  if (meta.mode === 'fb') { var fb = {}; try { fb = JSON.parse(await new File([q.data], 'fb').text()); } catch (e) {} return Object.assign({ kind: 'fb' }, await tplFeedback(fb)); }
   var key = (meta.url || name) + '|' + (q.data ? q.data.length : 0) + '|' + (meta.mode || '');
   var hit = qCache(key + '|' + (meta.set || '') + '|' + (meta.text || '').length); if (hit) return hit;
   var r;

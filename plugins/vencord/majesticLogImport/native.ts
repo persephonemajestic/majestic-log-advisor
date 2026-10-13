@@ -70,7 +70,7 @@ export async function checkToken(_: IpcMainInvokeEvent, port: number, token: str
 export async function quick(_: IpcMainInvokeEvent, port: number, token: string, url: string, meta: any, text?: string) {
     if (!okPort(port)) return { status: 0, j: { ok: false, error: "port" } };
     let buf: Buffer;
-    if (meta?.mode === "text") buf = Buffer.from(String(text || " ").slice(0, 8000), "utf8");
+    if (meta?.mode === "text" || meta?.mode === "fb") buf = Buffer.from(String(text || " ").slice(0, 8000), "utf8");
     else {
         if (!CDN.test(String(url || ""))) return { status: 400, j: { ok: false, error: "url" } };
         try { const r = await fetch(url); if (!r.ok) return { status: -1, j: { ok: false, error: "Discord не отдал файл (" + r.status + ")" } }; buf = Buffer.from(await r.arrayBuffer()); }

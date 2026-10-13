@@ -36,14 +36,33 @@ const FILES = { '/v1/app': '/index.html', '/v1/rules': '/rules.json', '/v1/shell
    старые логи не остаются в истории ветки. Нужны секреты GH_TOKEN (fine-grained, Contents: Read and write только на этот репозиторий)
    и GH_SAMPLES_REPO («владелец/имя»). */
 const SMP_TTL = 7 * 86400, SMP_DAY_MAX = 300, SMP_MAX_B64 = 3000000;
+/* ---------- Подсказки для подбора шаблонов: фразы и пояснения пишет команда, отметки «подходит / не подходит» — счётчики по шаблону ---------- */
+const HINT_MAX = 12;
+async function kvJson(env, k, d) { try { const raw = await env.ACCESS.get(k); return raw ? JSON.parse(raw) : d; } catch (e) { return d; } }
+const clip = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f]+/g, ' ').trim().slice(0, n);
+/* фраза-пример: своими словами, без ников, почт и номеров */
+function cleanSay(v) { const t = clip(v, 140).replace(/\S+@\S+/g, '').replace(/\d{5,}/g, '').replace(/\b[A-Z][a-z]+_[A-Z][a-z]+\b/g, '').replace(/\s+/g, ' ').trim(); return t.length >= 4 ? t : ''; }
+async function tplHintsAll(env) { return { hints: await kvJson(env, 'tplh', {}), stats: await kvJson(env, 'tplst', {}), pending: await kvJson(env, 'tplpend', []) }; }
+async function addPending(env, list) {
+  const pend = await kvJson(env, 'tplpend', []); let n = 0;
+  for (const x of list) { const set = clip(x.set, 60), t = clip(x.t, 160), say = cleanSay(x.say), when = clip(x.when, 300); if (!set || !t || (!say && !when)) continue;
+    if (pend.some((y) => y.set === set && y.t === t && y.say === say && y.when === when)) continue;
+    pend.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: Date.now(), set, t, say, when, by: clip(x.by, 60) }); n++; }
+  await env.ACCESS.put('tplpend', JSON.stringify(pend.slice(-300))); return n;
+}
 async function samplesExport(env) {
   if (!env.GH_TOKEN || !env.GH_SAMPLES_REPO) return { ok: false, error: 'На сервере не заданы GH_TOKEN и GH_SAMPLES_REPO' };
   const days = {}; let cursor, n = 0;
   do { const l = await env.ACCESS.list({ prefix: 'smp:', cursor }); for (const k of l.keys) { const raw = await env.ACCESS.get(k.name); if (!raw) continue; let r; try { r = JSON.parse(raw); } catch (e) { continue; } const d = new Date(r.at || 0).toISOString().slice(0, 10); (days[d] = days[d] || []).push(JSON.stringify(Object.assign({ h: k.name.slice(4) }, r))); n++; } cursor = l.list_complete ? null : l.cursor; } while (cursor);
   const api = 'https://api.github.com/repos/' + env.GH_SAMPLES_REPO, H = { Authorization: 'Bearer ' + env.GH_TOKEN, Accept: 'application/vnd.github+json', 'User-Agent': 'majestic-log-advisor', 'Content-Type': 'application/json' };
   const gh = async (path, method, body) => { const r = await fetch(api + path, { method, headers: H, body: body ? JSON.stringify(body) : undefined }); const j = await r.json().catch(() => ({})); return { ok: r.ok, status: r.status, j }; };
+  /* предложения ночного разбора (tpl/proposed.json) — в очередь на подтверждение; затем свежее состояние шаблонов для следующего разбора */
+  try { const pr = await gh('/contents/tpl/proposed.json', 'GET'); if (pr.ok && pr.j.content) { const arr = JSON.parse(decodeURIComponent(escape(atob(String(pr.j.content).replace(/\s/g, ''))))); if (Array.isArray(arr)) await addPending(env, arr.slice(0, 100).map((x) => Object.assign({}, x, { by: 'ночной разбор' }))); } } catch (e) {}
+  const tpl = await kvJson(env, 'tpl', null), hs = await tplHintsAll(env);
+  const tplState = tpl && tpl.sets ? { at: Date.now(), sets: tpl.sets.map((st) => ({ name: st.name, items: st.items.filter((x) => !x.hide).map((x) => { const h = ((hs.hints[st.name] || {})[x.t]) || {}, c = ((hs.stats[st.name] || {})[x.t]) || [0, 0]; return { t: x.t, body: x.body, say: h.say || [], when: h.when || '', up: c[0], down: c[1] }; }) })), pending: hs.pending } : null;
   const tree = [{ path: 'README.md', mode: '100644', type: 'blob', content: '# Обезличенные логи Majestic Log Advisor\n\nВыгрузка ' + new Date().toISOString() + ', логов: ' + n + '. Каждый файл days/ГГГГ-ММ-ДД.jsonl: одна строка на лог, поле gz — gzip+base64 очищенного и замаскированного текста. Хранится 7 дней, каждая выгрузка заменяет содержимое целиком.\n' }];
   for (const d of Object.keys(days).sort()) { const b = await gh('/git/blobs', 'POST', { content: days[d].join('\n') + '\n', encoding: 'utf-8' }); if (!b.ok) return { ok: false, error: 'blob ' + b.status }; tree.push({ path: 'days/' + d + '.jsonl', mode: '100644', type: 'blob', sha: b.j.sha }); }
+  if (tplState) tree.push({ path: 'tpl/state.json', mode: '100644', type: 'blob', content: JSON.stringify(tplState, null, 1) });
   const t = await gh('/git/trees', 'POST', { tree }); if (!t.ok) return { ok: false, error: 'tree ' + t.status };
   const c = await gh('/git/commits', 'POST', { message: 'Выгрузка логов: ' + n, tree: t.j.sha, parents: [] }); if (!c.ok) return { ok: false, error: 'commit ' + c.status };
   let r = await gh('/git/refs/heads/main', 'PATCH', { sha: c.j.sha, force: true });
@@ -183,6 +202,27 @@ export default {
       if (!sets.length) return json({ ok: false, error: 'empty' }, 400);
       const out = JSON.stringify({ at: Date.now(), by: u.n || '', sets }); if (out.length > 900000) return json({ ok: false, error: 'size' }, 413);
       await env.ACCESS.put('tpl', out); return json({ ok: true, n: sets.reduce((a, st) => a + st.items.length, 0) });
+    }
+    if (p === '/v1/tplhints') { const u = await who(req, env); if (!u) return deny(); return json(Object.assign({ ok: true }, await tplHintsAll(env))); }
+    if (p === '/v1/tplfit' && req.method === 'POST') {
+      const u = await who(req, env); if (!u) return deny(); let b = {}; try { b = await req.json(); } catch (e) {}
+      const set = clip(b.set, 60), t = clip(b.t, 160), v = b.v === 1 ? 0 : b.v === -1 ? 1 : -1; if (!set || !t || v < 0) return json({ ok: false }, 400);
+      const st = await kvJson(env, 'tplst', {}); st[set] = st[set] || {}; const c = st[set][t] = st[set][t] || [0, 0]; c[v]++;
+      await env.ACCESS.put('tplst', JSON.stringify(st)); return json({ ok: true, up: c[0], down: c[1] });
+    }
+    if (p === '/v1/tplhint/suggest' && req.method === 'POST') {
+      const u = await who(req, env); if (!u) return deny(); let b = {}; try { b = await req.json(); } catch (e) {}
+      const n = await addPending(env, [{ set: b.set, t: b.t, say: b.say, when: b.when, by: u.n || '' }]); return json({ ok: !!n, error: n ? '' : 'empty' });
+    }
+    if (p === '/v1/tplhint/admin' && req.method === 'POST') {
+      const u = await who(req, env); if (!u) return deny(); let b = {}; try { b = await req.json(); } catch (e) {}
+      const pw = String(env.ADMIN_PASS || '').trim(); if (!pw || !same(String(b.pass || '').trim(), pw)) return json({ ok: false, error: 'pass' }, 403);
+      const hints = await kvJson(env, 'tplh', {}); let pend = await kvJson(env, 'tplpend', []);
+      const put = (set, t, say, when) => { hints[set] = hints[set] || {}; const h = hints[set][t] = hints[set][t] || { say: [], when: '' }; if (say && h.say.indexOf(say) < 0) h.say = h.say.concat([say]).slice(-HINT_MAX); if (when) h.when = when; };
+      if (b.action === 'approve' || b.action === 'reject') { const it = pend.find((x) => x.id === b.id); pend = pend.filter((x) => x.id !== b.id); if (it && b.action === 'approve') put(it.set, it.t, cleanSay(b.say != null ? b.say : it.say), clip(b.when != null ? b.when : it.when, 300)); }
+      else if (b.action === 'set') { const set = clip(b.set, 60), t = clip(b.t, 160); if (!set || !t) return json({ ok: false }, 400); hints[set] = hints[set] || {}; hints[set][t] = { say: (Array.isArray(b.say) ? b.say : []).map(cleanSay).filter(Boolean).slice(0, HINT_MAX), when: clip(b.when, 300) }; }
+      else return json({ ok: false, error: 'action' }, 400);
+      await env.ACCESS.put('tplh', JSON.stringify(hints)); await env.ACCESS.put('tplpend', JSON.stringify(pend)); return json({ ok: true });
     }
     if (p === '/v1/ai/ping') { const u = await who(req, env); if (!u) return deny(); return json({ ok: !!env.GEMINI_API_KEY }); }
     if (p === '/v1/backup/put' && req.method === 'POST') {

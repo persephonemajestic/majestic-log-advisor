@@ -34,5 +34,15 @@ const W = mod.exports;
   const put = await tq('/v1/tpl/put', { pass: 'pw1', sets }); ok(put.ok && put.n === 1, 'с паролем шаблоны сохранены (пустые отброшены)');
   const got = await tq('/v1/tpl'); ok(got.ok && got.sets[0].items[0].t === 'Проблемы с донатом' && got.by === 'тест', 'шаблоны выдаются команде');
   ok((await W.fetch(new Request('https://x/v1/tpl'), env)).status !== 200, 'без доступа шаблоны не выдаются');
+  /* подсказки для подбора: отметки, фразы на проверку, подтверждение администратором */
+  ok((await tq('/v1/tplfit', { set: 'Majestic RP', t: 'Проблемы с донатом', v: -1 })).down === 1, 'отметка «не подходит» посчитана');
+  ok((await tq('/v1/tplhint/suggest', { set: 'Majestic RP', t: 'Проблемы с донатом', say: 'Ivan_Petrov пишет: не пришли коины 1234567890 test@mail.ru' })).ok, 'фраза принята на проверку');
+  let hs = await tq('/v1/tplhints'); const pd = hs.pending[0];
+  ok(pd && pd.say === 'пишет: не пришли коины' && pd.by === 'тест', 'из фразы убраны ник, почта и длинные номера (' + (pd && pd.say) + ')');
+  ok((await tq('/v1/tplhint/admin', { pass: 'nope', action: 'approve', id: pd.id }))._s === 403, 'без пароля подсказку не принять');
+  await tq('/v1/tplhint/admin', { pass: 'pw1', action: 'approve', id: pd.id }); hs = await tq('/v1/tplhints');
+  ok(!hs.pending.length && hs.hints['Majestic RP']['Проблемы с донатом'].say[0] === 'пишет: не пришли коины', 'администратор принял фразу — она у команды');
+  await tq('/v1/tplhint/admin', { pass: 'pw1', action: 'set', set: 'Majestic RP', t: 'Проблемы с донатом', say: ['оплатил, не пришло'], when: 'оплата и донат' }); hs = await tq('/v1/tplhints');
+  ok(hs.hints['Majestic RP']['Проблемы с донатом'].when === 'оплата и донат', '«Когда отправлять» сохраняется');
   process.exit(bad ? 1 : 0);
 })();

@@ -3146,7 +3146,7 @@ var STRU = { ok: 'Успех', bad: 'Сбой', warn: 'Внимание', unk: '
 var SRCRU = { guide: 'из руководства', obs: 'по наблюдению в логах', infer: 'вывод, в руководстве нет', web: 'по открытым источникам', user: 'ваше правило', team: 'правило команды' };
 var SRCTIP = { team: 'Общее правило команды из файла rules.json в репозитории проекта', user: 'Правило, которое добавили вы или коллега через «Добавить решение»', guide: 'Правило взято из документа «Руководство по диагностике ошибок и работе с логами»', obs: 'Строка встречается в успешных заходах загруженных логов, поэтому считается шумом', web: 'Случая нет в руководстве. Объяснение собрано по справкам Rockstar, форумам RAGE и cfx.re и реальным логам. Проверяйте его', infer: 'Этого случая нет в руководстве. Объяснение построено по логам и общим признакам, проверяйте его' };
 var PSTEPS_UI = [['admin', 'Администратор'], ['pirate', 'Очистка файлов'], ['backup', 'Резервная копия'], ['patch', 'Патч игры'], ['job', 'Процесс игры'], ['inject', 'Внедрение'], ['injected', 'Клиент внедрён'], ['entry', 'Запуск клиента'], ['finished', 'Готово'], ['window', 'Окно игры']];
-var SAMPLE = null, APP_VERSION = '2026-10-13.118';
+var SAMPLE = null, APP_VERSION = '2026-10-13.119';
 var ROW = 20, KBKEY = 'majestic-log-advisor.kb.v1';
 
 var $ = function (s) { return document.querySelector(s); };
@@ -3183,6 +3183,11 @@ function niceName(n) { return n.replace(/^[0-9a-f]{8}-/i, ''); }
 function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ'; }
 /* ---------- Версия 13: отчёты, все логи, окно загрузки, команда, слежение ---------- */
 var CHANGELOG = [
+  { v: '2026-10-13.119', items: [
+    'Подбор шаблонов учится: в окне «Разбор» у шаблона кнопки «👍 Подходит» и «👎 Не подходит» — часто отклоняемые шаблоны опускаются ниже, у подходящих видно «подходит 12 из 14». Вставка шаблона тоже считается «подходит».',
+    '«+ фраза» у шаблона: напишите своими словами, как игроки обычно описывают эту проблему. Фраза уходит администратору на проверку и после подтверждения помогает подбору у всей команды.',
+    '«Настройки» → «Шаблоны ответов команды» → «Подсказки для подбора»: администратор принимает фразы, пишет к шаблонам «Когда отправлять» и видит отметки саппортов.'
+  ] },
   { v: '2026-10-13.118', items: [
     'ИИ тратит меньше бесплатного лимита: если ключевые слова уверенно указали шаблон, ИИ не спрашивается; скриншоты и подбор шаблонов идут через Gemini Flash-Lite (у него лимит намного больше), а при исчерпании лимита одной модели запрос сам уходит следующей.'
   ] },
@@ -6717,6 +6722,8 @@ var QROOT = { protect: 'Защита Windows', install: 'Установка ла
 
 async function quickAnalyze(q) {
   var meta = q.meta || {}, name = String(q.name || 'file');
+  /* отметка из окна «Разбор»: подходит / не подходит или фраза-пример для шаблона */
+  if (meta.mode === 'fb') { var fb = {}; try { fb = JSON.parse(await new File([q.data], 'fb').text()); } catch (e) {} return Object.assign({ kind: 'fb' }, await tplFeedback(fb)); }
   var key = (meta.url || name) + '|' + (q.data ? q.data.length : 0) + '|' + (meta.mode || '');
   var hit = qCache(key + '|' + (meta.set || '') + '|' + (meta.text || '').length); if (hit) return hit;
   var r;
@@ -6855,8 +6862,8 @@ if (window.nativeApp && window.nativeApp.onExtQuick) window.nativeApp.onExtQuick
    Подбор шаблона: по тексту игрока в тикете, по тексту со скриншота и по найденной в логе проблеме.
    Сначала ключевые слова на этом компьютере, затем (если на сервере есть ИИ) ИИ выбирает из списка названий. */
 var MAJESTIC_GUILD = '530693013622489088';
-var TPL = { at: 0, by: '', sets: [] };
-function tplLoadCache() { var c = (S.kb.settings || {}).tplCache; if (c && c.sets) TPL = c; }
+var TPL = { at: 0, by: '', sets: [] }, TPLH = { hints: {}, stats: {}, pending: [] };
+function tplLoadCache() { var c = (S.kb.settings || {}).tplCache; if (c && c.sets) TPL = c; var h = (S.kb.settings || {}).tplHints; if (h && h.hints) TPLH = h; }
 function tplSaveCache() { S.kb.settings.tplCache = TPL; saveKB(); }
 /* Разбор файла SupportTemplates.config.json ({"raw": "..."}) или того же текста: «## Проект», «### Название», дальше текст шаблона */
 function tplParse(text) {
@@ -6875,7 +6882,12 @@ async function tplFetch() {
   if (!srvOn()) return;
   var r = await srv('/v1/tpl', {}); if (!r || !r.ok || r.none || !r.sets) return;
   if (r.at !== TPL.at) { TPL = { at: r.at, by: r.by || '', sets: r.sets }; tplSaveCache(); }
+  var h = await srv('/v1/tplhints', {}); if (h && h.ok) { TPLH = { hints: h.hints || {}, stats: h.stats || {}, pending: h.pending || [] }; S.kb.settings.tplHints = TPLH; saveKB(); }
 }
+function tplHint(set, t) { return ((TPLH.hints[set] || {})[t]) || { say: [], when: '' }; }
+function tplFit(set, t) { var c = (TPLH.stats[set] || {})[t]; return c ? { up: c[0] || 0, down: c[1] || 0 } : { up: 0, down: 0 }; }
+/* основы слов: «задонатил» и «донат» сводятся к общему началу */
+function stems(s) { return String(s || '').toLowerCase().replace(/ё/g, 'е').split(/[^а-яa-z0-9]+/).filter(function (w) { return w.length >= 3; }).map(function (w) { return w.slice(0, Math.min(w.length, 5)); }); }
 function tplSetFor(guild, want) {
   var sets = TPL.sets || []; if (!sets.length) return null;
   var by = function (re) { return sets.find(function (s) { return re.test(s.name); }); };
@@ -6952,15 +6964,20 @@ var TPL_KEYS = [
 var TPL_SKIP = /Название сервера|список IP/i;
 /* \\b в JavaScript не видит границу у русских слов — заменяем на свою границу слова */
 var WB = '(?:(?<![а-яёa-z0-9_])(?=[а-яёa-z0-9_])|(?<=[а-яёa-z0-9_])(?![а-яёa-z0-9_]))';
+/* очки шаблона: ключевые слова + фразы-примеры команды; отметки «подходит / не подходит» немного поднимают или опускают */
 function tplLocal(set, text) {
   var t = String(text || '').toLowerCase(); if (!set || t.length < 3) return [];
+  var ts = {}; stems(t).forEach(function (w) { ts[w] = 1; });
   var out = [];
   set.items.forEach(function (x, i) {
     if (x.hide || TPL_SKIP.test(x.t)) return;
-    var k = TPL_KEYS.find(function (p) { return p[0].test(x.t); }); if (!k || !k[1]) return;
-    var g = k.re || (k.re = new RegExp(k[1].source.replace(/\\b/g, WB), 'gi')), n = (t.match(g) || []).length; if (n) out.push({ i: i, score: n });
+    var n = 0, k = TPL_KEYS.find(function (p) { return p[0].test(x.t); });
+    if (k && k[1]) { var g = k.re || (k.re = new RegExp(k[1].source.replace(/\\b/g, WB), 'gi')); n = (t.match(g) || []).length; }
+    tplHint(set.name, x.t).say.forEach(function (ph) { var ps = stems(ph), hit = ps.filter(function (w) { return ts[w]; }).length; if (ps.length && hit >= Math.min(2, ps.length) && hit / ps.length >= 0.6) n += 2; });
+    if (!n) return;
+    var f = tplFit(set.name, x.t); out.push({ i: i, score: n + 2 * (f.up - f.down) / (f.up + f.down + 3) });
   });
-  return out.sort(function (a, b) { return b.score - a.score || a.i - b.i; }).slice(0, 3);
+  return out.filter(function (x) { return x.score > 0.3; }).sort(function (a, b) { return b.score - a.score || a.i - b.i; }).slice(0, 3);
 }
 var TPL_SYS = 'Ты помогаешь саппорту игрового проекта (мультиплеер GTA V) выбрать готовый шаблон ответа на обращение игрока. ' +
   'Техподдержка отвечает только на технические вопросы. Игровая механика, правила, ситуации с другими игроками, имущество, фракции, наказания в игре — шаблон про обращение к администрации. ' +
@@ -6974,7 +6991,7 @@ async function tplMatch(text, opt) {
   /* ключевые слова уверенно указали на один шаблон — ИИ не спрашиваем, бесплатный лимит не тратится */
   var sure = loc[0] && loc[0].score >= 2 && (!loc[1] || loc[0].score > loc[1].score);
   if (opt.ai !== false && !sure && srvOn() && text2.length >= 12) {
-    var list = set.items.map(function (x, i) { return x.hide || TPL_SKIP.test(x.t) ? null : (i + 1) + '. ' + x.t; }).filter(Boolean).join('\n');
+    var list = set.items.map(function (x, i) { if (x.hide || TPL_SKIP.test(x.t)) return null; var h = tplHint(set.name, x.t); return (i + 1) + '. ' + x.t + (h.when ? ' — когда: ' + h.when : '') + (h.say.length ? ' — игроки пишут: ' + h.say.slice(0, 4).join('; ') : ''); }).filter(Boolean).join('\n');
     var a = await srv('/v1/ai', { body: { system: TPL_SYS, input: 'Шаблоны:\n' + list + '\n\nОбращение игрока:\n' + LA.mask(text2) + (loc.length ? '\n\nПо ключевым словам подходят: ' + loc.map(function (x) { return x.i + 1; }).join(', ') : ''), max: 400 } });
     var j = null; if (a && a.ok) { try { j = JSON.parse(String(a.text).replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch (e) {} }
     if (j && Array.isArray(j.pick)) {
@@ -6984,8 +7001,15 @@ async function tplMatch(text, opt) {
     }
   }
   return { set: set.name, sets: (TPL.sets || []).map(function (s) { return s.name; }), src: src, why: why, ask: ask,
-    pick: pick.map(function (i) { return { t: set.items[i].t, body: set.items[i].body }; }),
+    pick: pick.map(function (i) { var f = tplFit(set.name, set.items[i].t); return { t: set.items[i].t, body: set.items[i].body, up: f.up, down: f.down }; }),
     all: set.items.filter(function (x) { return !x.hide; }).map(function (x) { return { t: x.t, body: x.body }; }) };
+}
+/* отметка саппорта из окна «Разбор»: подходит / не подходит, или фраза-пример своими словами (уходит на подтверждение администратору) */
+async function tplFeedback(b) {
+  if (!b || !b.set || !b.t) return { ok: false };
+  if (b.kind === 'fit') { var r = await srv('/v1/tplfit', { body: { set: b.set, t: b.t, v: b.v === 1 ? 1 : -1 } }); if (r && r.ok) { TPLH.stats[b.set] = TPLH.stats[b.set] || {}; TPLH.stats[b.set][b.t] = [r.up, r.down]; } return { ok: !!(r && r.ok), up: r && r.up, down: r && r.down }; }
+  if (b.kind === 'say') { var say = LA.mask(String(b.say || '')).slice(0, 140); var r2 = await srv('/v1/tplhint/suggest', { body: { set: b.set, t: b.t, say: say } }); return { ok: !!(r2 && r2.ok) }; }
+  return { ok: false };
 }
 function tplRemember(guild, name) { if (!guild || !name) return; var st = S.kb.settings; st.tplGuild = st.tplGuild || {}; st.tplGuild[guild] = name; saveKB(); }
 
@@ -6993,7 +7017,7 @@ function tplRemember(guild, name) { if (!guild || !name) return; var st = S.kb.s
 function tplSettingsHtml() {
   var n = (TPL.sets || []).reduce(function (a, s) { return a + s.items.filter(function (x) { return !x.hide; }).length; }, 0);
   return '<h4 style="margin:10px 0 2px">Шаблоны ответов команды</h4><p class="hint" style="margin:0 0 6px">' + (n ? 'Загружено ' + n + ' шаблонов (' + (TPL.sets || []).map(function (s) { return esc(s.name) + ': ' + s.items.length; }).join(', ') + ')' + (TPL.at ? ', обновлены ' + esc(fmtDT(TPL.at)) + (TPL.by ? ' (' + esc(TPL.by) + ')' : '') : '') + '. Плагин Discord подбирает их по тексту игрока, скриншоту и логу.' : 'Шаблонов пока нет. Загрузите файл SupportTemplates.config.json — шаблоны появятся у всей команды.') + '</p>' +
-    (srvOn() ? '<div class="row-actions" style="justify-content:flex-start"><button class="btn sm" data-act="tplUpload">Загрузить файл для команды…</button><button class="btn sm ghost" data-act="tplRefresh">Обновить</button></div>' : '<p class="hint" style="margin:0">Шаблоны приходят с сервера команды — нужен вход в приложение.</p>');
+    (srvOn() ? '<div class="row-actions" style="justify-content:flex-start"><button class="btn sm" data-act="tplUpload">Загрузить файл для команды…</button><button class="btn sm" data-act="tplHints">Подсказки для подбора' + (TPLH.pending.length ? ' (' + TPLH.pending.length + ' на проверке)' : '') + '</button><button class="btn sm ghost" data-act="tplRefresh">Обновить</button></div>' : '<p class="hint" style="margin:0">Шаблоны приходят с сервера команды — нужен вход в приложение.</p>');
 }
 function tplUploadDialog() {
   $('#panelHost').innerHTML = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" aria-label="Шаблоны для команды" data-act="noop" style="max-width:560px"><b>Шаблоны ответов для команды</b>' +
@@ -7013,9 +7037,37 @@ async function tplSend() {
   hiddenTplNote(sets);
 }
 function hiddenTplNote(sets) { var h = []; sets.forEach(function (s) { s.items.forEach(function (x) { if (x.hide) h.push(x.t); }); }); if (h.length) status('Не предлагаются автоматически: ' + h.join(', ') + '.'); }
+/* ---------- Подсказки для подбора: фразы игроков (своими словами) и «когда отправлять»; меняет администратор ---------- */
+var TPLPW = '';
+function tplHintsDialog(selSet, selT) {
+  var sets = TPL.sets || [], set = sets.find(function (s) { return s.name === selSet; }) || sets[0];
+  if (!set) { status('Сначала загрузите шаблоны команды.'); return; }
+  var it = set.items.find(function (x) { return x.t === selT; }) || set.items.filter(function (x) { return !x.hide; })[0], h = tplHint(set.name, it.t), f = tplFit(set.name, it.t);
+  var pend = TPLH.pending.map(function (p) { return '<li style="display:grid;gap:4px;padding:6px 0;border-bottom:1px solid var(--line)"><div><b>' + esc(p.t) + '</b> <span class="mut">' + esc(p.set) + (p.by ? ' · ' + esc(p.by) : '') + '</span></div>' + (p.say ? '<div>Игроки пишут: «' + esc(p.say) + '»</div>' : '') + (p.when ? '<div>Когда отправлять: ' + esc(p.when) + '</div>' : '') + '<div class="row-actions" style="justify-content:flex-start;margin:0"><button class="btn sm primary" data-act="tphOk" data-id="' + esc(p.id) + '">Принять</button><button class="btn sm ghost" data-act="tphNo" data-id="' + esc(p.id) + '">Отклонить</button></div></li>'; }).join('');
+  $('#panelHost').innerHTML = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" aria-label="Подсказки для подбора" data-act="noop" style="max-width:720px;width:100%;max-height:90vh;overflow:auto"><b>Подсказки для подбора шаблонов</b>' +
+    '<p class="hint" style="margin:4px 0 8px">Фразы — как игроки обычно описывают проблему, своими словами команды (без ников и копий сообщений). «Когда отправлять» — короткое пояснение для ИИ. Менять может только администратор.</p>' +
+    '<label class="nl">Пароль администратора<input type="text" id="tphPw" autocomplete="off" style="-webkit-text-security:disc" value="' + esc(TPLPW) + '"></label>' +
+    (pend ? '<h4 style="margin:12px 0 2px">На проверке (' + TPLH.pending.length + ')</h4><ul style="list-style:none;margin:0;padding:0">' + pend + '</ul>' : '') +
+    '<h4 style="margin:12px 0 4px">Шаблон</h4><div class="row-actions" style="justify-content:flex-start;margin:0"><select class="sel" id="tphSet">' + sets.map(function (s) { return '<option' + (s === set ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select><select class="sel" id="tphT" style="max-width:420px">' + set.items.filter(function (x) { return !x.hide; }).map(function (x) { return '<option' + (x === it ? ' selected' : '') + '>' + esc(x.t) + '</option>'; }).join('') + '</select></div>' +
+    '<p class="hint" style="margin:6px 0">Отметки саппортов: подходит ' + f.up + ', не подходит ' + f.down + '.</p>' +
+    '<label class="nl">Когда отправлять<input type="text" id="tphWhen" value="' + esc(h.when) + '" placeholder="Например: вопросы игровой механики, ситуации с другими игроками"></label>' +
+    '<label class="nl" style="margin-top:6px">Игроки пишут (по одной фразе в строке)<textarea class="note" id="tphSay" style="height:120px" placeholder="не пришли коины&#10;задонатил и ничего не пришло">' + esc(h.say.join('\n')) + '</textarea></label><div class="hint" id="tphMsg" style="margin-top:6px"></div>' +
+    '<div class="row-actions"><button class="btn sm primary" data-act="tphSave">Сохранить для команды</button><button class="btn sm ghost" data-act="closePanel">Закрыть</button></div></div></div>';
+  $('#tphSet').addEventListener('change', function () { TPLPW = $('#tphPw').value; tplHintsDialog(this.value); });
+  $('#tphT').addEventListener('change', function () { TPLPW = $('#tphPw').value; tplHintsDialog($('#tphSet').value, this.value); });
+}
+async function tplHintsAdmin(body) {
+  TPLPW = $('#tphPw').value; var msg = $('#tphMsg');
+  var r = await srv('/v1/tplhint/admin', { body: Object.assign({ pass: TPLPW }, body) });
+  if (!r || !r.ok) { if (msg) msg.textContent = r && r.error === 'pass' ? 'Неверный пароль администратора.' : 'Не получилось сохранить: нет связи с сервером или неверный пароль.'; return false; }
+  await tplFetch(); return true;
+}
 document.addEventListener('click', function (e) {
   var a = e.target.closest && e.target.closest('[data-act]'); if (!a) return; var act = a.getAttribute('data-act');
-  if (act === 'tplUpload') tplUploadDialog();
+  if (act === 'tplHints') { tplFetch().then(function () { tplHintsDialog(); }); }
+  else if (act === 'tphOk' || act === 'tphNo') { var cs = $('#tphSet').value, ct = $('#tphT').value; tplHintsAdmin({ action: act === 'tphOk' ? 'approve' : 'reject', id: a.getAttribute('data-id') }).then(function (ok) { if (ok) tplHintsDialog(cs, ct); }); }
+  else if (act === 'tphSave') { var s1 = $('#tphSet').value, t1 = $('#tphT').value; tplHintsAdmin({ action: 'set', set: s1, t: t1, when: $('#tphWhen').value, say: $('#tphSay').value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean) }).then(function (ok) { if (ok) { tplHintsDialog(s1, t1); var m = $('#tphMsg'); if (m) m.textContent = 'Сохранено — подбор у команды учтёт это при следующей проверке (до 30 минут).'; } }); }
+  else if (act === 'tplUpload') tplUploadDialog();
   else if (act === 'tplSend') tplSend();
   else if (act === 'tplRefresh') tplFetch().then(function () { status('Шаблоны: ' + (TPL.sets || []).reduce(function (n, s) { return n + s.items.length; }, 0) + '.'); var b = $('#tplBox'); if (b) b.innerHTML = tplSettingsHtml(); });
 });
@@ -7248,7 +7300,7 @@ function openHelp() {
   $('#panelHost').innerHTML = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" aria-label="Инструкция"><b>Как пользоваться</b>' +
     sec('Лог', ['Перетащите <code>client.log</code>, <code>launcher.log</code>, <code>main.log</code>, zip с логами или целую папку в окно. Можно сразу несколько файлов.', '«Диагноз» называет причину и сразу даёт готовый ответ игроку (кнопка «Копировать ответ» или клавиша R). «Лог» показывает сами строки, «Дело» собирает все логи одного игрока вместе.', 'Строка в логе кликается: справа появится объяснение. Выделенные строки копируются Ctrl+C.']) +
     sec('Дамп краша и журнал Windows', ['Под диагнозом есть строка «Дамп краша и журнал Windows». Добавьте туда <code>.dmp</code>, <code>.evtx</code> или zip краш-отчёта.', 'Дамп показывает модуль, где упал клиент, и код исключения. Журнал показывает синие экраны, сбои драйвера видеокарты, диска и памяти в те же минуты.', 'Если лога нет, нажмите «Только дамп» в меню «Ещё».', 'Кнопка «Разобрать с ИИ» отправляет короткую сводку (несколько строк), а не весь файл.']) +
-    sec('Discord (плагин MajesticLogImport)', ['У логов и скриншотов игрока в тикете — кнопка «Разбор»: окно с причиной, как чинить, ключевыми строками и готовым ответом игроку. Ответ можно поправить и вставить в чат одной кнопкой.', '<b>Ctrl+Shift+L</b> в открытой ветке тикета — разбор последнего лога игрока без поиска файла.', 'Значки рядом с логами («МОД», «Сеть игрока», «старый»…) — итог разбора ещё до клика. Окно предупредит, если лог старый или не хватает client.log, и подставит вежливую просьбу.', 'Скриншоты: чёрные полосы по краям находятся сразу, текст ошибки на экране читает ИИ и сверяет с правилами анализатора.', '«Передать дальше» вставляет в чат сводку для старших: причина, что уже предложено, ключевые строки.', 'Шаблоны команды: окно предлагает подходящий шаблон по тексту игрока, скриншоту и логу; в тикете без файлов — кнопка «Подобрать ответ». Шаблоны загружаются в «Настройках».']) +
+    sec('Discord (плагин MajesticLogImport)', ['У логов и скриншотов игрока в тикете — кнопка «Разбор»: окно с причиной, как чинить, ключевыми строками и готовым ответом игроку. Ответ можно поправить и вставить в чат одной кнопкой.', '<b>Ctrl+Shift+L</b> в открытой ветке тикета — разбор последнего лога игрока без поиска файла.', 'Значки рядом с логами («МОД», «Сеть игрока», «старый»…) — итог разбора ещё до клика. Окно предупредит, если лог старый или не хватает client.log, и подставит вежливую просьбу.', 'Скриншоты: чёрные полосы по краям находятся сразу, текст ошибки на экране читает ИИ и сверяет с правилами анализатора.', '«Передать дальше» вставляет в чат сводку для старших: причина, что уже предложено, ключевые строки.', 'Шаблоны команды: окно предлагает подходящий шаблон по тексту игрока, скриншоту и логу; в тикете без файлов — кнопка «Подобрать ответ». Отмечайте «Подходит / Не подходит» и добавляйте «+ фразу» — так подбор становится точнее у всей команды.']) +
     sec('Папки (дела)', ['Бросьте лог на другой лог: оба окажутся в новой папке. Бросьте лог на плитку папки: он добавится в неё.', 'У дела есть статус, итог и таймер ожидания игрока. Логи с одним номером тикета собираются в папку сами.']) +
     sec('Горячие клавиши', ['? показывает все клавиши, Ctrl+K открывает список команд, / — поиск по логу, 1–9 — вкладки. Свои клавиши назначаются в «Настройках».']) +
     '<div><h4 style="margin:6px 0 4px">Что попросить у игрока</h4><p class="hint" style="margin:0 0 6px">Готовое сообщение.</p><textarea readonly style="height:150px" id="askTxt">' + esc(PLAYER_ASK) + '</textarea></div>' +
