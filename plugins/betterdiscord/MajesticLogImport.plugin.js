@@ -1,6 +1,6 @@
 /**
  * @name MajesticLogImport
- * @version 1.7.3
+ * @version 1.7.4
  * @description «Разбор» логов и скриншотов прямо в тикете: причина, как чинить и готовый ответ игроку одной кнопкой. «В анализатор» отправляет файл в Majestic Log Advisor. Ctrl+Shift+L — разбор последнего лога тикета.
  * @author persephonemajestic
  * @source https://github.com/persephonemajestic/majestic-log-advisor/tree/main/plugins/betterdiscord
@@ -14,7 +14,7 @@
    «Разбор» (логи, zip, скриншоты): файл разбирается в приложении, но не добавляется в список; ответ — окно поверх Discord.
    Значки на логах: плагин сам разбирает логи игрока в открытой ветке и подписывает итог рядом с файлом (можно выключить). */
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.3";
+const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.4";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 /* MLA-QUICKUI-START — общий код окна «Разбор» для Vencord и BetterDiscord (в BetterDiscord вставляется скриптом plugins/sync-quickui.py) */
@@ -159,7 +159,9 @@ function makeQuickUI(env) {
         s.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onClick(); });
         return s;
     }
-    return { show, loading, error, close, badge };
+    /* ИИ не ответил или окно уже трогали — убрать надпись «ИИ уточняет подбор…» */
+    function settle(key) { if (box && cur.key === key) box.querySelectorAll(".mla-wait").forEach((x) => x.remove()); }
+    return { show, loading, error, close, badge, settle };
 }
 /* понятный текст ошибки связи с приложением */
 function quickErr(status, err) {
@@ -454,7 +456,7 @@ module.exports = class MajesticLogImport {
             const ctx = { key, open: !text && FILE_RE.test(name) ? () => this.send(channelId, messageId, url, name, null) : null, reload: (s) => this.openQuick(channelId, messageId, url, name, s), fb: (o) => this.fb(o) };
             const r = await this.quick(channelId, messageId, url, name, mode, set, true);
             this.ui.show(r, ctx);
-            if (r.tpl && r.tpl.more) { try { const r2 = await this.quick(channelId, messageId, url, name, mode, set, false); this.ui.show(r2, Object.assign({}, ctx, { update: true })); } catch (e) {} }
+            if (r.tpl && r.tpl.more) { try { const r2 = await this.quick(channelId, messageId, url, name, mode, set, false); this.ui.show(r2, Object.assign({}, ctx, { update: true })); } catch (e) {} finally { this.ui.settle(key); } }
         } catch (e) {
             if (e.status === 401 && !this.retried) { this.ui.close(); if (await this.pair()) { this.retried = true; try { return await this.openQuick(channelId, messageId, url, name, set); } finally { this.retried = false; } } return; }
             this.ui.error(e.status === -1 ? e.message : quickErr(e.status, e.message));

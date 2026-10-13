@@ -15,7 +15,7 @@ import { makeQuickUI, MLA_HOTKEY, MLA_QCSS, quickErr } from "./quickui";
 const Native = VencordNative.pluginHelpers.MajesticLogImport as PluginNative<typeof import("./native")>;
 
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.3";
+const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.4";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 const settings = definePluginSettings({
@@ -166,7 +166,7 @@ async function openQuick(channelId: string, messageId: string, url: string, name
     try {
         const mode = text ? "text" : "full", ctx: any = { key: url + "|" + set, open: !text && FILE_RE.test(name) ? () => send(channelId, messageId, url, name, null) : null, reload: (s: string) => openQuick(channelId, messageId, url, name, s), fb };
         const r = await quick(channelId, messageId, url, name, mode, set, true); ui.show(r, ctx);
-        if (r.tpl?.more) { try { const r2 = await quick(channelId, messageId, url, name, mode, set, false); ui.show(r2, { ...ctx, update: true }); } catch { } }
+        if (r.tpl?.more) { try { const r2 = await quick(channelId, messageId, url, name, mode, set, false); ui.show(r2, { ...ctx, update: true }); } catch { } finally { ui.settle(ctx.key); } }
     }
     catch (e: any) { ui.error(e.status === -1 ? e.message : quickErr(e.status, e.message)); }
 }

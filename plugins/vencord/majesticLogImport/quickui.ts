@@ -141,7 +141,9 @@ export function makeQuickUI(env) {
         s.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onClick(); });
         return s;
     }
-    return { show, loading, error, close, badge };
+    /* ИИ не ответил или окно уже трогали — убрать надпись «ИИ уточняет подбор…» */
+    function settle(key) { if (box && cur.key === key) box.querySelectorAll(".mla-wait").forEach((x) => x.remove()); }
+    return { show, loading, error, close, badge, settle };
 }
 /* понятный текст ошибки связи с приложением */
 export function quickErr(status, err) {
