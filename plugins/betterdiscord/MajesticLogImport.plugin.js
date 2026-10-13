@@ -1,6 +1,6 @@
 /**
  * @name MajesticLogImport
- * @version 1.7.0
+ * @version 1.7.1
  * @description «Разбор» логов и скриншотов прямо в тикете: причина, как чинить и готовый ответ игроку одной кнопкой. «В анализатор» отправляет файл в Majestic Log Advisor. Ctrl+Shift+L — разбор последнего лога тикета.
  * @author persephonemajestic
  * @source https://github.com/persephonemajestic/majestic-log-advisor/tree/main/plugins/betterdiscord
@@ -14,7 +14,7 @@
    «Разбор» (логи, zip, скриншоты): файл разбирается в приложении, но не добавляется в список; ответ — окно поверх Discord.
    Значки на логах: плагин сам разбирает логи игрока в открытой ветке и подписывает итог рядом с файлом (можно выключить). */
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.0";
+const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.1";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 /* MLA-QUICKUI-START — общий код окна «Разбор» для Vencord и BetterDiscord (в BetterDiscord вставляется скриптом plugins/sync-quickui.py) */
@@ -180,6 +180,7 @@ const UPDATE_URL = "https://raw.githubusercontent.com/persephonemajestic/majesti
    Сначала свои сообщения игрока, потом поля формы тикета, потом текст бота; строки про саппорта пропускаются. */
 const STOP = /\s*(?:[,;|/(]|\s-\s|\s—\s|$|\s+(?:ник|nick|статик|static|стат|id|сервер|server|discord|дискорд|проблема|описание)(?=[\s:.,;!?*-]|$))/i;
 const STAFF = /саппорт|support|модератор|администратор|админ|staff|принял|сотрудник|агент|хелпер|helper/i;
+const TICKET_STAFF = /специалист|взял\S* .*обращени|саппорт|support|модератор|администратор|staff|принял|сотрудник|агент|хелпер|helper|меняет название|закрыл\S* (тикет|обращени)/i;
 const PRE = "(?:^|[^A-Za-zА-Яа-яЁё_])", SEP = "([\\s*]*[:\\-—№#][\\s*]*|\\s+)";
 const NICK_RE = new RegExp(PRE + "(?:ник(?:нейм)?|nick(?:name)?|имя\\s+(?:в\\s+игре|персонажа)|игровое\\s+имя)" + SEP + "([A-Za-zА-Яа-яЁё]{2,20}[ _][A-Za-zА-Яа-яЁё]{2,24})(?![A-Za-zА-Яа-яЁё])", "i");
 const STATIC_RE = new RegExp(PRE + "(?:статик|static(?:\\s*id)?|стат\\.?|статический\\s+(?:id|номер)|id\\s+персонажа|паспорт)[\\s:\\-—№#*]*(\\d{1,7})(?!\\d)", "i");
@@ -255,7 +256,8 @@ module.exports = class MajesticLogImport {
     messages(channelId) { let list = []; try { const all = this.store("MessageStore")?.getMessages(channelId); list = all?.toArray ? all.toArray() : (all?._array || []); } catch (e) {} return list; }
     /* все логи и дампы из загруженных сообщений ветки */
     /* игрок ветки: автор первого сообщения не от бота (обычно тот, кто открыл тикет) */
-    playerId(channelId) { const m = this.messages(channelId).find(x => x && x.author && !x.author.bot); return m ? m.author.id : ""; }
+    /* игрок ветки: автор первого сообщения не от бота и не вы сами (тикет мог открыть бот, а вы — написать первым) */
+    playerId(channelId) { let me = ""; try { me = this.store("UserStore")?.getCurrentUser()?.id || ""; } catch (e) {} const m = this.messages(channelId).find(x => x && x.author && !x.author.bot && x.author.id !== me); return m ? m.author.id : ""; }
     attachments(channelId, re) {
         const out = [], seen = {}, pid = this.playerId(channelId); re = re || FILE_RE;
         for (const m of this.messages(channelId)) for (const a of (pid && m?.author?.id !== pid ? [] : (m && m.attachments) || [])) {
@@ -410,6 +412,8 @@ module.exports = class MajesticLogImport {
         const list = this.messages(channelId), pid = this.playerId(channelId), out = [];
         for (const m of list) {
             if (m?.author?.id === pid && m.content) out.push(String(m.content));
+            /* бот тикетов пишет описание проблемы обычным сообщением; служебные строки («Специалист … взял обращение») пропускаем */
+            if (m?.author?.bot && m.content) for (const line of String(m.content).split("\n")) if (line.trim() && !TICKET_STAFF.test(line)) out.push(line);
             if (m?.author?.bot || m?.author?.id === pid) for (const em of m.embeds || []) { for (const f of em.fields || []) if (!STAFF.test(f.name || f.rawName || "")) out.push((f.name || f.rawName || "") + ": " + (f.value || f.rawValue || "")); if (m?.author?.bot && (em.description || em.rawDescription)) out.push(String(em.description || em.rawDescription)); }
         }
         const t = out.join("\n").trim(); return t.length > max ? t.slice(t.length - max) : t;
@@ -467,15 +471,15 @@ module.exports = class MajesticLogImport {
         this.openQuick(ch, first ? first.id : "", "ticket:" + ch, "ticket.txt");
     }
     /* кнопка «Подобрать ответ» у первого сообщения игрока в ветке */
+    /* «Подобрать ответ» — у первых трёх сообщений ветки (в том числе у описания от бота тикетов) */
     ticketButton(li, ch, mid) {
-        const pid = this.playerId(ch), first = this.messages(ch).find((m) => m?.author?.id === pid);
-        if (!first || first.id !== mid || li.querySelector(".mla-tk")) return;
+        if (li.querySelector(".mla-tk") || !this.messages(ch).slice(0, 3).some((m) => m && m.id === mid)) return;
         const acc = li.querySelector('[id^="message-accessories-"]') || li, b = document.createElement("button");
         b.className = "mla-btn mla-tk"; b.type = "button"; b.textContent = "Подобрать ответ"; b.title = "Шаблон команды по тексту игрока (и логам, если они есть). " + MLA_HOTKEY + " — то же с клавиатуры";
         b.style.marginLeft = "0"; b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); this.hotkey(ch); });
         const bar = document.createElement("div"); bar.className = "mla-imgbar mla-tkbar"; bar.appendChild(b); acc.appendChild(bar);
         /* заранее подобрать шаблон без ИИ — окно «Подобрать ответ» откроется мгновенно */
-        if (!this.attachments(ch, LOG_RE).length && this.cfg().token && Date.now() > this.downUntil) this.quick(ch, mid, "ticket:" + ch, "ticket.txt", "text", "", true).catch(() => {});
+        this.pre = this.pre || {}; if (!this.pre[ch] && !this.attachments(ch, LOG_RE).length && this.cfg().token && Date.now() > this.downUntil) { this.pre[ch] = 1; this.quick(ch, mid, "ticket:" + ch, "ticket.txt", "text", "", true).catch(() => {}); }
     }
     imgButton(li, channelId, messageId, url, name) {
         const acc = li.querySelector('[id^="message-accessories-"]') || li, key = url.replace(/[?#].*$/, ""); let bar = li.querySelector(".mla-imgbar");

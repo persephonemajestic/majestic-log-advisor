@@ -7,7 +7,7 @@
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { insertTextIntoChatInputBox } from "@utils/discord";
-import { Button, ChannelStore, JoinedThreadsStore, MessageStore, React, SelectedChannelStore, showToast } from "@webpack/common";
+import { Button, ChannelStore, JoinedThreadsStore, MessageStore, React, SelectedChannelStore, showToast, UserStore } from "@webpack/common";
 
 import { cmpVer, extractPlayer } from "./extract";
 import { makeQuickUI, MLA_HOTKEY, MLA_QCSS, quickErr } from "./quickui";
@@ -15,7 +15,7 @@ import { makeQuickUI, MLA_HOTKEY, MLA_QCSS, quickErr } from "./quickui";
 const Native = VencordNative.pluginHelpers.MajesticLogImport as PluginNative<typeof import("./native")>;
 
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.0";
+const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.1";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 const settings = definePluginSettings({
@@ -49,7 +49,8 @@ function messagesOf(channelId: string): any[] {
 
 /* все логи и дампы из загруженных сообщений ветки */
 /* игрок ветки: автор первого сообщения не от бота (обычно тот, кто открыл тикет); файлы саппортов не берём */
-function playerIdOf(channelId: string) { const m = messagesOf(channelId).find(x => x?.author && !x.author.bot); return m ? String(m.author.id) : ""; }
+/* игрок ветки: автор первого сообщения не от бота и не вы сами (тикет мог открыть бот, а вы — написать первым) */
+function playerIdOf(channelId: string) { let me = ""; try { me = String(UserStore?.getCurrentUser()?.id ?? ""); } catch { } const m = messagesOf(channelId).find(x => x?.author && !x.author.bot && String(x.author.id) !== me); return m ? String(m.author.id) : ""; }
 function attachmentsOf(channelId: string, re: RegExp = FILE_RE) {
     const out: { messageId: string; url: string; name: string; size: number; }[] = [], seen: Record<string, 1> = {}, pid = playerIdOf(channelId);
     for (const m of messagesOf(channelId)) for (const a of (pid && m?.author?.id !== pid ? [] : m?.attachments ?? [])) {
@@ -130,10 +131,13 @@ const keyOf = (u: string) => u.replace(/[?#].*$/, "");
 function msgAt(channelId: string, messageId: string) { try { const t: any = (MessageStore.getMessage(channelId, messageId) as any)?.timestamp; return t ? +new Date(t) : 0; } catch { return 0; } }
 /* что пишет игрок: его сообщения в ветке и поля формы тикета от бота (сообщения саппортов не берём) */
 const STAFF_RE = /саппорт|support|модератор|администратор|админ|staff|принял|сотрудник|агент|хелпер|helper/i;
+const TICKET_STAFF = /специалист|взял\S* .*обращени|саппорт|support|модератор|администратор|staff|принял|сотрудник|агент|хелпер|helper|меняет название|закрыл\S* (тикет|обращени)/i;
 function ticketText(channelId: string, max: number) {
     const pid = playerIdOf(channelId), out: string[] = [];
     for (const m of messagesOf(channelId)) {
         if (m?.author?.id === pid && m.content) out.push(String(m.content));
+        /* бот тикетов пишет описание проблемы обычным сообщением; служебные строки («Специалист … взял обращение») пропускаем */
+        if (m?.author?.bot && m.content) for (const line of String(m.content).split("\n")) if (line.trim() && !TICKET_STAFF.test(line)) out.push(line);
         if (m?.author?.bot || m?.author?.id === pid) for (const em of m.embeds ?? []) { for (const f of em.fields ?? []) if (!STAFF_RE.test(f.name ?? f.rawName ?? "")) out.push((f.name ?? f.rawName ?? "") + ": " + (f.value ?? f.rawValue ?? "")); if (m?.author?.bot && (em.description ?? em.rawDescription)) out.push(String(em.description ?? em.rawDescription)); }
     }
     const t = out.join("\n").trim(); return t.length > max ? t.slice(t.length - max) : t;
@@ -176,15 +180,16 @@ function hotkey(chIn?: string) {
     openQuick(ch, a.messageId, a.url, a.name);
 }
 /* кнопка «Подобрать ответ» у первого сообщения игрока в ветке */
+/* «Подобрать ответ» — у первых трёх сообщений ветки (в том числе у описания от бота тикетов) */
+const prefetched: Record<string, 1> = {};
 function ticketButton(li: Element, ch: string, mid: string) {
-    const pid = playerIdOf(ch), first = messagesOf(ch).find(m => m?.author?.id === pid);
-    if (!first || String(first.id) !== mid || li.querySelector(".mla-tk")) return;
+    if (li.querySelector(".mla-tk") || !messagesOf(ch).slice(0, 3).some(m => String(m?.id) === mid)) return;
     const acc = li.querySelector('[id^="message-accessories-"]') ?? li, b = document.createElement("button");
     b.className = "mla-btn mla-tk"; b.type = "button"; b.textContent = "Подобрать ответ"; b.title = "Шаблон команды по тексту игрока (и логам, если они есть). " + MLA_HOTKEY + " — то же с клавиатуры";
     b.style.marginLeft = "0"; b.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); hotkey(ch); });
     const bar = document.createElement("div"); bar.className = "mla-imgbar mla-tkbar"; bar.appendChild(b); acc.appendChild(bar);
     /* заранее подобрать шаблон без ИИ — окно «Подобрать ответ» откроется мгновенно */
-    if (!attachmentsOf(ch, LOG_RE).length && settings.store.token && Date.now() > downUntil) quick(ch, mid, "ticket:" + ch, "ticket.txt", "text", "", true).catch(() => { });
+    if (!prefetched[ch] && !attachmentsOf(ch, LOG_RE).length && settings.store.token && Date.now() > downUntil) { prefetched[ch] = 1; quick(ch, mid, "ticket:" + ch, "ticket.txt", "text", "", true).catch(() => { }); }
 }
 const onKey = (e: KeyboardEvent) => { if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyL") { e.preventDefault(); e.stopPropagation(); hotkey(); } };
 let bq: any[] = [], bBusy = false, downUntil = 0;
