@@ -84,6 +84,15 @@ async function selfCheck() {
   try { if (navigator.storage && navigator.storage.estimate) { var es = await navigator.storage.estimate(); out.push(['Хранилище', fmtSize(es.usage || 0) + ' из ' + fmtSize(es.quota || 0)]); } } catch (e) {}
   out.push(['Сеть', navigator.onLine ? 'есть' : 'нет']);
   if (window.nativeApp && window.nativeApp.gatedFetch) { var t0 = Date.now(); try { var r = await window.nativeApp.gatedFetch('/v1/ping', {}); out.push(['Связь с сервером', (r && r.status && r.status < 500 ? 'работает' : 'не отвечает') + ', ' + (Date.now() - t0) + ' мс']); } catch (e) { out.push(['Связь с сервером', 'нет ответа']); } }
+  /* ИИ (Gemini через сервер команды): ключ на сервере и настоящий короткий запрос; повторная проверка берётся из кэша и лимит не тратит */
+  if (srvOn()) {
+    var pg = await srv('/v1/ai/ping', {});
+    if (!pg) out.push(['ИИ', 'сервер не ответил']);
+    else if (!pg.ok) out.push(['ИИ', 'не подключён: на сервере не задан ключ Gemini (GEMINI_API_KEY в Cloudflare)']);
+    else { var t1 = Date.now(), ar = await srv('/v1/ai', { body: { system: 'Ответь строго JSON {"ok": true}.', input: 'Проверка связи с ИИ анализатора логов.', max: 50 } });
+      out.push(['ИИ', ar && ar.ok ? 'работает' + (ar.cached ? ' (проверка из кэша, лимит не тратится)' : ', ответ за ' + ((Date.now() - t1) / 1000).toFixed(1) + ' с') : ar && ar.error === 'limit' ? 'ключ есть, но дневной лимит запросов исчерпан' : 'ключ есть, но запрос не прошёл: ' + ((ar && (ar.detail || ar.error)) || 'нет ответа')]); }
+  }
+  if (typeof TPL !== 'undefined') out.push(['Шаблоны команды', (TPL.sets || []).length ? (TPL.sets || []).map(function (x) { return x.name + ': ' + x.items.length; }).join(', ') : 'не загружены']);
   out.push(['Ошибки интерфейса', ERRLOG.length ? ERRLOG.join(' | ') : 'нет']);
   return out;
 }
