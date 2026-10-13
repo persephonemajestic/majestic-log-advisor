@@ -44,5 +44,9 @@ const W = mod.exports;
   ok(!hs.pending.length && hs.hints['Majestic RP']['Проблемы с донатом'].say[0] === 'пишет: не пришли коины', 'администратор принял фразу — она у команды');
   await tq('/v1/tplhint/admin', { pass: 'pw1', action: 'set', set: 'Majestic RP', t: 'Проблемы с донатом', say: ['оплатил, не пришло'], when: 'оплата и донат' }); hs = await tq('/v1/tplhints');
   ok(hs.hints['Majestic RP']['Проблемы с донатом'].when === 'оплата и донат', '«Когда отправлять» сохраняется');
+  /* сводка подбора для администратора */
+  await tq('/v1/tplev', { ev: 'shown', src: 'ИИ' }); await tq('/v1/tplev', { ev: 'r1' }); ok((await tq('/v1/tplev', { ev: 'нечто' }))._s === 400, 'неизвестное событие не считается');
+  const adm = await W.fetch(new Request('https://x/admin/api', { method: 'POST', headers: { Authorization: 'Bearer pw1', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'tplStats' }) }), env).then((r) => r.json());
+  ok(adm.ok && adm.days[0].t.shown === 1 && adm.days[0].t.r1 === 1 && adm.days[0].t.shownAi === 1 && adm.days[0].a.ok >= 1 && adm.worst.some((x) => x.t === 'Проблемы с донатом') === false, 'сводка: окна, 1-й шаблон, расход ИИ по дням');
   process.exit(bad ? 1 : 0);
 })();

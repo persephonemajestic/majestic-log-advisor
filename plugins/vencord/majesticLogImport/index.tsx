@@ -15,7 +15,7 @@ import { makeQuickUI, MLA_HOTKEY, MLA_QCSS, quickErr } from "./quickui";
 const Native = VencordNative.pluginHelpers.MajesticLogImport as PluginNative<typeof import("./native")>;
 
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.6.0";
+const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.0";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 const settings = definePluginSettings({
@@ -139,14 +139,15 @@ function ticketText(channelId: string, max: number) {
     const t = out.join("\n").trim(); return t.length > max ? t.slice(t.length - max) : t;
 }
 /* mode: badge — значок, full — окно, text — подбор шаблона только по тексту тикета */
-async function quick(channelId: string, messageId: string, url: string, name: string, mode: string, set = "") {
-    const ck = keyOf(url) + "|" + set, hit = mode === "text" ? null : qres.get(ck); if (hit && (mode === "badge" || hit._mode !== "badge")) return hit;
+/* noai: сначала быстрый ответ без ИИ (окно открывается сразу), ИИ уточняет вторым запросом */
+async function quick(channelId: string, messageId: string, url: string, name: string, mode: string, set = "", noai = false) {
+    const ck = keyOf(url) + "|" + set + "|" + (noai ? 0 : 1), hit = qres.get(ck); if (hit && (mode === "text" ? Date.now() - hit._at < 60000 : mode === "badge" || hit._mode !== "badge")) return hit;
     const { token, port } = settings.store; if (!token) throw Object.assign(new Error("token"), { status: 401 });
     const ch: any = ChannelStore.getChannel(channelId);
-    const meta = { name, url: keyOf(url), ticket: ch?.name ?? "", guild: ch?.guild_id ?? "", set, msgAt: msgAt(channelId, messageId), siblings: attachmentsOf(channelId).map(x => x.name), mode, text: mode === "full" ? ticketText(channelId, 1500) : "" };
+    const meta = { name, url: keyOf(url), ticket: ch?.name ?? "", guild: ch?.guild_id ?? "", set, msgAt: msgAt(channelId, messageId), siblings: attachmentsOf(channelId).map(x => x.name), mode, noai, player: messageId ? playerOf(channelId, messageId).player : null, text: mode === "full" ? ticketText(channelId, 1500) : "" };
     const r: any = await Native.quick(Number(port) || 47615, token, url, meta, mode === "text" ? ticketText(channelId, 4000) : "");
     if (!r || r.status !== 200 || !r.j?.ok) throw Object.assign(new Error(r?.j?.error || ""), { status: r?.status ?? 0 });
-    r.j._mode = mode; qres.set(ck, r.j); if (qres.size > 80) qres.delete(qres.keys().next().value as string);
+    r.j._mode = mode; r.j._at = Date.now(); qres.set(ck, r.j); if (qres.size > 80) qres.delete(qres.keys().next().value as string);
     return r.j;
 }
 /* отметка «подходит / не подходит» или фраза к шаблону — в приложение, оттуда команде */
@@ -154,7 +155,11 @@ async function fb(o: any) { const { token, port } = settings.store; if (!token) 
 async function openQuick(channelId: string, messageId: string, url: string, name: string, set = "") {
     const text = url.startsWith("ticket:");
     ui.loading(text ? "тикет" : name);
-    try { const r = await quick(channelId, messageId, url, name, text ? "text" : "full", set); ui.show(r, { open: FILE_RE.test(name) ? () => send(channelId, messageId, url, name, null) : null, reload: (s: string) => openQuick(channelId, messageId, url, name, s), fb }); }
+    try {
+        const mode = text ? "text" : "full", ctx: any = { key: url + "|" + set, open: FILE_RE.test(name) ? () => send(channelId, messageId, url, name, null) : null, reload: (s: string) => openQuick(channelId, messageId, url, name, s), fb };
+        const r = await quick(channelId, messageId, url, name, mode, set, true); ui.show(r, ctx);
+        if (r.tpl?.more) { try { const r2 = await quick(channelId, messageId, url, name, mode, set, false); ui.show(r2, { ...ctx, update: true }); } catch { } }
+    }
     catch (e: any) { ui.error(e.status === -1 ? e.message : quickErr(e.status, e.message)); }
 }
 /* тикет без файлов: подобрать шаблон команды по тому, что написал игрок */
@@ -178,6 +183,8 @@ function ticketButton(li: Element, ch: string, mid: string) {
     b.className = "mla-btn mla-tk"; b.type = "button"; b.textContent = "Подобрать ответ"; b.title = "Шаблон команды по тексту игрока (и логам, если они есть). " + MLA_HOTKEY + " — то же с клавиатуры";
     b.style.marginLeft = "0"; b.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); hotkey(ch); });
     const bar = document.createElement("div"); bar.className = "mla-imgbar mla-tkbar"; bar.appendChild(b); acc.appendChild(bar);
+    /* заранее подобрать шаблон без ИИ — окно «Подобрать ответ» откроется мгновенно */
+    if (!attachmentsOf(ch, LOG_RE).length && settings.store.token && Date.now() > downUntil) quick(ch, mid, "ticket:" + ch, "ticket.txt", "text", "", true).catch(() => { });
 }
 const onKey = (e: KeyboardEvent) => { if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyL") { e.preventDefault(); e.stopPropagation(); hotkey(); } };
 let bq: any[] = [], bBusy = false, downUntil = 0;

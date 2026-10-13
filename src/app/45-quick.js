@@ -13,7 +13,7 @@ async function quickAnalyze(q) {
   /* отметка из окна «Разбор»: подходит / не подходит или фраза-пример для шаблона */
   if (meta.mode === 'fb') { var fb = {}; try { fb = JSON.parse(await new File([q.data], 'fb').text()); } catch (e) {} return Object.assign({ kind: 'fb' }, await tplFeedback(fb)); }
   var key = (meta.url || name) + '|' + (q.data ? q.data.length : 0) + '|' + (meta.mode || '');
-  var hit = qCache(key + '|' + (meta.set || '') + '|' + (meta.text || '').length); if (hit) return hit;
+  var key2 = key + '|' + (meta.set || '') + '|' + (meta.text || '').length + '|' + (meta.noai ? 0 : 1), hit = qCache(key2); if (hit) return hit;
   var r;
   if (meta.mode === 'text') r = { ok: true, kind: 'text', name: name, status: 'unk', headline: 'Ответ по тексту тикета', cause: '', why: '', steps: [], reply: '', lines: [], warnings: [], badge: { t: 'Текст', tone: 'unk' } };
   else if (QIMG.test(name)) r = await quickImage(q);
@@ -30,10 +30,11 @@ async function quickAnalyze(q) {
   if (meta.mode !== 'badge' && typeof tplMatch === 'function') {
     var said = meta.mode === 'text' ? await new File([q.data], name).text() : String(meta.text || '');
     var seen = r.kind === 'image' ? (r.lines || []).map(function (x) { return x.t; }).join('\n') + '\n' + (r.cause || '') : r.kind !== 'text' ? [r.cause, r.headline].filter(Boolean).join('. ') : '';
-    try { r.tpl = await tplMatch([said, seen].filter(Boolean).join('\n'), { guild: meta.guild, set: meta.set }); } catch (e) { r.tpl = null; }
+    var pl = meta.player || {}, vars = { 'ник': pl.nick, 'статик': pl.static, 'сервер': pl.server, 'файл': r.file || '', 'моды': (r.mods || []).map(function (x) { return String(x).split(/[\\\/]/).pop(); }).join(', '), 'код': r.code || '' };
+    try { r.tpl = await tplMatch([said, seen].filter(Boolean).join('\n'), { guild: meta.guild, set: meta.set, ai: !meta.noai, vars: vars }); } catch (e) { r.tpl = null; }
     if (meta.set && meta.guild) tplRemember(meta.guild, meta.set);
   }
-  return qCache(key + '|' + (meta.set || '') + '|' + (meta.text || '').length, r);
+  return qCache(key2, r);
 }
 
 async function quickLog(text, name, meta, siblings) {
@@ -63,7 +64,10 @@ async function quickLog(text, name, meta, siblings) {
   var ro = replyOpts(), reply = LA.composeReply(sc, { kb: S.kb, hello: ro.hello, bye: ro.bye, brief: true });
   var stale = warns.some(function (w) { return w.k === 'stale'; }), notlog = warns.some(function (w) { return w.k === 'notlog'; });
   var badge = notlog ? { t: 'Не лог Majestic', tone: 'unk' } : mods.length ? { t: 'МОД' + (stale ? ' · старый' : ''), tone: 'bad' } : st === 'ok' ? { t: 'Успех' + (stale ? ' · старый' : ''), tone: 'ok' } : { t: (sc.root && QROOT[sc.root.id] ? QROOT[sc.root.id] : qShort(top ? top.title : 'Неясно')) + (stale ? ' · старый' : ''), tone: st === 'bad' ? 'bad' : st === 'warn' ? 'warn' : 'unk' };
-  var res = { ok: true, kind: sc.kindName || sc.kind, name: name, status: st, headline: sc.verdict.headline, cause: cause, why: why, steps: how, reply: reply, lines: lines, warnings: warns, badge: badge, mods: mods.slice(0, 8) };
+  /* для подстановок в шаблоны: имя файла из ошибки загрузки и код ошибки */
+  var fileG = sc.findings.find(function (g) { return g.dets && g.dets.size && /скачать|download|ресурс|srvfiles|asset/i.test(g.rule.id + ' ' + g.title); }), codeM = /\b(ERR_[A-Z0-9_]{3,})\b/.exec(sc.verdict.headline + ' ' + sc.findings.map(function (g) { return g.title; }).join(' '));
+  var file = fileG ? ((/[\w.\-]+\.(?:ytd|yft|ydr|ydd|ymap|rpf|ybn|ycd|ymt|dat|meta|xml|dll|exe|zip)\b/i.exec(Array.from(fileG.dets.keys()).join(' ')) || [])[0] || '') : '';
+  var res = { ok: true, kind: sc.kindName || sc.kind, name: name, status: st, file: file, code: codeM ? codeM[1] : '', headline: sc.verdict.headline, cause: cause, why: why, steps: how, reply: reply, lines: lines, warnings: warns, badge: badge, mods: mods.slice(0, 8) };
   res.escalate = quickEscalate(res, meta);
   return res;
 }

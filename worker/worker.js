@@ -42,6 +42,8 @@ async function kvJson(env, k, d) { try { const raw = await env.ACCESS.get(k); re
 const clip = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f]+/g, ' ').trim().slice(0, n);
 /* фраза-пример: своими словами, без ников, почт и номеров */
 function cleanSay(v) { const t = clip(v, 140).replace(/\S+@\S+/g, '').replace(/\d{5,}/g, '').replace(/\b[A-Z][a-z]+_[A-Z][a-z]+\b/g, '').replace(/\s+/g, ' ').trim(); return t.length >= 4 ? t : ''; }
+/* счётчики по дням (без текста): подбор шаблонов и расход ИИ */
+async function bump(env, k, fields) { const day = new Date().toISOString().slice(0, 10), key = k + ':' + day, o = await kvJson(env, key, {}); for (const f of fields) if (f) o[f] = (o[f] || 0) + 1; await env.ACCESS.put(key, JSON.stringify(o), { expirationTtl: 40 * 86400 }); }
 async function tplHintsAll(env) { return { hints: await kvJson(env, 'tplh', {}), stats: await kvJson(env, 'tplst', {}), pending: await kvJson(env, 'tplpend', []) }; }
 async function addPending(env, list) {
   const pend = await kvJson(env, 'tplpend', []); let n = 0;
@@ -173,7 +175,7 @@ export default {
       const model = 'auto:' + (b.tier === 'smart' ? 'smart' : 'lite');
       /* кэш: тот же запрос к той же модели и промпту отдаётся из KV и не тратит дневной лимит */
       let ck = ''; try { const dg = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(model + '\n' + sys + '\n' + inp + '\n' + (parseInt(b.max, 10) || 0) + (img ? '\n' + img.data : ''))); ck = 'ac:' + Array.from(new Uint8Array(dg)).slice(0, 16).map((x) => x.toString(16).padStart(2, '0')).join(''); } catch (e) {}
-      if (ck && !b.fresh) { try { const hit = await env.ACCESS.get(ck); if (hit) return json({ ok: true, text: hit, cached: true }); } catch (e) {} }
+      if (ck && !b.fresh) { try { const hit = await env.ACCESS.get(ck); if (hit) { await bump(env, 'aiu', ['cached']); return json({ ok: true, text: hit, cached: true }); } } catch (e) {} }
       const day = new Date().toISOString().slice(0, 10), qk = 'q:' + day + ':' + u.h; let q = 0; try { q = parseInt(await env.ACCESS.get(qk), 10) || 0; } catch (e) {}
       const lim = parseInt(env.AI_DAILY, 10) || 300; if (q >= lim) return json({ ok: false, error: 'limit' });
       try { await env.ACCESS.put(qk, String(q + 1), { expirationTtl: 172800 }); } catch (e) {}
@@ -185,12 +187,12 @@ export default {
         } catch (e) { return json({ ok: false, error: 'upstream', detail: 'нет связи с Gemini' }); }
         used = mdl; if (r.status !== 429 && r.status !== 404) break;
       }
-      if (!r.ok) { let m = ''; try { m = ((await r.json()).error || {}).message || ''; } catch (e) {} return json({ ok: false, error: r.status === 429 ? 'rate' : 'upstream', detail: 'Gemini ' + r.status + ' (' + used + ')' + (m ? ': ' + String(m).slice(0, 160) : '') }); }
+      if (!r.ok) { await bump(env, 'aiu', [r.status === 429 ? 'rate' : 'fail']); let m = ''; try { m = ((await r.json()).error || {}).message || ''; } catch (e) {} return json({ ok: false, error: r.status === 429 ? 'rate' : 'upstream', detail: 'Gemini ' + r.status + ' (' + used + ')' + (m ? ': ' + String(m).slice(0, 160) : '') }); }
       let j = {}; try { j = await r.json(); } catch (e) {}
       const t = (((j.candidates || [])[0] || {}).content || {}).parts; const text = t ? t.map(x => x.text || '').join('') : '';
       if (!text) return json({ ok: false, error: 'empty', detail: 'Gemini вернул пустой ответ' + (((j.candidates || [])[0] || {}).finishReason ? ' (' + j.candidates[0].finishReason + ')' : '') });
       if (ck) { try { await env.ACCESS.put(ck, text, { expirationTtl: 604800 }); } catch (e) {} }
-      return json({ ok: true, text, model: used });
+      await bump(env, 'aiu', ['ok', 'm:' + used]); return json({ ok: true, text, model: used });
     }
     /* Шаблоны ответов команды (из плагина SupportTemplates): читают все, у кого есть доступ; загружает только тот, кто знает пароль администратора */
     if (p === '/v1/tpl') { const u = await who(req, env); if (!u) return deny(); const raw = await env.ACCESS.get('tpl'); if (!raw) return json({ ok: true, none: true }); try { return json(Object.assign({ ok: true }, JSON.parse(raw))); } catch (e) { return json({ ok: true, none: true }); } }
@@ -202,6 +204,11 @@ export default {
       if (!sets.length) return json({ ok: false, error: 'empty' }, 400);
       const out = JSON.stringify({ at: Date.now(), by: u.n || '', sets }); if (out.length > 900000) return json({ ok: false, error: 'size' }, 413);
       await env.ACCESS.put('tpl', out); return json({ ok: true, n: sets.reduce((a, st) => a + st.items.length, 0) });
+    }
+    if (p === '/v1/tplev' && req.method === 'POST') {
+      const u = await who(req, env); if (!u) return deny(); let b = {}; try { b = await req.json(); } catch (e) {}
+      const ev = ['shown', 'none', 'r1', 'r2', 'r3', 'search', 'reply'].indexOf(b.ev) >= 0 ? b.ev : ''; if (!ev) return json({ ok: false }, 400);
+      await bump(env, 'tplm', [ev, ev === 'shown' && b.src === 'ИИ' ? 'shownAi' : '']); return json({ ok: true });
     }
     if (p === '/v1/tplhints') { const u = await who(req, env); if (!u) return deny(); return json(Object.assign({ ok: true }, await tplHintsAll(env))); }
     if (p === '/v1/tplfit' && req.method === 'POST') {
@@ -331,6 +338,12 @@ export default {
         const list = await getNews(env); list.unshift({ id: Date.now().toString(36), at: Date.now(), text }); await env.ACCESS.put('news', JSON.stringify(list.slice(0, 30))); await touchAv(env); return json({ ok: true });
       }
       if (b.action === 'samplesExport') return json(await samplesExport(env));
+      if (b.action === 'tplStats') {
+        const days = []; for (let i = 0; i < 14; i++) { const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10); days.push({ d, t: await kvJson(env, 'tplm:' + d, {}), a: await kvJson(env, 'aiu:' + d, {}) }); }
+        const st = await kvJson(env, 'tplst', {}), worst = []; for (const set of Object.keys(st)) for (const t of Object.keys(st[set])) { const c = st[set][t]; if (c[0] + c[1] >= 3) worst.push({ set, t, up: c[0], down: c[1] }); }
+        worst.sort((a, c) => (c.down / (c.up + c.down)) - (a.down / (a.up + a.down)) || c.down - a.down);
+        return json({ ok: true, days, worst: worst.slice(0, 15), pending: (await kvJson(env, 'tplpend', [])).length });
+      }
       if (b.action === 'samplesInfo') { let n = 0, cursor; do { const l = await env.ACCESS.list({ prefix: 'smp:', cursor }); n += l.keys.length; cursor = l.list_complete ? null : l.cursor; } while (cursor); let x = null; try { x = JSON.parse(await env.ACCESS.get('smpx')); } catch (e) {} return json({ ok: true, n, last: x, repo: env.GH_SAMPLES_REPO || '', ready: !!(env.GH_TOKEN && env.GH_SAMPLES_REPO) }); }
       if (b.action === 'ping') return json({ ok: true, v: (await env.ACCESS.get('av')) || '0' });
       if (b.action === 'newsDel') { const list = (await getNews(env)).filter((x) => x.id !== b.id); await env.ACCESS.put('news', JSON.stringify(list)); await touchAv(env); return json({ ok: true }); }
@@ -356,6 +369,7 @@ textarea{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--
 <div class="card"><b>Правила команды</b><div class="m">Правила появляются у всех в приложении без обновления. Новое правило применяется к строкам лога, где есть указанный текст.</div><div class="row"><select id="rk"><option value="main">main.log</option><option value="client">client.log</option></select><select id="rs"><option value="err">Ошибка</option><option value="warn">Предупреждение</option><option value="crit">Критично</option><option value="info">Информация</option></select><input id="rp" placeholder="Что искать в строке лога"><input id="rt" placeholder="Название проблемы"></div><div class="row"><textarea id="rc" rows="2" placeholder="Причина проблемы"></textarea><textarea id="rf" rows="3" placeholder="Шаги решения, каждый с новой строки"></textarea></div><div class="row"><button class="p" id="radd">Добавить правило</button></div><div class="m" id="msg4"></div><div class="w"><table><tbody id="rl"></tbody></table></div></div>
 <div class="m" id="live"></div>
 <div class="card"><b>Статистика команды за 14 дней</b> <button id="stR">Обновить</button><div class="w" id="stBox"></div></div>
+<div class="card"><b>Подбор шаблонов и ИИ за 14 дней</b> <button id="tsR">Обновить</button><div class="m">Окон с шаблонами, сколько раз вставили 1-й, 2-й, 3-й шаблон или нашли вручную, и запросы к ИИ (из кэша не тратят лимит; «лимит» — Gemini отказал из-за бесплатного лимита).</div><div class="w" id="tsBox"><span class="m">Загрузка…</span></div></div>
 <div class="card"><b>Логи для обучения</b> <button id="smX">Выгрузить сейчас</button><div class="w" id="smBox"><span class="m">Загрузка…</span></div></div>
 <div class="card"><b>Сообщения о проблемах <span class="m" id="rcnt"></span></b><div class="w"><table><tbody id="rpl"></tbody></table></div></div>
 <div class="card"><b>Разрешённые компьютеры <span class="m" id="cnt"></span></b><div class="w"><table><thead><tr><th>Код</th><th>Имя</th><th>Последний вход</th><th></th></tr></thead><tbody id="tb"></tbody></table></div></div></div>
@@ -367,7 +381,7 @@ const SIG={};const same=(k,v)=>{const x=JSON.stringify(v);if(SIG[k]===x)return t
 async function load(){const r=await api({action:'list'});if(!r.ok){$('#msg').textContent=r.error||'Ошибка';$('#login').hidden=false;$('#app').hidden=true;return}
 $('#login').hidden=true;$('#app').hidden=false;if(same('l',r.list))return;$('#cnt').textContent='('+r.list.length+')';
 $('#tb').innerHTML=r.list.map(x=>'<tr><td><code>'+esc(x.h)+'</code></td><td>'+esc(x.n)+'</td><td class="m">'+fmt(x.seen)+'</td><td><button class="d" data-h="'+esc(x.h)+'">Отозвать</button></td></tr>').join('')||'<tr><td colspan="4" class="m">Список пуст</td></tr>'}
-$('#go').onclick=()=>{PW=$('#pw').value;try{sessionStorage.setItem('pw',PW)}catch(e){}load().then(()=>poll(true));loadNews();loadRules();loadReports();loadStats();loadSmp()};$('#pw').onkeydown=e=>{if(e.key==='Enter')$('#go').click()};
+$('#go').onclick=()=>{PW=$('#pw').value;try{sessionStorage.setItem('pw',PW)}catch(e){}load().then(()=>poll(true));loadNews();loadRules();loadReports();loadStats();loadSmp();loadTpl()};$('#pw').onkeydown=e=>{if(e.key==='Enter')$('#go').click()};
 $('#add').onclick=async()=>{const r=await api({action:'add',h:$('#h').value,n:$('#n').value});$('#msg2').textContent=r.ok?'Доступ выдан.':(r.error||'Ошибка');if(r.ok){$('#h').value='';$('#n').value='';load()}};
 $('#tb').onclick=async e=>{const h=e.target.getAttribute&&e.target.getAttribute('data-h');if(!h)return;if(e.target.dataset.sure!=='1'){e.target.dataset.sure='1';e.target.textContent='Точно отозвать?';return}await api({action:'del',h});load()};
 async function loadNews(){const r=await api({action:'newsList'});if(!r.ok||same('n',r.list))return;$('#nl').innerHTML=r.list.map(x=>'<tr><td class="m">'+fmt(x.at)+'</td><td>'+esc(x.text)+'</td><td><button class="d" data-n="'+esc(x.id)+'">Удалить</button></td></tr>').join('')||'<tr><td class="m">Объявлений нет</td></tr>'}
@@ -383,11 +397,18 @@ async function loadStats(){const r=await api({action:'stats'});if(!r.ok||same('s
 $('#stR').onclick=()=>{SIG.st='';loadStats()};
 async function loadSmp(){const r=await api({action:'samplesInfo'});if(!r.ok)return;$('#smBox').innerHTML='Хранится обезличенных логов: <b>'+r.n+'</b> (7 дней). '+(r.ready?'Выгрузка в закрытый репозиторий '+esc(r.repo)+(r.last?': последняя '+fmt(r.last.at)+', логов '+r.last.n:': ещё не было')+'.':'<span class="m">Выгрузка не настроена: задайте секреты GH_TOKEN и GH_SAMPLES_REPO в Cloudflare.</span>')}
 $('#smX').onclick=async()=>{$('#smX').disabled=true;const r=await api({action:'samplesExport'});$('#smX').disabled=false;alert(r.ok?'Выгружено логов: '+r.n:'Ошибка: '+(r.error||'нет ответа'));loadSmp()};
+async function loadTpl(){const r=await api({action:'tplStats'});if(!r.ok||!Array.isArray(r.days))return;r.worst=r.worst||[];const d=r.days,S=(f,k)=>d.reduce((a,x)=>a+((x[f]||{})[k]||0),0),sh=S('t','shown'),r1=S('t','r1'),r2=S('t','r2'),r3=S('t','r3'),se=S('t','search'),no=S('t','none'),pc=n=>sh?Math.round(n*100/sh)+'%':'—';
+let h='<table><tr><th>За 14 дней</th><th></th></tr><tr><td>Окон с подбором шаблона</td><td><b>'+sh+'</b></td></tr><tr><td>Вставили 1-й предложенный</td><td><b>'+r1+'</b> ('+pc(r1)+')</td></tr><tr><td>2-й / 3-й</td><td>'+r2+' / '+r3+'</td></tr><tr><td>Нашли вручную поиском</td><td>'+se+' ('+pc(se)+')</td></tr><tr><td>Шаблон не нашёлся</td><td>'+no+'</td></tr><tr><td>ИИ: запросов / из кэша / упёрлись в лимит / ошибки</td><td>'+S('a','ok')+' / '+S('a','cached')+' / '+S('a','rate')+' / '+S('a','fail')+'</td></tr></table>';
+h+='<div class="m" style="margin-top:8px">По дням (ИИ-запросов):</div><table>'+d.filter(x=>x.a.ok||x.t.shown).map(x=>'<tr><td class="m">'+x.d+'</td><td>окон '+(x.t.shown||0)+', 1-й '+(x.t.r1||0)+', поиск '+(x.t.search||0)+'</td><td>ИИ '+(x.a.ok||0)+(x.a.rate?', лимит '+x.a.rate:'')+'</td></tr>').join('')+'</table>';
+if(r.worst.length)h+='<div class="m" style="margin-top:8px">Чаще всего «не подходит» — им нужны фразы или «когда отправлять»:</div><table>'+r.worst.map(x=>'<tr><td>'+esc(x.t)+' <span class="m">'+esc(x.set)+'</span></td><td>не подходит '+x.down+' из '+(x.up+x.down)+'</td></tr>').join('')+'</table>';
+if(r.pending)h+='<div class="m" style="margin-top:8px">Подсказок ждут проверки: <b>'+r.pending+'</b> — в приложении: «Настройки» → «Шаблоны ответов команды» → «Подсказки для подбора».</div>';
+$('#tsBox').innerHTML=h}
+$('#tsR').onclick=()=>loadTpl();
 async function loadReports(){const r=await api({action:'reportList'});if(!r.ok||same('r',r.list))return;document.title=r.list.length?'('+r.list.length+') Доступ':'Доступ';$('#rcnt').textContent=r.list.length?'('+r.list.length+')':'';$('#rpl').innerHTML=r.list.map(x=>'<tr><td class="m" style="white-space:nowrap">'+fmt(x.at)+'<br>'+esc(x.by)+'<br>'+esc(x.v||'')+'</td><td><b>'+esc(x.page||'—')+'</b><div style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(x.text)+'</div>'+(/^https?:\\/\\//.test(x.link)?'<div><a href="'+esc(x.link)+'" target="_blank" rel="noopener">'+esc(x.link)+'</a></div>':x.link?'<div class="m">'+esc(x.link)+'</div>':'')+(x.diag?'<details><summary class="m">Сведения о приложении</summary><div class="m" style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(x.diag)+'</div></details>':'')+(x.hasShot?'<div><button data-s="'+esc(x.id)+'">Показать скриншот</button></div>':'')+'<div data-i="'+esc(x.id)+'"></div></td><td><button class="d" data-rd="'+esc(x.id)+'">Удалить</button></td></tr>').join('')||'<tr><td class="m">Сообщений нет</td></tr>'}
 $('#rpl').onclick=async e=>{const t=e.target,s=t.getAttribute&&t.getAttribute('data-s'),d=t.getAttribute&&t.getAttribute('data-rd');if(s){const r=await api({action:'reportShot',id:s});const box=t.parentNode.nextSibling;box.innerHTML=r.shot?'<img src="'+r.shot+'" style="max-width:100%;border-radius:8px;margin-top:6px">':'<span class="m">Нет картинки</span>'}if(d){await api({action:'reportDel',id:d});loadReports()}};
 let AV=null,BUSY=false;
 function stamp(){const d=new Date(),p=n=>(n<10?'0':'')+n;$('#live').textContent='Обновляется само. Проверено в '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())}
 async function poll(force){if(BUSY||!PW||$('#app').hidden||(document.hidden&&!force))return;BUSY=true;try{const r=await api({action:'ping'});if(r.ok){if(force||r.v!==AV){AV=r.v;await Promise.all([load(),loadNews(),loadReports(),loadStats()])}stamp()}}catch(e){$('#live').textContent='Нет связи, пробую снова…'}BUSY=false}
 setInterval(()=>poll(false),15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll(true)});
-if(PW){load().then(()=>poll(true));loadNews();loadRules();loadReports();loadStats();loadSmp()}
+if(PW){load().then(()=>poll(true));loadNews();loadRules();loadReports();loadStats();loadSmp();loadTpl()}
 </script></main></body></html>`;

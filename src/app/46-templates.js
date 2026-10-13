@@ -131,7 +131,8 @@ async function tplMatch(text, opt) {
   var text2 = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 3000), loc = tplLocal(set, text2), pick = loc.map(function (x) { return x.i; }), why = '', ask = '', src = pick.length ? 'ключевые слова' : '';
   /* ключевые слова уверенно указали на один шаблон — ИИ не спрашиваем, бесплатный лимит не тратится */
   var sure = loc[0] && loc[0].score >= 2 && (!loc[1] || loc[0].score > loc[1].score);
-  if (opt.ai !== false && !sure && srvOn() && text2.length >= 12) {
+  var aiWanted = !sure && srvOn() && text2.length >= 12;
+  if (opt.ai !== false && aiWanted) {
     var list = set.items.map(function (x, i) { if (x.hide || TPL_SKIP.test(x.t)) return null; var h = tplHint(set.name, x.t); return (i + 1) + '. ' + x.t + (h.when ? ' — когда: ' + h.when : '') + (h.say.length ? ' — игроки пишут: ' + h.say.slice(0, 4).join('; ') : ''); }).filter(Boolean).join('\n');
     var a = await srv('/v1/ai', { body: { system: TPL_SYS, input: 'Шаблоны:\n' + list + '\n\nОбращение игрока:\n' + LA.mask(text2) + (loc.length ? '\n\nПо ключевым словам подходят: ' + loc.map(function (x) { return x.i + 1; }).join(', ') : ''), max: 400 } });
     var j = null; if (a && a.ok) { try { j = JSON.parse(String(a.text).replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch (e) {} }
@@ -141,14 +142,21 @@ async function tplMatch(text, opt) {
       why = String(j.why || '').slice(0, 200); ask = String(j.ask || '').slice(0, 300);
     }
   }
-  return { set: set.name, sets: (TPL.sets || []).map(function (s) { return s.name; }), src: src, why: why, ask: ask,
-    pick: pick.map(function (i) { var f = tplFit(set.name, set.items[i].t); return { t: set.items[i].t, body: set.items[i].body, up: f.up, down: f.down }; }),
-    all: set.items.filter(function (x) { return !x.hide; }).map(function (x) { return { t: x.t, body: x.body }; }) };
+  var V = opt.vars || {}, fill = function (b) { return tplFill(b, V); };
+  return { set: set.name, sets: (TPL.sets || []).map(function (s) { return s.name; }), src: src, why: why, ask: ask, sure: !!sure, more: opt.ai === false && aiWanted,
+    pick: pick.map(function (i) { var f = tplFit(set.name, set.items[i].t); return { t: set.items[i].t, body: fill(set.items[i].body), up: f.up, down: f.down }; }),
+    all: set.items.filter(function (x) { return !x.hide; }).map(function (x) { return { t: x.t, body: fill(x.body) }; }) };
+}
+/* Подстановки в тексте шаблона: {ник}, {статик}, {сервер} — из тикета, {файл}, {моды}, {код} — из лога.
+   Если данных нет, метка остаётся как есть — саппорт увидит её и допишет. */
+function tplFill(body, V) {
+  return String(body || '').replace(/\{(ник|статик|сервер|файл|моды|код)\}/gi, function (m, k) { var v = V[k.toLowerCase()]; return v ? String(v) : m; });
 }
 /* отметка саппорта из окна «Разбор»: подходит / не подходит, или фраза-пример своими словами (уходит на подтверждение администратору) */
 async function tplFeedback(b) {
-  if (!b || !b.set || !b.t) return { ok: false };
+  if (!b || ((!b.set || !b.t) && b.kind !== 'ev')) return { ok: false };
   if (b.kind === 'fit') { var r = await srv('/v1/tplfit', { body: { set: b.set, t: b.t, v: b.v === 1 ? 1 : -1 } }); if (r && r.ok) { TPLH.stats[b.set] = TPLH.stats[b.set] || {}; TPLH.stats[b.set][b.t] = [r.up, r.down]; } return { ok: !!(r && r.ok), up: r && r.up, down: r && r.down }; }
+  if (b.kind === 'ev') { var r3 = await srv('/v1/tplev', { body: { ev: String(b.ev || ''), src: String(b.src || '') } }); return { ok: !!(r3 && r3.ok) }; }
   if (b.kind === 'say') { var say = LA.mask(String(b.say || '')).slice(0, 140); var r2 = await srv('/v1/tplhint/suggest', { body: { set: b.set, t: b.t, say: say } }); return { ok: !!(r2 && r2.ok) }; }
   return { ok: false };
 }

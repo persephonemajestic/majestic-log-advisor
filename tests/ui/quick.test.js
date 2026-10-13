@@ -7,7 +7,7 @@ const H = require('./helpers'), { ok } = H, fs = require('fs'), path = require('
   p.on('pageerror', (e) => errs.push(e.message));
   /* оболочка-заглушка: всё, чего нет, отвечает «ничего»; быстрый разбор ловим */
   await p.addInitScript(() => {
-    const TPLS = { at: 5, by: 'тест', sets: [{ name: 'Majestic RP', items: [{ t: 'Проблемы с донатом', body: '**Приветствую!**\nДОНАТ: напишите на почту.' }, { t: 'Обращение к администрации', body: '**Приветствую!**\nАДМИН: обратитесь к администрации.' }, { t: 'Черный экран', body: 'ЭКРАН' }, { t: 'Если способы выше не помогли', body: 'Активатор - ссылка', hide: true }] }, { name: 'Россия Онлайн', items: [{ t: 'Проблемы с донатом', body: 'РО-ДОНАТ' }] }] };
+    const TPLS = { at: 5, by: 'тест', sets: [{ name: 'Majestic RP', items: [{ t: 'Проблемы с донатом', body: '**Приветствую!**\nДОНАТ: напишите на почту.' }, { t: 'Обращение к администрации', body: '**Приветствую!**\nАДМИН: обратитесь к администрации.' }, { t: 'Черный экран', body: 'ЭКРАН' }, { t: 'Не удалось скачать ресурс', body: 'Удалите файл {файл}. Ник: {ник}' }, { t: 'Если способы выше не помогли', body: 'Активатор - ссылка', hide: true }] }, { name: 'Россия Онлайн', items: [{ t: 'Проблемы с донатом', body: 'РО-ДОНАТ' }] }] };
     const own = { kbLoad: () => JSON.stringify({ v: 1, sigs: {}, ruleNotes: {}, seen: {}, files: 0, custom: [], tags: {}, hist: {}, merged: {}, settings: { tplCache: TPLS, tplHints: { hints: { 'Majestic RP': { 'Черный экран': { say: ['картинка не появляется, всё темно'], when: '' } } }, stats: {}, pending: [] } } }), kbSave() {}, copy() {}, onExtQuick: (cb) => { window.__qcb = cb; }, extQuickAnswer: (id, r) => { (window.__qans = window.__qans || {})[id] = r; }, onExtImport() {}, onExtPair() {}, onWatch() {}, extReady() {}, appOk() {},
       shellInfo: async () => ({ version: 'test', hwid: 'X' }), updateInfo: async () => ({ version: '', bundled: '', override: '', url: '' }), extInfo: async () => ({ on: true, port: 47615, token: 'x' }), watchInfo: async () => ({ dir: '', downloads: '' }), findLogs: async () => ({ files: [] }) };
     window.nativeApp = new Proxy(own, { get: (t, k) => (k in t ? t[k] : (() => Promise.resolve(null))) });
@@ -53,5 +53,10 @@ const H = require('./helpers'), { ok } = H, fs = require('fs'), path = require('
   ok(t6.tpl.pick[0] && t6.tpl.pick[0].t === 'Черный экран', 'фраза-пример команды помогает подобрать шаблон без ключевых слов');
   const t7 = await ask(11, 'fb.txt', [...Buffer.from(JSON.stringify({ kind: 'fit', set: 'Majestic RP', t: 'Черный экран', v: 1 }))], { mode: 'fb' });
   ok(t7 && t7.kind === 'fb', 'отметка из окна «Разбор» принята приложением');
+  const t8 = await ask(12, 'ticket.txt', [...Buffer.from('не удалось скачать ресурс при входе')], { mode: 'text', guild: MJ, player: { nick: 'Ivan_Petrov' } });
+  const pf = t8.tpl.pick.find((x) => x.t === 'Не удалось скачать ресурс');
+  ok(pf && pf.body === 'Удалите файл {файл}. Ник: Ivan_Petrov', 'подстановки: {ник} заполнен из тикета, {файл} без данных остался меткой (' + (pf && pf.body) + ')');
+  const t9 = await ask(13, 'ticket.txt', [...Buffer.from('после запуска всё темно и ничего не видно, помогите пожалуйста')], { mode: 'text', guild: MJ, noai: true });
+  ok(t9.tpl && t9.tpl.more === false || t9.tpl.more === true, 'быстрый подбор без ИИ отвечает и сообщает, нужно ли уточнение ИИ');
   await H.done(b, errs);
 })();

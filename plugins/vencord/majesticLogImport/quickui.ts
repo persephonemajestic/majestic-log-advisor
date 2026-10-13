@@ -16,6 +16,7 @@ export const MLA_QCSS = ".mla-pop{position:fixed;right:18px;top:64px;z-index:100
     ".mla-imgbar{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}.mla-imgbar .mla-btn{margin-left:0}.mla-src{font-size:12px;color:var(--text-muted,#949ba4)}" +
     ".mla-tp{border:1px solid var(--background-modifier-accent,#4e5058);border-radius:6px;padding:7px 9px;display:grid;gap:6px;margin-top:6px}.mla-tp-h{display:flex;gap:8px;align-items:center}.mla-tp-h b{flex:1;font-size:13px}.mla-tp pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.45 var(--font-primary,inherit);max-height:180px;overflow:auto;color:var(--text-muted,#b5bac1)}" +
     ".mla-sets{display:inline-flex;gap:4px;margin-left:6px;text-transform:none;letter-spacing:0}.mla-sets button{font-size:11px;padding:1px 7px;border-radius:9px;border:1px solid var(--background-modifier-accent,#4e5058);background:none;color:var(--text-muted,#b5bac1);cursor:pointer}.mla-sets button.on{background:#5865f2;border-color:#5865f2;color:#fff}" +
+    ".mla-tp.sel{border-color:#5865f2;box-shadow:0 0 0 1px #5865f2}.mla-wait{font-style:italic}" +
     ".mla-tp-f{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.mla-mini{font-size:12px;padding:2px 8px;border-radius:5px;border:1px solid var(--background-modifier-accent,#4e5058);background:none;color:var(--text-muted,#b5bac1);cursor:pointer}.mla-mini:hover{color:var(--text-normal,#dbdee1)}.mla-fit{font-size:11px;color:#23a55a;white-space:nowrap}" +
     ".mla-tq{box-sizing:border-box;width:100%;margin-top:8px;padding:6px 9px;border-radius:6px;border:1px solid var(--background-modifier-accent,#4e5058);background:var(--background-secondary,#2b2d31);color:var(--text-normal,#dbdee1);font:inherit;font-size:13px}";
 
@@ -23,9 +24,18 @@ const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": 
 
 /* env: { insert(text): boolean — вставить в поле сообщения; copy(text); toast(text, type); open(): отправить файл в анализатор } */
 export function makeQuickUI(env) {
-    let box = null;
-    const close = () => { if (box) box.remove(); box = null; document.removeEventListener("keydown", onKey, true); };
-    const onKey = (e) => { if (e.key === "Escape" && box) { e.stopPropagation(); close(); } };
+    let box = null, cur = { key: "", touched: false, keys: null };
+    const close = () => { if (box) box.remove(); box = null; cur = { key: "", touched: false, keys: null }; document.removeEventListener("keydown", onKey, true); };
+    /* клавиши в окне: Esc — закрыть; Enter — вставить выбранный шаблон (или ответ); Alt+1…3 — шаблон по номеру; ↑↓ — выбор шаблона */
+    const onKey = (e) => {
+        if (!box) return;
+        if (e.key === "Escape") { e.stopPropagation(); close(); return; }
+        const typing = /^(INPUT|TEXTAREA)$/.test((document.activeElement || {}).tagName || "") && box.contains(document.activeElement);
+        if (cur.keys && e.altKey && /^Digit[1-3]$/.test(e.code)) { e.preventDefault(); e.stopPropagation(); cur.keys.pick(+e.code.slice(5) - 1); return; }
+        if (typing || !cur.keys) return;
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); cur.keys.move(e.key === "ArrowDown" ? 1 : -1); }
+        else if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); cur.keys.enter(); }
+    };
     const shell = (title, tone) => {
         close();
         box = document.createElement("div"); box.className = "mla-pop"; box.setAttribute("role", "dialog");
@@ -45,10 +55,15 @@ export function makeQuickUI(env) {
         b.querySelector(".mla-pop-b").innerHTML = "<div>" + esc(msg) + "</div>";
         b.querySelector(".mla-pop-f").innerHTML = '<span class="mla-hint">' + MLA_HOTKEY + " — разбор последнего лога тикета</span>";
     }
+    /* ctx.key — какой файл или тикет в окне; ctx.update — обновление тем же окном (пришёл ответ ИИ): только если саппорт ещё ничего не трогал */
     function show(r, ctx) {
         ctx = ctx || {};
+        if (ctx.update && (!box || cur.key !== ctx.key || cur.touched)) return false;
+        const keep = ctx.key;
         const tone = r.status === "bad" ? "bad" : r.status === "warn" ? "warn" : r.status === "ok" ? "ok" : "";
         const b = shell(r.headline || r.cause || r.name, tone), body = b.querySelector(".mla-pop-b"), foot = b.querySelector(".mla-pop-f");
+        cur.key = keep || ""; ["mousedown", "input"].forEach((ev) => b.addEventListener(ev, () => { cur.touched = true; }, true));
+        const ev = (name) => { if (ctx.fb) ctx.fb({ kind: "ev", ev: name, src: (r.tpl && r.tpl.src) || "" }); };
         let h = "";
         (r.warnings || []).forEach((w, i) => { h += '<div class="mla-warn"><div>⚠ ' + esc(w.text) + "</div>" + (w.ask ? '<button class="mla-b" type="button" data-ask="' + i + '">Попросить у игрока</button>' : "") + "</div>"; });
         h += '<div class="mla-sec"><span>Причина</span><div>' + esc(r.cause || "—") + "</div>" + (r.why ? '<div class="mla-why">' + esc(r.why) + "</div>" : "") + (r.source ? '<div class="mla-src">Источник: ' + esc(r.source) + "</div>" : "") + "</div>";
@@ -74,7 +89,7 @@ export function makeQuickUI(env) {
             const wire = (root, list) => {
                 const marked = {};
                 const fit = (it, v, btn) => { if (marked[it.t] || !ctx.fb) return; marked[it.t] = 1; ctx.fb({ kind: "fit", set: tp.set, t: it.t, v }); if (btn) { const f = btn.closest(".mla-tp-f"); if (f) f.innerHTML = '<span class="mla-why">' + (v > 0 ? "Спасибо: отмечено «подходит»" : "Отмечено «не подходит» — найдите нужный шаблон поиском ниже") + "</span>"; } if (v < 0) { const q0 = body.querySelector(".mla-tq"); if (q0) q0.focus(); } };
-                root.querySelectorAll("[data-tpi]").forEach((x) => x.addEventListener("click", () => { const it = list[+x.getAttribute("data-tpi")]; fit(it, 1, null); put(it.body, "Шаблон"); close(); }));
+                root.querySelectorAll("[data-tpi]").forEach((x) => x.addEventListener("click", () => { const i = +x.getAttribute("data-tpi"), it = list[i]; fit(it, 1, null); ev(list === tp.pick ? "r" + Math.min(i + 1, 3) : "search"); put(it.body, "Шаблон"); close(); }));
                 root.querySelectorAll("[data-fit]").forEach((x) => x.addEventListener("click", () => fit(list[+x.getAttribute("data-i")], +x.getAttribute("data-fit"), x)));
                 root.querySelectorAll("[data-say]").forEach((x) => x.addEventListener("click", () => {
                     const it = list[+x.getAttribute("data-say")], f = x.closest(".mla-tp-f");
@@ -93,13 +108,25 @@ export function makeQuickUI(env) {
             });
             body.querySelectorAll("[data-set]").forEach((x) => x.addEventListener("click", () => ctx.reload(x.getAttribute("data-set"))));
             const ak = body.querySelector("[data-tpask]"); if (ak) ak.addEventListener("click", () => put(tp.ask, "Вопрос"));
-        }
+            if (!ctx.update) ev(tp.pick.length ? "shown" : "none");
+            if (tp.more) body.querySelector(".mla-sec:has(.mla-tq)")?.insertAdjacentHTML("beforeend", '<div class="mla-src mla-wait">ИИ уточняет подбор…</div>');
+            /* выбор с клавиатуры */
+            let sel = tp.pick.length ? 0 : -1;
+            const cards = () => Array.from(body.querySelectorAll(".mla-sec:has(.mla-tq) > .mla-tp"));
+            const mark = () => cards().forEach((c, i) => c.classList.toggle("sel", i === sel));
+            mark();
+            cur.keys = {
+                pick: (i) => { const bt = cards()[i]?.querySelector("[data-tpi]"); if (bt) bt.click(); },
+                move: (d) => { const n = cards().length; if (!n) return; sel = (sel + d + n) % n; mark(); cards()[sel].scrollIntoView({ block: "nearest" }); },
+                enter: () => { if (sel >= 0) cur.keys.pick(sel); else { const ins = foot.querySelector('[data-a="ins"]'); if (ins) ins.click(); } }
+            };
+        } else cur.keys = { pick: () => {}, move: () => {}, enter: () => { const ins = foot.querySelector('[data-a="ins"]'); if (ins) ins.click(); } };
         foot.innerHTML = (r.reply ? '<button class="mla-b p" type="button" data-a="ins">Вставить ответ в чат</button><button class="mla-b" type="button" data-a="copy">Копировать</button>' : "") +
             (r.escalate ? '<button class="mla-b" type="button" data-a="esc" title="Вставить в чат сводку для старших: причина, что уже предложено, ключевые строки">Передать дальше</button>' : "") +
             (ctx.open ? '<button class="mla-b" type="button" data-a="open" title="Отправить файл в Majestic Log Advisor целиком">В анализатор</button>' : "") +
-            '<span class="mla-hint">' + MLA_HOTKEY + " — разбор последнего лога тикета · Esc — закрыть</span>";
+            '<span class="mla-hint">Enter — вставить выбранный' + (tp && tp.pick.length ? " шаблон · Alt+1…3 — шаблон по номеру · ↑↓ — выбор" : " ответ") + " · Esc — закрыть · " + MLA_HOTKEY + " — разбор тикета</span>";
         const act = (a) => {
-            if (a === "ins") { put(ta ? ta.value : r.reply, "Ответ"); close(); }
+            if (a === "ins") { ev("reply"); put(ta ? ta.value : r.reply, "Ответ"); close(); }
             else if (a === "copy") { env.copy(ta ? ta.value : r.reply); env.toast("Ответ скопирован", "success"); }
             else if (a === "esc") { put(r.escalate, "Текст для передачи"); close(); }
             else if (a === "open") { ctx.open(); close(); }

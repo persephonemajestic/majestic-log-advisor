@@ -25,7 +25,7 @@ const MOCK = () => {
   window.__reply = reply;
   /* быстрый разбор: ответ приложения */
   window.__quickRes = { ok: true, status: 'bad', headline: 'Сбой запуска', cause: 'Моды в папке игры', steps: ['Убрать моды'], reply: '**Приветствую!**\n\n1. Удалите dinput8.dll', lines: [{ n: 3, t: 'строка лога' }], warnings: [{ text: 'Лог старый', ask: 'Пришлите свежий лог' }], badge: { t: 'МОД', tone: 'bad' }, escalate: '**Передаю дальше**', tpl: { set: 'Majestic RP', sets: ['Majestic RP', 'Россия Онлайн'], src: 'ИИ', why: 'про оплату', ask: '', pick: [{ t: 'Проблемы с донатом', body: 'ДОНАТ-ТЕКСТ' }], all: [{ t: 'Проблемы с донатом', body: 'ДОНАТ-ТЕКСТ' }, { t: 'Черный экран', body: 'ЭКРАН-ТЕКСТ' }] } };
-  window.__quick = (meta, token) => { window.__quicks = (window.__quicks || []).concat([meta]); if (!window.__appUp) return { status: 0, j: { ok: false } }; if (token !== window.__tokenOk) return { status: 401, j: { ok: false, error: 'token' } }; return { status: 200, j: window.__quickRes }; };
+  window.__quick = (meta, token) => { if (meta.mode === 'fb') return { status: 200, j: { ok: true, kind: 'fb' } }; window.__quicks = (window.__quicks || []).concat([meta]); if (!window.__appUp) return { status: 0, j: { ok: false } }; if (token === window.__tokenOk && !meta.noai && window.__aiPick) return { status: 200, j: Object.assign({}, window.__quickRes, { tpl: Object.assign({}, window.__quickRes.tpl, { pick: [window.__aiPick], src: 'ИИ', more: false }) }) }; if (!window.__appUp) return { status: 0, j: { ok: false } }; if (token !== window.__tokenOk) return { status: 401, j: { ok: false, error: 'token' } }; return { status: 200, j: window.__quickRes }; };
 };
 /* Разбор ника, статика и сервера: одинаковый в обеих версиях */
 const EXCASES = [
@@ -171,6 +171,18 @@ const EXCASES = [
     if (kind === 'BetterDiscord') {
       await p.keyboard.press('Escape'); await p.evaluate(() => { window.__quicks = []; window.__p.textQuick('100'); }); await p.waitForTimeout(300);
       ok(await p.evaluate(() => window.__quicks[0] && window.__quicks[0].mode === 'text' && window.__quicks[0].name === 'ticket.txt'), kind + ': тикет без файлов — подбор по тексту');
+      /* окно открывается сразу без ИИ, ответ ИИ подставляется следом; клавиши */
+      await p.keyboard.press('Escape');
+      await p.evaluate(() => { window.__p.qres.clear(); window.__quicks = []; window.__fb = []; window.__ins = []; window.__quickRes.tpl.more = true; window.__aiPick = { t: 'Черный экран', body: 'ЭКРАН-ТЕКСТ' }; window.__p.textQuick('100'); }); await p.waitForTimeout(500);
+      const pg = await p.evaluate(() => ({ q: window.__quicks.map((x) => x.noai), first: (document.querySelector('.mla-pop .mla-tp b') || {}).textContent, ev: (window.__fb || []).filter((f) => f.kind === 'ev').map((f) => f.ev) }));
+      ok(pg.q.join(',') === 'true,false' && pg.first === 'Черный экран', kind + ': сначала подбор без ИИ, ответ ИИ подставился в то же окно (' + JSON.stringify(pg) + ')');
+      ok(pg.ev.join(',') === 'shown', kind + ': окно с подбором посчитано один раз');
+      await p.keyboard.press('ArrowDown'); await p.keyboard.press('ArrowUp'); await p.keyboard.press('Enter'); await p.waitForTimeout(150);
+      ok(await p.evaluate(() => window.__ins.pop() === 'ЭКРАН-ТЕКСТ' && (window.__fb || []).some((f) => f.kind === 'ev' && f.ev === 'r1')), kind + ': Enter вставляет выбранный шаблон, засчитан как «первый»');
+      await p.evaluate(() => { window.__p.qres.clear(); window.__quickRes.tpl.more = false; window.__aiPick = null; window.__quickRes.tpl.pick = [{ t: 'А', body: 'А-ТЕКСТ' }, { t: 'Б', body: 'Б-ТЕКСТ' }]; window.__p.textQuick('100'); }); await p.waitForTimeout(300);
+      await p.keyboard.press('Alt+Digit2'); await p.waitForTimeout(150);
+      ok(await p.evaluate(() => window.__ins.pop() === 'Б-ТЕКСТ'), kind + ': Alt+2 вставляет второй шаблон');
+      await p.evaluate(() => { window.__quickRes.tpl.pick = [{ t: 'Проблемы с донатом', body: 'ДОНАТ-ТЕКСТ' }]; });
     }
     await p.click('.mla-tk'); await p.waitForTimeout(300);
     await p.click('.mla-pop [data-a=esc]'); await p.waitForTimeout(100);
