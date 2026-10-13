@@ -1,6 +1,6 @@
 /**
  * @name MajesticLogImport
- * @version 1.7.2
+ * @version 1.7.3
  * @description «Разбор» логов и скриншотов прямо в тикете: причина, как чинить и готовый ответ игроку одной кнопкой. «В анализатор» отправляет файл в Majestic Log Advisor. Ctrl+Shift+L — разбор последнего лога тикета.
  * @author persephonemajestic
  * @source https://github.com/persephonemajestic/majestic-log-advisor/tree/main/plugins/betterdiscord
@@ -14,7 +14,7 @@
    «Разбор» (логи, zip, скриншоты): файл разбирается в приложении, но не добавляется в список; ответ — окно поверх Discord.
    Значки на логах: плагин сам разбирает логи игрока в открытой ветке и подписывает итог рядом с файлом (можно выключить). */
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.2";
+const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.3";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 /* MLA-QUICKUI-START — общий код окна «Разбор» для Vencord и BetterDiscord (в BetterDiscord вставляется скриптом plugins/sync-quickui.py) */
@@ -84,7 +84,7 @@ function makeQuickUI(env) {
         const ev = (name) => { if (ctx.fb) ctx.fb({ kind: "ev", ev: name, src: (r.tpl && r.tpl.src) || "" }); };
         let h = "";
         (r.warnings || []).forEach((w, i) => { h += '<div class="mla-warn"><div>⚠ ' + esc(w.text) + "</div>" + (w.ask ? '<button class="mla-b" type="button" data-ask="' + i + '">Попросить у игрока</button>' : "") + "</div>"; });
-        h += '<div class="mla-sec"><span>Причина</span><div>' + esc(r.cause || "—") + "</div>" + (r.why ? '<div class="mla-why">' + esc(r.why) + "</div>" : "") + (r.source ? '<div class="mla-src">Источник: ' + esc(r.source) + "</div>" : "") + "</div>";
+        if (r.cause || r.kind !== "text") h += '<div class="mla-sec"><span>Причина</span><div>' + esc(r.cause || "—") + "</div>" + (r.why ? '<div class="mla-why">' + esc(r.why) + "</div>" : "") + (r.source ? '<div class="mla-src">Источник: ' + esc(r.source) + "</div>" : "") + "</div>";
         if (r.steps && r.steps.length) h += '<div class="mla-sec"><span>Как чинить</span><ol>' + r.steps.map((x) => "<li>" + esc(x) + "</li>").join("") + "</ol></div>";
         if (r.also && r.also.length) h += '<div class="mla-sec"><span>Другие файлы архива</span><div class="mla-why">' + r.also.map(esc).join("<br>") + "</div></div>";
         if (r.lines && r.lines.length) h += '<details class="mla-sec"><summary style="cursor:pointer;color:var(--header-secondary,#b5bac1);font-size:12px;font-weight:600;text-transform:uppercase">' + (r.kind === "image" ? "Текст со скриншота" : "Строки лога") + " (" + r.lines.length + ')</summary><div class="mla-lines">' + r.lines.map((x) => (x.n ? "L" + x.n + "  " : "") + esc(x.t)).join("\n") + "</div></details>";
@@ -98,7 +98,7 @@ function makeQuickUI(env) {
             h += tp.pick.length ? tp.pick.map(tpl).join("") : '<div class="mla-why">Подходящий шаблон не найден — найдите вручную.</div>';
             if (tp.why) h += '<div class="mla-src">' + esc(tp.why) + (tp.src ? " · " + esc(tp.src) : "") + "</div>";
             h += '<input class="mla-tq" type="search" placeholder="Найти шаблон по названию или тексту…" spellcheck="false"><div class="mla-tl"></div></div>';
-        } else if (r.kind === "text") h += '<div class="mla-why">Шаблоны команды ещё не загружены: в Majestic Log Advisor — «Настройки» → «Шаблоны ответов команды».</div>';
+        } else if (r.kind === "text") h += '<div class="mla-why">Приложение не нашло шаблонов команды. В Majestic Log Advisor откройте «Ещё» → «Настройки» → «Шаблоны ответов команды»: если там «Шаблонов пока нет» — загрузите файл, если шаблоны есть — нажмите «Обновить» и повторите разбор.</div>';
         if (r.reply) h += '<div class="mla-sec"><span>Ответ игроку — можно поправить</span><textarea class="mla-ta" spellcheck="true"></textarea></div>';
         body.innerHTML = h;
         const ta = body.querySelector(".mla-ta"); if (ta) ta.value = r.reply;

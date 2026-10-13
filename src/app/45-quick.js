@@ -13,7 +13,7 @@ async function quickAnalyze(q) {
   /* отметка из окна «Разбор»: подходит / не подходит или фраза-пример для шаблона */
   if (meta.mode === 'fb') { var fb = {}; try { fb = JSON.parse(await new File([q.data], 'fb').text()); } catch (e) {} return Object.assign({ kind: 'fb' }, await tplFeedback(fb)); }
   var key = (meta.url || name) + '|' + (q.data ? q.data.length : 0) + '|' + (meta.mode || '');
-  var key2 = key + '|' + (meta.set || '') + '|' + (meta.text || '').length + '|' + (meta.noai ? 0 : 1), hit = qCache(key2); if (hit) return hit;
+  var key2 = key + '|' + (meta.set || '') + '|' + (meta.text || '').length + '|' + (meta.noai ? 0 : 1) + '|' + (typeof TPL !== 'undefined' ? TPL.at + ':' + (TPL.sets || []).length : ''), hit = qCache(key2); if (hit) return hit;
   var r;
   if (meta.mode === 'text') r = { ok: true, kind: 'text', name: name, status: 'unk', headline: 'Ответ по тексту тикета', cause: '', why: '', steps: [], reply: '', lines: [], warnings: [], badge: { t: 'Текст', tone: 'unk' } };
   else if (QIMG.test(name)) r = await quickImage(q);
@@ -28,6 +28,7 @@ async function quickAnalyze(q) {
   } else r = await quickLog(await new File([q.data], name).text(), name, meta, meta.siblings || []);
   /* шаблоны команды: по тексту игрока, тексту со скриншота и найденной проблеме */
   if (meta.mode !== 'badge' && typeof tplMatch === 'function') {
+    if (!(TPL.sets || []).length) { try { await tplFetch(); } catch (e) {} }
     var said = meta.mode === 'text' ? await new File([q.data], name).text() : String(meta.text || '');
     var seen = r.kind === 'image' ? (r.lines || []).map(function (x) { return x.t; }).join('\n') + '\n' + (r.cause || '') : r.kind !== 'text' ? [r.cause, r.headline].filter(Boolean).join('. ') : '';
     var pl = meta.player || {}, vars = { 'ник': pl.nick, 'статик': pl.static, 'сервер': pl.server, 'файл': r.file || '', 'моды': (r.mods || []).map(function (x) { return String(x).split(/[\\\/]/).pop(); }).join(', '), 'код': r.code || '' };

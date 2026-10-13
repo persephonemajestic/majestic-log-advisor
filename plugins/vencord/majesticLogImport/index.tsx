@@ -15,7 +15,7 @@ import { makeQuickUI, MLA_HOTKEY, MLA_QCSS, quickErr } from "./quickui";
 const Native = VencordNative.pluginHelpers.MajesticLogImport as PluginNative<typeof import("./native")>;
 
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.2";
+const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.3";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 const settings = definePluginSettings({
