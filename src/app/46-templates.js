@@ -119,7 +119,9 @@ var TPL_SYS = 'Ты помогаешь саппорту игрового про�
 async function tplMatch(text, opt) {
   opt = opt || {}; var set = tplSetFor(opt.guild, opt.set); if (!set) return null;
   var text2 = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 3000), loc = tplLocal(set, text2), pick = loc.map(function (x) { return x.i; }), why = '', ask = '', src = pick.length ? 'ключевые слова' : '';
-  if (opt.ai !== false && srvOn() && text2.length >= 12) {
+  /* ключевые слова уверенно указали на один шаблон — ИИ не спрашиваем, бесплатный лимит не тратится */
+  var sure = loc[0] && loc[0].score >= 2 && (!loc[1] || loc[0].score > loc[1].score);
+  if (opt.ai !== false && !sure && srvOn() && text2.length >= 12) {
     var list = set.items.map(function (x, i) { return x.hide || TPL_SKIP.test(x.t) ? null : (i + 1) + '. ' + x.t; }).filter(Boolean).join('\n');
     var a = await srv('/v1/ai', { body: { system: TPL_SYS, input: 'Шаблоны:\n' + list + '\n\nОбращение игрока:\n' + LA.mask(text2) + (loc.length ? '\n\nПо ключевым словам подходят: ' + loc.map(function (x) { return x.i + 1; }).join(', ') : ''), max: 400 } });
     var j = null; if (a && a.ok) { try { j = JSON.parse(String(a.text).replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch (e) {} }

@@ -146,23 +146,32 @@ export default {
       const sys = String(b.system || '').slice(0, 20000), inp = String(b.input || '').slice(0, 60000); if (inp.length < 20) return json({ ok: false, error: 'bad' }, 400);
       /* скриншот от игрока (быстрый разбор из плагина Discord): JPEG/PNG/WebP в base64, не больше ~4 МБ; в KV не сохраняется */
       const img = b.image && /^image\/(jpeg|png|webp)$/.test(String(b.image.mime || '')) && typeof b.image.data === 'string' && b.image.data.length <= 6000000 && /^[A-Za-z0-9+/=]+$/.test(b.image.data.slice(0, 200)) ? { mime_type: b.image.mime, data: b.image.data } : null;
-      const model = env.GEMINI_MODEL || 'gemini-3.8-flash';
+      /* Модели по очереди: у бесплатного уровня Gemini свой дневной лимит у каждой модели на весь проект (у Flash-Lite ~500 в день, у Flash ~20),
+         поэтому по умолчанию сначала Flash-Lite, при исчерпании лимита (429) — следующая модель. tier=smart (разбор дампа) начинает с Flash. */
+      const lite = String(env.GEMINI_MODELS || 'gemini-3.5-flash-lite,gemini-3.1-flash-lite').split(',').map((x) => x.trim()).filter(Boolean);
+      const smart = String(env.GEMINI_MODEL || 'gemini-3.8-flash').trim();
+      const models = (b.tier === 'smart' ? [smart].concat(lite) : lite.concat([smart])).filter((x, i, a) => a.indexOf(x) === i);
+      const model = 'auto:' + (b.tier === 'smart' ? 'smart' : 'lite');
       /* кэш: тот же запрос к той же модели и промпту отдаётся из KV и не тратит дневной лимит */
       let ck = ''; try { const dg = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(model + '\n' + sys + '\n' + inp + '\n' + (parseInt(b.max, 10) || 0) + (img ? '\n' + img.data : ''))); ck = 'ac:' + Array.from(new Uint8Array(dg)).slice(0, 16).map((x) => x.toString(16).padStart(2, '0')).join(''); } catch (e) {}
       if (ck && !b.fresh) { try { const hit = await env.ACCESS.get(ck); if (hit) return json({ ok: true, text: hit, cached: true }); } catch (e) {} }
       const day = new Date().toISOString().slice(0, 10), qk = 'q:' + day + ':' + u.h; let q = 0; try { q = parseInt(await env.ACCESS.get(qk), 10) || 0; } catch (e) {}
-      const lim = parseInt(env.AI_DAILY, 10) || 60; if (q >= lim) return json({ ok: false, error: 'limit' });
+      const lim = parseInt(env.AI_DAILY, 10) || 300; if (q >= lim) return json({ ok: false, error: 'limit' });
       try { await env.ACCESS.put(qk, String(q + 1), { expirationTtl: 172800 }); } catch (e) {}
-      let r; try {
-        r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent', { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+      let r = null, used = '';
+      for (const mdl of models) {
+        try {
+          r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + mdl + ':generateContent', { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
           body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text: inp }].concat(img ? [{ inline_data: img }] : []) }], generationConfig: { responseMimeType: 'application/json', temperature: 0.2, maxOutputTokens: Math.max(256, Math.min(parseInt(b.max, 10) || 8192, 8192)) } }) });
-      } catch (e) { return json({ ok: false, error: 'upstream', detail: 'нет связи с Gemini' }); }
-      if (!r.ok) { let m = ''; try { m = ((await r.json()).error || {}).message || ''; } catch (e) {} return json({ ok: false, error: r.status === 429 ? 'rate' : 'upstream', detail: 'Gemini ' + r.status + (m ? ': ' + String(m).slice(0, 160) : '') }); }
+        } catch (e) { return json({ ok: false, error: 'upstream', detail: 'нет связи с Gemini' }); }
+        used = mdl; if (r.status !== 429 && r.status !== 404) break;
+      }
+      if (!r.ok) { let m = ''; try { m = ((await r.json()).error || {}).message || ''; } catch (e) {} return json({ ok: false, error: r.status === 429 ? 'rate' : 'upstream', detail: 'Gemini ' + r.status + ' (' + used + ')' + (m ? ': ' + String(m).slice(0, 160) : '') }); }
       let j = {}; try { j = await r.json(); } catch (e) {}
       const t = (((j.candidates || [])[0] || {}).content || {}).parts; const text = t ? t.map(x => x.text || '').join('') : '';
       if (!text) return json({ ok: false, error: 'empty', detail: 'Gemini вернул пустой ответ' + (((j.candidates || [])[0] || {}).finishReason ? ' (' + j.candidates[0].finishReason + ')' : '') });
       if (ck) { try { await env.ACCESS.put(ck, text, { expirationTtl: 604800 }); } catch (e) {} }
-      return json({ ok: true, text });
+      return json({ ok: true, text, model: used });
     }
     /* Шаблоны ответов команды (из плагина SupportTemplates): читают все, у кого есть доступ; загружает только тот, кто знает пароль администратора */
     if (p === '/v1/tpl') { const u = await who(req, env); if (!u) return deny(); const raw = await env.ACCESS.get('tpl'); if (!raw) return json({ ok: true, none: true }); try { return json(Object.assign({ ok: true }, JSON.parse(raw))); } catch (e) { return json({ ok: true, none: true }); } }

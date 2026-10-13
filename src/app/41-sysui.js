@@ -237,7 +237,7 @@ async function runAI(prompt, box, btn, done) {
 if (srvOn()) srv('/v1/ai/ping', {}).then(function (r) {
   if (!r || !r.ok || SAMPLE) return;
   SAMPLE = { json: async function (turns, opt) {
-    var a = await srv('/v1/ai', { body: { system: turns[0].content, input: turns[1].content, max: opt && opt.max, fresh: !!(opt && opt.cache && opt.cache.refresh), pv: AI_PROMPT_VERSION } });
+    var a = await srv('/v1/ai', { body: { system: turns[0].content, input: turns[1].content, max: opt && opt.max, tier: 'smart', fresh: !!(opt && opt.cache && opt.cache.refresh), pv: AI_PROMPT_VERSION } });
     SAMPLE.cached = !!(a && a.cached);
     if (a && a.ok && a.text) return a.text;
     throw { code: a && a.error === 'limit' ? 'rate_limited' : 'ai_fail', message: a && a.error === 'limit' ? 'Дневной лимит разборов ИИ исчерпан, попробуйте завтра.' : 'ИИ сейчас недоступен' + (a && a.detail ? ' (' + a.detail + ')' : a ? '' : ' (сервер не ответил)') + ', попробуйте позже.' };

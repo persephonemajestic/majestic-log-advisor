@@ -21,6 +21,10 @@ const W = mod.exports;
   ok(im.ok && !im.cached && parts && parts[1] && parts[1].inline_data.mime_type === 'image/jpeg' && parts[1].inline_data.data === 'QUJD', 'скриншот уходит в Gemini как картинка');
   const im2 = await call({ image: { mime: 'image/jpeg', data: 'REVG' } }); ok(im2.ok && !im2.cached, 'другой скриншот не берётся из кэша');
   const bad1 = await call({ image: { mime: 'text/html', data: 'QUJD' }, fresh: true }); ok(bad1.ok && lastBody.contents[0].parts.length === 1, 'не картинка — не прикладывается');
+  /* лимит модели исчерпан (429) — запрос уходит следующей модели */
+  env.AI_DAILY = '50'; const seen = []; global.fetch = async (u, o) => { seen.push(String(u).split('/models/')[1].split(':')[0]); if (seen.length === 1) return new Response('{"error":{"message":"quota"}}', { status: 429 }); return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"ok":true}' }] } }] })); };
+  const rot = await call({ input: 'другой запрос для проверки очереди моделей', fresh: true });
+  ok(rot.ok && seen.length === 2 && seen[0] !== seen[1] && /lite/.test(seen[0]), 'при исчерпании лимита модели берётся следующая (' + seen.join(' → ') + ')');
   /* шаблоны команды: читать может любой с доступом, менять — только с паролем администратора */
   env.ADMIN_PASS = 'pw1';
   const tq = (path, body) => W.fetch(new Request('https://x' + path, body ? { method: 'POST', headers: { 'X-HWID': HW, 'content-type': 'application/json' }, body: JSON.stringify(body) } : { headers: { 'X-HWID': HW } }), env).then((r) => r.json().then((j) => Object.assign(j, { _s: r.status })));
