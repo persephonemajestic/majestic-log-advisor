@@ -21,5 +21,14 @@ const W = mod.exports;
   ok(im.ok && !im.cached && parts && parts[1] && parts[1].inline_data.mime_type === 'image/jpeg' && parts[1].inline_data.data === 'QUJD', 'скриншот уходит в Gemini как картинка');
   const im2 = await call({ image: { mime: 'image/jpeg', data: 'REVG' } }); ok(im2.ok && !im2.cached, 'другой скриншот не берётся из кэша');
   const bad1 = await call({ image: { mime: 'text/html', data: 'QUJD' }, fresh: true }); ok(bad1.ok && lastBody.contents[0].parts.length === 1, 'не картинка — не прикладывается');
+  /* шаблоны команды: читать может любой с доступом, менять — только с паролем администратора */
+  env.ADMIN_PASS = 'pw1';
+  const tq = (path, body) => W.fetch(new Request('https://x' + path, body ? { method: 'POST', headers: { 'X-HWID': HW, 'content-type': 'application/json' }, body: JSON.stringify(body) } : { headers: { 'X-HWID': HW } }), env).then((r) => r.json().then((j) => Object.assign(j, { _s: r.status })));
+  ok((await tq('/v1/tpl')).none === true, 'шаблонов пока нет');
+  const sets = [{ name: 'Majestic RP', items: [{ t: 'Проблемы с донатом', body: 'текст' }, { t: 'Пусто', body: '' }] }];
+  ok((await tq('/v1/tpl/put', { pass: 'nope', sets }))._s === 403, 'без пароля администратора шаблоны не меняются');
+  const put = await tq('/v1/tpl/put', { pass: 'pw1', sets }); ok(put.ok && put.n === 1, 'с паролем шаблоны сохранены (пустые отброшены)');
+  const got = await tq('/v1/tpl'); ok(got.ok && got.sets[0].items[0].t === 'Проблемы с донатом' && got.by === 'тест', 'шаблоны выдаются команде');
+  ok((await W.fetch(new Request('https://x/v1/tpl'), env)).status !== 200, 'без доступа шаблоны не выдаются');
   process.exit(bad ? 1 : 0);
 })();

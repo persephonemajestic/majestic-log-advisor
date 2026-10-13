@@ -164,6 +164,17 @@ export default {
       if (ck) { try { await env.ACCESS.put(ck, text, { expirationTtl: 604800 }); } catch (e) {} }
       return json({ ok: true, text });
     }
+    /* Шаблоны ответов команды (из плагина SupportTemplates): читают все, у кого есть доступ; загружает только тот, кто знает пароль администратора */
+    if (p === '/v1/tpl') { const u = await who(req, env); if (!u) return deny(); const raw = await env.ACCESS.get('tpl'); if (!raw) return json({ ok: true, none: true }); try { return json(Object.assign({ ok: true }, JSON.parse(raw))); } catch (e) { return json({ ok: true, none: true }); } }
+    if (p === '/v1/tpl/put' && req.method === 'POST') {
+      const u = await who(req, env); if (!u) return deny();
+      let b = {}; try { b = await req.json(); } catch (e) {}
+      const pw = String(env.ADMIN_PASS || '').trim(); if (!pw || !same(String(b.pass || '').trim(), pw)) return json({ ok: false, error: 'pass' }, 403);
+      const sets = (Array.isArray(b.sets) ? b.sets : []).slice(0, 6).map((st) => ({ name: String(st.name || '').slice(0, 60), items: (Array.isArray(st.items) ? st.items : []).slice(0, 300).map((x) => ({ t: String(x.t || '').slice(0, 160), body: String(x.body || '').slice(0, 6000), hide: !!x.hide })).filter((x) => x.t && x.body) })).filter((st) => st.name && st.items.length);
+      if (!sets.length) return json({ ok: false, error: 'empty' }, 400);
+      const out = JSON.stringify({ at: Date.now(), by: u.n || '', sets }); if (out.length > 900000) return json({ ok: false, error: 'size' }, 413);
+      await env.ACCESS.put('tpl', out); return json({ ok: true, n: sets.reduce((a, st) => a + st.items.length, 0) });
+    }
     if (p === '/v1/ai/ping') { const u = await who(req, env); if (!u) return deny(); return json({ ok: !!env.GEMINI_API_KEY }); }
     if (p === '/v1/backup/put' && req.method === 'POST') {
       const u = await who(req, env); if (!u) return deny();

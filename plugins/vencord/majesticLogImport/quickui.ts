@@ -13,7 +13,10 @@ export const MLA_QCSS = ".mla-pop{position:fixed;right:18px;top:64px;z-index:100
     ".mla-b{padding:6px 12px;border-radius:5px;border:1px solid var(--background-modifier-accent,#4e5058);background:var(--background-secondary,#2b2d31);color:var(--text-normal,#dbdee1);font-size:13px;cursor:pointer}.mla-b:hover{filter:brightness(1.15)}.mla-b.p{background:#5865f2;border-color:#5865f2;color:#fff;font-weight:600}" +
     ".mla-hint{flex-basis:100%;font-size:12px;color:var(--text-muted,#949ba4)}.mla-dot{width:10px;height:10px;border-radius:50%;margin-top:6px;flex:none;background:#80848e}.mla-dot.bad{background:#f23f43}.mla-dot.warn{background:#f0b232}.mla-dot.ok{background:#23a55a}" +
     ".mla-badge{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;vertical-align:middle;color:#fff;background:#80848e;cursor:pointer;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mla-badge.bad{background:#da373c}.mla-badge.warn{background:#c58a12}.mla-badge.ok{background:#248046}" +
-    ".mla-imgbar{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}.mla-imgbar .mla-btn{margin-left:0}.mla-src{font-size:12px;color:var(--text-muted,#949ba4)}";
+    ".mla-imgbar{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}.mla-imgbar .mla-btn{margin-left:0}.mla-src{font-size:12px;color:var(--text-muted,#949ba4)}" +
+    ".mla-tp{border:1px solid var(--background-modifier-accent,#4e5058);border-radius:6px;padding:7px 9px;display:grid;gap:6px;margin-top:6px}.mla-tp-h{display:flex;gap:8px;align-items:center}.mla-tp-h b{flex:1;font-size:13px}.mla-tp pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.45 var(--font-primary,inherit);max-height:180px;overflow:auto;color:var(--text-muted,#b5bac1)}" +
+    ".mla-sets{display:inline-flex;gap:4px;margin-left:6px;text-transform:none;letter-spacing:0}.mla-sets button{font-size:11px;padding:1px 7px;border-radius:9px;border:1px solid var(--background-modifier-accent,#4e5058);background:none;color:var(--text-muted,#b5bac1);cursor:pointer}.mla-sets button.on{background:#5865f2;border-color:#5865f2;color:#fff}" +
+    ".mla-tq{box-sizing:border-box;width:100%;margin-top:8px;padding:6px 9px;border-radius:6px;border:1px solid var(--background-modifier-accent,#4e5058);background:var(--background-secondary,#2b2d31);color:var(--text-normal,#dbdee1);font:inherit;font-size:13px}";
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
@@ -51,10 +54,33 @@ export function makeQuickUI(env) {
         if (r.steps && r.steps.length) h += '<div class="mla-sec"><span>Как чинить</span><ol>' + r.steps.map((x) => "<li>" + esc(x) + "</li>").join("") + "</ol></div>";
         if (r.also && r.also.length) h += '<div class="mla-sec"><span>Другие файлы архива</span><div class="mla-why">' + r.also.map(esc).join("<br>") + "</div></div>";
         if (r.lines && r.lines.length) h += '<details class="mla-sec"><summary style="cursor:pointer;color:var(--header-secondary,#b5bac1);font-size:12px;font-weight:600;text-transform:uppercase">' + (r.kind === "image" ? "Текст со скриншота" : "Строки лога") + " (" + r.lines.length + ')</summary><div class="mla-lines">' + r.lines.map((x) => (x.n ? "L" + x.n + "  " : "") + esc(x.t)).join("\n") + "</div></details>";
+        const tp = r.tpl, tpl = (x, i) => '<div class="mla-tp"><div class="mla-tp-h"><b>' + esc(x.t) + '</b><button class="mla-b p" type="button" data-tpi="' + i + '">Вставить</button><button class="mla-b" type="button" data-tpv="' + i + '">Текст</button></div><pre hidden>' + esc(x.body) + "</pre></div>";
+        if (tp) {
+            h += '<div class="mla-sec"><span>Шаблоны команды' + (tp.sets && tp.sets.length > 1 && ctx.reload ? '<span class="mla-sets">' + tp.sets.map((n) => '<button type="button" data-set="' + esc(n) + '" class="' + (n === tp.set ? "on" : "") + '">' + esc(n) + "</button>").join("") + "</span>" : "") + "</span>";
+            if (tp.ask) h += '<div class="mla-warn"><div>❓ Уточните у игрока: ' + esc(tp.ask) + '</div><button class="mla-b" type="button" data-tpask="1">Спросить</button></div>';
+            h += tp.pick.length ? tp.pick.map(tpl).join("") : '<div class="mla-why">Подходящий шаблон не найден — найдите вручную.</div>';
+            if (tp.why) h += '<div class="mla-src">' + esc(tp.why) + (tp.src ? " · " + esc(tp.src) : "") + "</div>";
+            h += '<input class="mla-tq" type="search" placeholder="Найти шаблон по названию или тексту…" spellcheck="false"><div class="mla-tl"></div></div>';
+        } else if (r.kind === "text") h += '<div class="mla-why">Шаблоны команды ещё не загружены: в Majestic Log Advisor — «Настройки» → «Шаблоны ответов команды».</div>';
         if (r.reply) h += '<div class="mla-sec"><span>Ответ игроку — можно поправить</span><textarea class="mla-ta" spellcheck="true"></textarea></div>';
         body.innerHTML = h;
         const ta = body.querySelector(".mla-ta"); if (ta) ta.value = r.reply;
         body.querySelectorAll("[data-ask]").forEach((x) => x.addEventListener("click", () => put(r.warnings[+x.getAttribute("data-ask")].ask, "Текст")));
+        if (tp) {
+            const wire = (root, list) => {
+                root.querySelectorAll("[data-tpi]").forEach((x) => x.addEventListener("click", () => { put(list[+x.getAttribute("data-tpi")].body, "Шаблон"); close(); }));
+                root.querySelectorAll("[data-tpv]").forEach((x) => x.addEventListener("click", () => { const pre = x.closest(".mla-tp").querySelector("pre"); pre.hidden = !pre.hidden; x.textContent = pre.hidden ? "Текст" : "Скрыть"; }));
+            };
+            wire(body.querySelector(".mla-sec:has(.mla-tq)") || body, tp.pick);
+            const q = body.querySelector(".mla-tq"), tl = body.querySelector(".mla-tl");
+            if (q) q.addEventListener("input", () => {
+                const s = q.value.trim().toLowerCase(); if (!s) { tl.innerHTML = ""; return; }
+                const found = (tp.all || []).filter((x) => x.t.toLowerCase().includes(s) || x.body.toLowerCase().includes(s)).slice(0, 8);
+                tl.innerHTML = found.length ? found.map(tpl).join("") : '<div class="mla-why">Ничего не нашлось.</div>'; wire(tl, found);
+            });
+            body.querySelectorAll("[data-set]").forEach((x) => x.addEventListener("click", () => ctx.reload(x.getAttribute("data-set"))));
+            const ak = body.querySelector("[data-tpask]"); if (ak) ak.addEventListener("click", () => put(tp.ask, "Вопрос"));
+        }
         foot.innerHTML = (r.reply ? '<button class="mla-b p" type="button" data-a="ins">Вставить ответ в чат</button><button class="mla-b" type="button" data-a="copy">Копировать</button>' : "") +
             (r.escalate ? '<button class="mla-b" type="button" data-a="esc" title="Вставить в чат сводку для старших: причина, что уже предложено, ключевые строки">Передать дальше</button>' : "") +
             (ctx.open ? '<button class="mla-b" type="button" data-a="open" title="Отправить файл в Majestic Log Advisor целиком">В анализатор</button>' : "") +

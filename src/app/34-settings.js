@@ -38,6 +38,7 @@ function openSettings() {
   h += '<div class="row-actions"><button class="btn sm primary" data-act="closePanel">Готово</button></div></div></div>';
   $('#panelHost').innerHTML = h;
   if (typeof extSettingsHtml === 'function') extSettingsHtml().then(function (x) { var hs = $('#srulesHost'); if (x && hs && !$('#extKey')) hs.insertAdjacentHTML('beforebegin', x); });
+  if (typeof tplSettingsHtml === 'function') { var hs2 = $('#srulesHost'); if (hs2 && !$('#tplBox')) hs2.insertAdjacentHTML('beforebegin', '<div id="tplBox">' + tplSettingsHtml() + '</div>'); }
 }
 /* ---------- Панель команд (Ctrl+K) ---------- */
 var PAL = { items: [], sel: 0 };

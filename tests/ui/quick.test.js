@@ -7,7 +7,8 @@ const H = require('./helpers'), { ok } = H, fs = require('fs'), path = require('
   p.on('pageerror', (e) => errs.push(e.message));
   /* оболочка-заглушка: всё, чего нет, отвечает «ничего»; быстрый разбор ловим */
   await p.addInitScript(() => {
-    const own = { kbLoad: () => '', kbSave() {}, copy() {}, onExtQuick: (cb) => { window.__qcb = cb; }, extQuickAnswer: (id, r) => { (window.__qans = window.__qans || {})[id] = r; }, onExtImport() {}, onExtPair() {}, onWatch() {}, extReady() {}, appOk() {},
+    const TPLS = { at: 5, by: 'тест', sets: [{ name: 'Majestic RP', items: [{ t: 'Проблемы с донатом', body: '**Приветствую!**\nДОНАТ: напишите на почту.' }, { t: 'Обращение к администрации', body: '**Приветствую!**\nАДМИН: обратитесь к администрации.' }, { t: 'Черный экран', body: 'ЭКРАН' }, { t: 'Если способы выше не помогли', body: 'Активатор - ссылка', hide: true }] }, { name: 'Россия Онлайн', items: [{ t: 'Проблемы с донатом', body: 'РО-ДОНАТ' }] }] };
+    const own = { kbLoad: () => JSON.stringify({ v: 1, sigs: {}, ruleNotes: {}, seen: {}, files: 0, custom: [], tags: {}, hist: {}, merged: {}, settings: { tplCache: TPLS } }), kbSave() {}, copy() {}, onExtQuick: (cb) => { window.__qcb = cb; }, extQuickAnswer: (id, r) => { (window.__qans = window.__qans || {})[id] = r; }, onExtImport() {}, onExtPair() {}, onWatch() {}, extReady() {}, appOk() {},
       shellInfo: async () => ({ version: 'test', hwid: 'X' }), updateInfo: async () => ({ version: '', bundled: '', override: '', url: '' }), extInfo: async () => ({ on: true, port: 47615, token: 'x' }), watchInfo: async () => ({ dir: '', downloads: '' }), findLogs: async () => ({ files: [] }) };
     window.nativeApp = new Proxy(own, { get: (t, k) => (k in t ? t[k] : (() => Promise.resolve(null))) });
   });
@@ -35,5 +36,18 @@ const H = require('./helpers'), { ok } = H, fs = require('fs'), path = require('
   const plain = await p.evaluate(async () => { const c = document.createElement('canvas'); c.width = 640; c.height = 360; const x = c.getContext('2d'); x.fillStyle = '#357'; x.fillRect(0, 0, 640, 360); const bl = await new Promise((r) => c.toBlob(r, 'image/png')); return [...new Uint8Array(await bl.arrayBuffer())]; });
   const r4 = await ask(4, 'ok.png', plain, {});
   ok(r4 && r4.ok && !/Чёрные полосы/.test(r4.cause || ''), 'обычный скриншот не принимается за чёрные полосы');
+  /* шаблоны команды */
+  const MJ = '530693013622489088';
+  const t1 = await ask(5, 'ticket.txt', [...Buffer.from('Здравствуйте, оплатил 500 рублей, донат не пришёл на аккаунт')], { mode: 'text', guild: MJ });
+  ok(t1 && t1.kind === 'text' && t1.tpl && t1.tpl.set === 'Majestic RP' && t1.tpl.pick[0] && t1.tpl.pick[0].t === 'Проблемы с донатом', 'по тексту игрока про донат предложен шаблон «Проблемы с донатом» (' + JSON.stringify(t1 && t1.tpl && t1.tpl.pick.map((x) => x.t)) + ')');
+  const t2 = await ask(6, 'ticket.txt', [...Buffer.from('другой игрок забрал мою машину, нарушил правила, что делать')], { mode: 'text', guild: MJ });
+  ok(t2.tpl.pick[0] && t2.tpl.pick[0].t === 'Обращение к администрации', 'игровая ситуация — шаблон «Обращение к администрации»');
+  const t3 = await ask(7, 'ticket.txt', [...Buffer.from('донат не пришёл')], { mode: 'text', guild: '111' });
+  ok(t3.tpl.set === 'Россия Онлайн' && t3.tpl.pick[0].body === 'РО-ДОНАТ', 'другой Discord-сервер — набор «Россия Онлайн»');
+  const t4 = await ask(8, 'ticket.txt', [...Buffer.from('донат не пришёл')], { mode: 'text', guild: '111', set: 'Majestic RP' });
+  ok(t4.tpl.set === 'Majestic RP', 'набор можно переключить вручную');
+  ok(!t1.tpl.all.some((x) => /Активатор/.test(x.body)), 'шаблон со ссылкой на активатор не предлагается');
+  const t5 = await ask(9, 'main.log', [...Buffer.from(crash)], { guild: MJ, text: 'у меня чёрный экран после запуска' });
+  ok(t5.tpl && t5.tpl.pick.some((x) => x.t === 'Черный экран'), 'к разбору лога добавлены шаблоны по тексту игрока');
   await H.done(b, errs);
 })();

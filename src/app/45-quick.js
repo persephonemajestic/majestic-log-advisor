@@ -11,9 +11,10 @@ var QROOT = { protect: 'Защита Windows', install: 'Установка ла
 async function quickAnalyze(q) {
   var meta = q.meta || {}, name = String(q.name || 'file');
   var key = (meta.url || name) + '|' + (q.data ? q.data.length : 0) + '|' + (meta.mode || '');
-  var hit = qCache(key); if (hit) return hit;
+  var hit = qCache(key + '|' + (meta.set || '') + '|' + (meta.text || '').length); if (hit) return hit;
   var r;
-  if (QIMG.test(name)) r = await quickImage(q);
+  if (meta.mode === 'text') r = { ok: true, kind: 'text', name: name, status: 'unk', headline: 'Ответ по тексту тикета', cause: '', why: '', steps: [], reply: '', lines: [], warnings: [], badge: { t: 'Текст', tone: 'unk' } };
+  else if (QIMG.test(name)) r = await quickImage(q);
   else if (/\.zip$/i.test(name)) {
     var z = (await unzipFile(new File([q.data], name))).filter(function (x) { return !x.bin && x.text; }).slice(0, 4);
     if (!z.length) r = { ok: true, kind: 'none', status: 'unk', headline: 'В архиве нет логов', cause: 'В архиве нет .log или .txt', steps: [], reply: '', lines: [], warnings: [{ text: 'В архиве нет логов Majestic.', ask: 'Пришлите, пожалуйста, файлы main.log и client.log (папка %appdata%\\majestic-launcher).' }], badge: { t: 'Нет логов', tone: 'unk' } };
@@ -23,7 +24,14 @@ async function quickAnalyze(q) {
       r = all[0]; r.also = all.slice(1).map(function (x) { return x.name + ': ' + x.headline; });
     }
   } else r = await quickLog(await new File([q.data], name).text(), name, meta, meta.siblings || []);
-  return qCache(key, r);
+  /* шаблоны команды: по тексту игрока, тексту со скриншота и найденной проблеме */
+  if (meta.mode !== 'badge' && typeof tplMatch === 'function') {
+    var said = meta.mode === 'text' ? await new File([q.data], name).text() : String(meta.text || '');
+    var seen = r.kind === 'image' ? (r.lines || []).map(function (x) { return x.t; }).join('\n') + '\n' + (r.cause || '') : r.kind !== 'text' ? [r.cause, r.headline].filter(Boolean).join('. ') : '';
+    try { r.tpl = await tplMatch([said, seen].filter(Boolean).join('\n'), { guild: meta.guild, set: meta.set }); } catch (e) { r.tpl = null; }
+    if (meta.set && meta.guild) tplRemember(meta.guild, meta.set);
+  }
+  return qCache(key + '|' + (meta.set || '') + '|' + (meta.text || '').length, r);
 }
 
 async function quickLog(text, name, meta, siblings) {

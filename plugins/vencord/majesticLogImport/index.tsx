@@ -15,7 +15,7 @@ import { makeQuickUI, MLA_HOTKEY, MLA_QCSS, quickErr } from "./quickui";
 const Native = VencordNative.pluginHelpers.MajesticLogImport as PluginNative<typeof import("./native")>;
 
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.4.0";
+const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.5.0";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 const settings = definePluginSettings({
@@ -23,7 +23,7 @@ const settings = definePluginSettings({
     port: { type: OptionType.NUMBER, description: "Порт приложения (обычно 47615)", default: 47615 },
     check: { type: OptionType.COMPONENT, description: "Проверить связь с Majestic Log Advisor и ключ", component: () => React.createElement(Button, { onClick: () => checkLink(), size: Button.Sizes?.SMALL }, "Проверить связь с анализатором") },
     badges: { type: OptionType.BOOLEAN, description: "Значки на логах в тикетах: плагин сам разбирает логи игрока в открытой ветке и подписывает итог рядом с файлом («МОД», «Сеть игрока», «Успех», «старый»…). Нужен запущенный анализатор.", default: true },
-    hotkey: { type: OptionType.COMPONENT, description: "Горячая клавиша " + MLA_HOTKEY + ": в открытой ветке тикета — разбор последнего лога игрока (если логов нет — последнего скриншота)", component: () => React.createElement(Button, { onClick: () => hotkey(), size: Button.Sizes?.SMALL }, "Попробовать " + MLA_HOTKEY) }
+    hotkey: { type: OptionType.COMPONENT, description: "Горячая клавиша " + MLA_HOTKEY + ": в открытой ветке тикета — разбор последнего лога игрока (если логов нет — скриншота, если нет и его — подбор шаблона по тексту игрока)", component: () => React.createElement(Button, { onClick: () => hotkey(), size: Button.Sizes?.SMALL }, "Попробовать " + MLA_HOTKEY) }
 });
 
 /* Проверка связи: запущено ли приложение на этом компьютере и подходит ли ключ */
@@ -128,27 +128,54 @@ const ui = makeQuickUI({ insert: (t: string) => { try { insertTextIntoChatInputB
 const qres = new Map<string, any>();
 const keyOf = (u: string) => u.replace(/[?#].*$/, "");
 function msgAt(channelId: string, messageId: string) { try { const t: any = (MessageStore.getMessage(channelId, messageId) as any)?.timestamp; return t ? +new Date(t) : 0; } catch { return 0; } }
-async function quick(channelId: string, messageId: string, url: string, name: string, mode: string) {
-    const key = keyOf(url); if (qres.has(key)) return qres.get(key);
+/* что пишет игрок: его сообщения в ветке и поля формы тикета от бота (сообщения саппортов не берём) */
+const STAFF_RE = /саппорт|support|модератор|администратор|админ|staff|принял|сотрудник|агент|хелпер|helper/i;
+function ticketText(channelId: string, max: number) {
+    const pid = playerIdOf(channelId), out: string[] = [];
+    for (const m of messagesOf(channelId)) {
+        if (m?.author?.id === pid && m.content) out.push(String(m.content));
+        if (m?.author?.bot || m?.author?.id === pid) for (const em of m.embeds ?? []) { for (const f of em.fields ?? []) if (!STAFF_RE.test(f.name ?? f.rawName ?? "")) out.push((f.name ?? f.rawName ?? "") + ": " + (f.value ?? f.rawValue ?? "")); if (m?.author?.bot && (em.description ?? em.rawDescription)) out.push(String(em.description ?? em.rawDescription)); }
+    }
+    const t = out.join("\n").trim(); return t.length > max ? t.slice(t.length - max) : t;
+}
+/* mode: badge — значок, full — окно, text — подбор шаблона только по тексту тикета */
+async function quick(channelId: string, messageId: string, url: string, name: string, mode: string, set = "") {
+    const ck = keyOf(url) + "|" + set, hit = mode === "text" ? null : qres.get(ck); if (hit && (mode === "badge" || hit._mode !== "badge")) return hit;
     const { token, port } = settings.store; if (!token) throw Object.assign(new Error("token"), { status: 401 });
     const ch: any = ChannelStore.getChannel(channelId);
-    const meta = { name, url: key, ticket: ch?.name ?? "", msgAt: msgAt(channelId, messageId), siblings: attachmentsOf(channelId).map(x => x.name), mode };
-    const r: any = await Native.quick(Number(port) || 47615, token, url, meta);
+    const meta = { name, url: keyOf(url), ticket: ch?.name ?? "", guild: ch?.guild_id ?? "", set, msgAt: msgAt(channelId, messageId), siblings: attachmentsOf(channelId).map(x => x.name), mode, text: mode === "full" ? ticketText(channelId, 1500) : "" };
+    const r: any = await Native.quick(Number(port) || 47615, token, url, meta, mode === "text" ? ticketText(channelId, 4000) : "");
     if (!r || r.status !== 200 || !r.j?.ok) throw Object.assign(new Error(r?.j?.error || ""), { status: r?.status ?? 0 });
-    qres.set(key, r.j); if (qres.size > 80) qres.delete(qres.keys().next().value as string);
+    r.j._mode = mode; qres.set(ck, r.j); if (qres.size > 80) qres.delete(qres.keys().next().value as string);
     return r.j;
 }
-async function openQuick(channelId: string, messageId: string, url: string, name: string) {
-    ui.loading(name);
-    try { const r = await quick(channelId, messageId, url, name, "full"); ui.show(r, { open: FILE_RE.test(name) ? () => send(channelId, messageId, url, name, null) : null }); }
+async function openQuick(channelId: string, messageId: string, url: string, name: string, set = "") {
+    const text = url.startsWith("ticket:");
+    ui.loading(text ? "тикет" : name);
+    try { const r = await quick(channelId, messageId, url, name, text ? "text" : "full", set); ui.show(r, { open: FILE_RE.test(name) ? () => send(channelId, messageId, url, name, null) : null, reload: (s: string) => openQuick(channelId, messageId, url, name, s) }); }
     catch (e: any) { ui.error(e.status === -1 ? e.message : quickErr(e.status, e.message)); }
 }
-function hotkey() {
-    const ch = SelectedChannelStore.getChannelId();
+/* тикет без файлов: подобрать шаблон команды по тому, что написал игрок */
+function textQuick(ch: string) {
+    const pid = playerIdOf(ch), first = messagesOf(ch).find(m => m?.author?.id === pid);
+    if (!ticketText(ch, 50)) return showToast("Игрок в этом тикете ещё ничего не написал", "message");
+    openQuick(ch, first ? String(first.id) : "", "ticket:" + ch, "ticket.txt");
+}
+function hotkey(chIn?: string) {
+    const ch = chIn || SelectedChannelStore.getChannelId();
     if (!ch || !joined(ch)) return showToast("Откройте ветку тикета, в которой вы участник, и нажмите " + MLA_HOTKEY + " ещё раз", "message");
     const a = attachmentsOf(ch, LOG_RE).pop() ?? attachmentsOf(ch, IMG_RE).pop();
-    if (!a) return showToast("В этом тикете нет логов и скриншотов от игрока", "message");
+    if (!a) return textQuick(ch);
     openQuick(ch, a.messageId, a.url, a.name);
+}
+/* кнопка «Подобрать ответ» у первого сообщения игрока в ветке */
+function ticketButton(li: Element, ch: string, mid: string) {
+    const pid = playerIdOf(ch), first = messagesOf(ch).find(m => m?.author?.id === pid);
+    if (!first || String(first.id) !== mid || li.querySelector(".mla-tk")) return;
+    const acc = li.querySelector('[id^="message-accessories-"]') ?? li, b = document.createElement("button");
+    b.className = "mla-btn mla-tk"; b.type = "button"; b.textContent = "Подобрать ответ"; b.title = "Шаблон команды по тексту игрока (и логам, если они есть). " + MLA_HOTKEY + " — то же с клавиатуры";
+    b.style.marginLeft = "0"; b.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); hotkey(ch); });
+    const bar = document.createElement("div"); bar.className = "mla-imgbar mla-tkbar"; bar.appendChild(b); acc.appendChild(bar);
 }
 const onKey = (e: KeyboardEvent) => { if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyL") { e.preventDefault(); e.stopPropagation(); hotkey(); } };
 let bq: any[] = [], bBusy = false, downUntil = 0;
@@ -223,6 +250,10 @@ function scan() {
         b.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); send(m[1], m[2], a.href, name, b); });
         (a.nextElementSibling?.classList.contains("mla-q") ? a.nextElementSibling : a).insertAdjacentElement("afterend", b);
     }
+    for (const li of Array.from(document.querySelectorAll('[id^="chat-messages-"]:not([data-mlat])'))) {
+        li.setAttribute("data-mlat", "1"); const m = /^chat-messages-(\d+)-(\d+)$/.exec(li.id);
+        if (m && joined(m[1])) ticketButton(li, m[1], m[2]);
+    }
     /* одна кнопка «Все файлы тикета» — у первого файла ветки на экране */
     const first = document.querySelector<HTMLButtonElement>(".mla-one"), ch = first?.dataset.ch ?? "";
     const n = ch ? attachmentsOf(ch).length : 0, all = document.querySelector<HTMLButtonElement>(".mla-all");
@@ -253,12 +284,13 @@ export default definePlugin({
         upT = window.setTimeout(checkUpdate, 15000);
         upTimer = window.setInterval(checkUpdate, 6 * 3600 * 1000);
         document.addEventListener("keydown", onKey, true);
-        if (localStorage.getItem("MajesticLogImport.told140") !== "1") { localStorage.setItem("MajesticLogImport.told140", "1"); setTimeout(() => showToast("MajesticLogImport 1.4: кнопка «Разбор» у логов и скриншотов в тикете — причина и готовый ответ игроку. " + MLA_HOTKEY + " — разбор последнего лога тикета.", "message"), 4000); }
+        if (localStorage.getItem("MajesticLogImport.told150") !== "1") { localStorage.setItem("MajesticLogImport.told150", "1"); setTimeout(() => showToast("MajesticLogImport 1.5: «Разбор» у логов и скриншотов, «Подобрать ответ» в тикете — готовый шаблон команды по тексту игрока. " + MLA_HOTKEY + " — разбор тикета с клавиатуры.", "message"), 4000); }
     },
     stop() {
         obs?.disconnect(); obs = null; clearInterval(timer); clearTimeout(upT); clearInterval(upTimer); style?.remove(); style = null;
         document.removeEventListener("keydown", onKey, true); ui.close(); bq = [];
         document.querySelectorAll(".mla-btn, .mla-badge, .mla-imgbar").forEach(b => b.remove());
         document.querySelectorAll("[data-mla]").forEach(a => a.removeAttribute("data-mla"));
+        document.querySelectorAll("[data-mlat]").forEach(a => a.removeAttribute("data-mlat"));
     }
 });

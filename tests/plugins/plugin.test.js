@@ -8,6 +8,7 @@ let esb = ''; try { esb = require.resolve('esbuild'); } catch (e) { esb = ['/opt
 let VC = ''; if (esb) { const out = path.join(require('os').tmpdir(), 'mla-vc.js'); require(esb).buildSync({ entryPoints: [path.join(ROOT, 'plugins/vencord/majesticLogImport/index.tsx')], bundle: true, format: 'iife', outfile: out, logLevel: 'warning', alias: { '@api/Settings': path.join(__dirname, 'stubs/settings.ts'), '@utils/types': path.join(__dirname, 'stubs/types.ts'), '@webpack/common': path.join(__dirname, 'stubs/common.ts'), '@utils/discord': path.join(__dirname, 'stubs/discord.ts') } }); VC = fs.readFileSync(out, 'utf8'); }
 const PAGE = `<!doctype html><html><body>
 <ol>
+ <li id="chat-messages-100-0"><div>Ник: Ivan_Petrov, статик 55123, сервер Orlando</div></li>
  <li id="chat-messages-100-1"><div><a href="https://cdn.discordapp.com/attachments/100/5/client.log?ex=1">client.log</a> <a href="https://cdn.discordapp.com/attachments/100/6/photo.png">photo.png</a></div></li>
  <li id="chat-messages-100-2"><div><a href="https://cdn.discordapp.com/attachments/100/7/crash.zip">crash.zip</a></div></li>
  <li id="chat-messages-200-3"><div><a href="https://cdn.discordapp.com/attachments/200/8/main.log">main.log</a></div></li>
@@ -23,7 +24,7 @@ const MOCK = () => {
   const reply = (body, token) => { if (!window.__appUp) return { status: 0 }; if (token !== window.__tokenOk) return { status: 401, j: { ok: false, error: 'token' } }; window.__posts.push(body); return { status: 200, j: { ok: true } }; };
   window.__reply = reply;
   /* быстрый разбор: ответ приложения */
-  window.__quickRes = { ok: true, status: 'bad', headline: 'Сбой запуска', cause: 'Моды в папке игры', steps: ['Убрать моды'], reply: '**Приветствую!**\n\n1. Удалите dinput8.dll', lines: [{ n: 3, t: 'строка лога' }], warnings: [{ text: 'Лог старый', ask: 'Пришлите свежий лог' }], badge: { t: 'МОД', tone: 'bad' }, escalate: '**Передаю дальше**' };
+  window.__quickRes = { ok: true, status: 'bad', headline: 'Сбой запуска', cause: 'Моды в папке игры', steps: ['Убрать моды'], reply: '**Приветствую!**\n\n1. Удалите dinput8.dll', lines: [{ n: 3, t: 'строка лога' }], warnings: [{ text: 'Лог старый', ask: 'Пришлите свежий лог' }], badge: { t: 'МОД', tone: 'bad' }, escalate: '**Передаю дальше**', tpl: { set: 'Majestic RP', sets: ['Majestic RP', 'Россия Онлайн'], src: 'ИИ', why: 'про оплату', ask: '', pick: [{ t: 'Проблемы с донатом', body: 'ДОНАТ-ТЕКСТ' }], all: [{ t: 'Проблемы с донатом', body: 'ДОНАТ-ТЕКСТ' }, { t: 'Черный экран', body: 'ЭКРАН-ТЕКСТ' }] } };
   window.__quick = (meta, token) => { window.__quicks = (window.__quicks || []).concat([meta]); if (!window.__appUp) return { status: 0, j: { ok: false } }; if (token !== window.__tokenOk) return { status: 401, j: { ok: false, error: 'token' } }; return { status: 200, j: window.__quickRes }; };
 };
 /* Разбор ника, статика и сервера: одинаковый в обеих версиях */
@@ -79,7 +80,7 @@ const EXCASES = [
     await p.waitForTimeout(400);
     const btns = await p.$$eval('.mla-one', (x) => x.map(b => { let e = b.previousElementSibling; while (e && e.tagName !== 'A') e = e.previousElementSibling; return e ? e.textContent : '?'; }));
     ok(await p.$$eval('.mla-q', (x) => x.length) === 2, kind + ': «Разбор» у логов и архивов (не у дампов)');
-    ok(await p.locator('.mla-imgbar .mla-btn').count() === 1, kind + ': у скриншота игрока есть «Разбор скриншота»');
+    ok(await p.locator('.mla-imgbar:not(.mla-tkbar) .mla-btn').count() === 1, kind + ': у скриншота игрока есть «Разбор скриншота»');
     ok(btns.join(',') === 'client.log,crash.zip', kind + ': кнопки только у логов и архивов в своей ветке-тикете (' + btns.join(',') + ')');
     await p.click('.mla-one >> nth=0'); await p.waitForTimeout(200);
     if (kind === 'BetterDiscord') {
@@ -149,9 +150,25 @@ const EXCASES = [
     ok(await p.evaluate(() => window.__ins.join('|') === 'Пришлите свежий лог|Поправленный ответ' && !document.querySelector('.mla-pop')), kind + ': «Попросить» и «Вставить ответ в чат» вставляют текст в поле сообщения (с правками)');
     await p.evaluate(() => { window.__selCh = '100'; window.__quicks = []; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'L', code: 'KeyL', ctrlKey: true, shiftKey: true, bubbles: true })); }); await p.waitForTimeout(300);
     ok(await p.evaluate(() => !!document.querySelector('.mla-pop') && window.__quicks.length === 1 && window.__quicks[0].name === 'main.log'), kind + ': Ctrl+Shift+L разбирает последний лог игрока в открытом тикете');
+    ok(await p.locator('.mla-tk').count() === 1, kind + ': у первого сообщения игрока есть «Подобрать ответ»');
+    await p.click('.mla-pop [data-tpi="0"]'); await p.waitForTimeout(100);
+    ok(await p.evaluate(() => window.__ins.pop() === 'ДОНАТ-ТЕКСТ' && !document.querySelector('.mla-pop')), kind + ': шаблон команды вставляется в чат одной кнопкой');
+    await p.click('.mla-tk'); await p.waitForSelector('.mla-pop .mla-tq', { timeout: 3000 }).catch(() => {});
+    await p.fill('.mla-pop .mla-tq', 'экран'); await p.waitForTimeout(100);
+    await p.click('.mla-pop .mla-tl [data-tpi="0"]'); await p.waitForTimeout(100);
+    ok(await p.evaluate(() => window.__ins.pop() === 'ЭКРАН-ТЕКСТ'), kind + ': поиск по шаблонам и вставка найденного');
+    await p.click('.mla-tk'); await p.waitForSelector('.mla-pop [data-set]', { timeout: 3000 }).catch(() => {}); await p.evaluate(() => { window.__quicks = []; });
+    await p.click('.mla-pop [data-set="Россия Онлайн"]'); await p.waitForTimeout(300);
+    ok(await p.evaluate(() => window.__quicks.length === 1 && window.__quicks[0].set === 'Россия Онлайн' && window.__quicks[0].guild === '9'), kind + ': переключение набора шаблонов (Majestic / Россия Онлайн) запрашивает заново');
+    ok(await p.evaluate(() => /Ник: Ivan_Petrov/.test(window.__quicks[0].text || '') && !/Support_Guy/.test(window.__quicks[0].text || '')), kind + ': в подбор уходит текст игрока, без сообщений саппорта');
+    if (kind === 'BetterDiscord') {
+      await p.keyboard.press('Escape'); await p.evaluate(() => { window.__quicks = []; window.__p.textQuick('100'); }); await p.waitForTimeout(300);
+      ok(await p.evaluate(() => window.__quicks[0] && window.__quicks[0].mode === 'text' && window.__quicks[0].name === 'ticket.txt'), kind + ': тикет без файлов — подбор по тексту');
+    }
+    await p.click('.mla-tk'); await p.waitForTimeout(300);
     await p.click('.mla-pop [data-a=esc]'); await p.waitForTimeout(100);
     ok(await p.evaluate(() => window.__ins.pop() === '**Передаю дальше**'), kind + ': «Передать дальше» вставляет сводку для старших');
-    await p.evaluate(() => { window.__appUp = false; }); await p.click('.mla-imgbar .mla-btn'); await p.waitForTimeout(300);
+    await p.evaluate(() => { window.__appUp = false; }); await p.click('.mla-imgbar:not(.mla-tkbar) .mla-btn'); await p.waitForTimeout(300);
     ok(/не запущен/.test(await p.textContent('.mla-pop').catch(() => '')), kind + ': приложение закрыто — окно говорит, что делать');
     await p.keyboard.press('Escape'); await p.evaluate(() => { window.__appUp = true; }); await p.waitForTimeout(100);
     ok(!(await p.locator('.mla-pop').count()), kind + ': Esc закрывает окно');
