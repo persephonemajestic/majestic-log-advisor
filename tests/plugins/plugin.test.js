@@ -66,7 +66,7 @@ const EXCASES = [
     await p.route('https://discord.com/**', r => r.fulfill({ contentType: 'text/html', body: PAGE })); await p.goto('https://discord.com/channels/9/100'); await p.evaluate(MOCK);
     if (kind === 'BetterDiscord') {
       await p.evaluate((src) => {
-        const data = {}; window.BdApi = { Data: { load: (a, k) => data[a + k], save: (a, k, v) => { data[a + k] = v; } }, Webpack: { getStore: (n) => n === 'SelectedChannelStore' ? { getChannelId: () => window.__selCh || '' } : n === 'UserStore' ? { getCurrentUser: () => ({ id: 'me' }) } : window.__stores[n], getModule: () => ({ dispatchToLastSubscribed: (ev, o) => { if (ev === 'INSERT_TEXT') (window.__ins = window.__ins || []).push(o.plainText); }, emitter: { listeners: () => [1] } }) }, UI: { showToast: (m, o) => window.__toasts.push([m, o.type]) }, DOM: { addStyle() {}, removeStyle() {} },
+        const data = {}; window.BdApi = { Data: { load: (a, k) => data[a + k], save: (a, k, v) => { data[a + k] = v; } }, Webpack: { getStore: (n) => n === 'SelectedChannelStore' ? { getChannelId: () => window.__selCh || '' } : n === 'UserStore' ? { getCurrentUser: () => ({ id: 'me' }) } : window.__stores[n], getModule: () => ({ dispatchToLastSubscribed: (ev, o) => { if (ev === 'INSERT_TEXT') (window.__ins = window.__ins || []).push(o.plainText); }, emitter: { listeners: () => [1] } }) }, UI: { showToast: (m, o) => window.__toasts.push([m, o.type]) }, DOM: { addStyle(id, css) { const s = document.createElement('style'); s.id = 'bd-' + id; s.textContent = css; document.head.appendChild(s); }, removeStyle(id) { document.getElementById('bd-' + id)?.remove(); } },
           Net: { fetch: async (url, o) => { if (/^https:\/\/cdn\.discordapp\.com\//.test(url)) { window.__dl = (window.__dl || 0) + 1; return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode('LOG').buffer }; } if (/\/v1\/quick$/.test(url) && window.__netQuickFail) throw new Error('net'); if (/\/v1\/quick$/.test(url)) { const meta = JSON.parse(decodeURIComponent(escape(atob(o.headers['x-mla-meta'])))); if (meta.mode === 'text') window.__ttext = new TextDecoder().decode(o.body); if (meta.mode === 'fb') window.__fb = (window.__fb || []).concat([JSON.parse(new TextDecoder().decode(o.body))]); const r = window.__quick(meta, o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } if (/\/v1\/upload$/.test(url)) { const meta = JSON.parse(decodeURIComponent(escape(atob(o.headers['x-mla-meta'])))); window.__bytes = o.body && o.body.length; const r = window.__reply(meta, o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } if (/\/v1\/pair$/.test(url)) { window.__pairs = (window.__pairs || 0) + 1; return window.__pairOk ? { ok: true, status: 200, json: async () => ({ ok: true, token: window.__pairOk }) } : { ok: false, status: 403, json: async () => ({ ok: false, error: 'denied' }) }; } if (/raw\.githubusercontent/.test(url)) return { ok: true, status: 200, text: async () => window.__newSrc || '' }; if (/ping$/.test(url)) return { ok: true, status: 200, json: async () => ({ ok: true }) }; const r = window.__reply(JSON.parse(o.body), o.headers['x-mla-token']); if (!r.status) throw new Error('down'); return { ok: r.status === 200, status: r.status, json: async () => r.j }; } } };
         const module = { exports: {} }; new Function('module', 'exports', src)(module, module.exports);
         const P = module.exports; window.__p = new P({}); window.__setTok = (t) => BdApi.Data.save('MajesticLogImport', 'settings', { token: t, port: 47615 }); window.__p.start();
@@ -80,7 +80,7 @@ const EXCASES = [
     await p.waitForTimeout(400);
     const btns = await p.$$eval('.mla-one', (x) => x.map(b => { let e = b.previousElementSibling; while (e && e.tagName !== 'A') e = e.previousElementSibling; return e ? e.textContent : '?'; }));
     ok(await p.$$eval('.mla-q', (x) => x.length) === 2, kind + ': «Разбор» у логов и архивов (не у дампов)');
-    ok(await p.locator('.mla-imgbar:not(.mla-tkbar) .mla-btn').count() === 1, kind + ': у скриншота игрока есть «Разбор скриншота»');
+    ok(await p.locator('.mla-imgbar:not(.mla-tkbar):not(.mla-mbar) .mla-btn').count() === 1, kind + ': у скриншота игрока есть «Разбор скриншота»');
     ok(btns.join(',') === 'client.log,crash.zip', kind + ': кнопки только у логов и архивов в своей ветке-тикете (' + btns.join(',') + ')');
     await p.click('.mla-one >> nth=0'); await p.waitForTimeout(200);
     if (kind === 'BetterDiscord') {
@@ -168,7 +168,16 @@ const EXCASES = [
     await p.click('.mla-pop [data-set="Россия Онлайн"]'); await p.waitForTimeout(300);
     ok(await p.evaluate(() => window.__quicks.length === 1 && window.__quicks[0].set === 'Россия Онлайн' && window.__quicks[0].guild === '9'), kind + ': переключение набора шаблонов (Majestic / Россия Онлайн) запрашивает заново');
     ok(await p.evaluate(() => /Ник: Ivan_Petrov/.test(window.__quicks[0].text || '') && !/Support_Guy/.test(window.__quicks[0].text || '')), kind + ': в подбор уходит текст игрока, без сообщений саппорта');
+    /* «Анализировать» у каждого чужого сообщения (при наведении) — подбор по тексту этого сообщения */
+    await p.keyboard.press('Escape'); await p.mouse.move(1, 1);
+    const mb = await p.evaluate(() => ({ n: document.querySelectorAll('.mla-mb').length, hidden: [...document.querySelectorAll('.mla-mbar')].every((x) => getComputedStyle(x).display === 'none') }));
+    ok(mb.n >= 1 && mb.hidden, kind + ': у сообщений есть «Анализировать», видна при наведении (' + JSON.stringify(mb) + ')');
+    await p.evaluate(() => { window.__quicks = []; document.querySelector('.mla-mb').click(); }); await p.waitForTimeout(300);
+    ok(await p.evaluate(() => window.__quicks[0] && window.__quicks[0].mode === 'text' && window.__quicks[0].name === 'message.txt' && /^msg:/.test(window.__quicks[0].url)), kind + ': «Анализировать» у сообщения подбирает ответ по его тексту');
     if (kind === 'BetterDiscord') {
+      await p.keyboard.press('Escape'); await p.evaluate(() => { window.__p.qres.clear(); window.__quickRes.tpl.aiErr = 'бесплатный лимит Gemini на сегодня исчерпан'; window.__p.textQuick('100'); }); await p.waitForTimeout(300);
+      ok(/ИИ не помог: бесплатный лимит Gemini/.test(await p.textContent('.mla-pop').catch(() => '')), kind + ': если ИИ не ответил, окно пишет почему');
+      await p.evaluate(() => { delete window.__quickRes.tpl.aiErr; });
       await p.keyboard.press('Escape'); await p.evaluate(() => { window.__quicks = []; window.__p.textQuick('100'); }); await p.waitForTimeout(300);
       ok(await p.evaluate(() => window.__quicks[0] && window.__quicks[0].mode === 'text' && window.__quicks[0].name === 'ticket.txt'), kind + ': тикет без файлов — подбор по тексту');
       await p.keyboard.press('Escape'); await p.evaluate(() => { window.__p.qres.clear(); window.__ttext = ''; window.__p.textQuick('400'); }); await p.waitForTimeout(300);
@@ -195,7 +204,7 @@ const EXCASES = [
     await p.click('.mla-tk >> nth=0'); await p.waitForTimeout(300);
     await p.click('.mla-pop [data-a=esc]'); await p.waitForTimeout(100);
     ok(await p.evaluate(() => window.__ins.pop() === '**Передаю дальше**'), kind + ': «Передать дальше» вставляет сводку для старших');
-    await p.evaluate(() => { window.__appUp = false; }); await p.click('.mla-imgbar:not(.mla-tkbar) .mla-btn'); await p.waitForTimeout(300);
+    await p.evaluate(() => { window.__appUp = false; }); await p.click('.mla-imgbar:not(.mla-tkbar):not(.mla-mbar) .mla-btn'); await p.waitForTimeout(300);
     ok(/не запущен/.test(await p.textContent('.mla-pop').catch(() => '')), kind + ': приложение закрыто — окно говорит, что делать');
     await p.keyboard.press('Escape'); await p.evaluate(() => { window.__appUp = true; }); await p.waitForTimeout(100);
     ok(!(await p.locator('.mla-pop').count()), kind + ': Esc закрывает окно');

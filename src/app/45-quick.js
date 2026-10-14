@@ -15,7 +15,7 @@ async function quickAnalyze(q) {
   var key = (meta.url || name) + '|' + (q.data ? q.data.length : 0) + '|' + (meta.mode || '');
   var key2 = key + '|' + (meta.set || '') + '|' + (meta.text || '').length + '|' + (meta.noai ? 0 : 1) + '|' + (typeof TPL !== 'undefined' ? TPL.at + ':' + (TPL.sets || []).length : ''), hit = qCache(key2); if (hit) return hit;
   var r;
-  if (meta.mode === 'text') r = { ok: true, kind: 'text', name: name, status: 'unk', headline: 'Ответ по тексту тикета', cause: '', why: '', steps: [], reply: '', lines: [], warnings: [], badge: { t: 'Текст', tone: 'unk' } };
+  if (meta.mode === 'text') r = { ok: true, kind: 'text', name: name, status: 'unk', headline: /^msg:/.test(meta.url || '') ? 'Ответ по сообщению' : 'Ответ по тексту тикета', cause: '', why: '', steps: [], reply: '', lines: [], warnings: [], badge: { t: 'Текст', tone: 'unk' } };
   else if (QIMG.test(name)) r = await quickImage(q);
   else if (/\.zip$/i.test(name)) {
     var z = (await unzipFile(new File([q.data], name))).filter(function (x) { return !x.bin && x.text; }).slice(0, 4);
@@ -35,7 +35,8 @@ async function quickAnalyze(q) {
     try { r.tpl = await tplMatch([said, seen].filter(Boolean).join('\n'), { guild: meta.guild, set: meta.set, ai: !meta.noai, vars: vars }); } catch (e) { r.tpl = null; }
     if (meta.set && meta.guild) tplRemember(meta.guild, meta.set);
   }
-  return qCache(key2, r);
+  /* ИИ не ответил — не запоминаем, следующий разбор спросит снова */
+  return r.tpl && r.tpl.aiErr ? r : qCache(key2, r);
 }
 
 async function quickLog(text, name, meta, siblings) {

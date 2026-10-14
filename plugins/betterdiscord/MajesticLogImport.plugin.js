@@ -1,6 +1,6 @@
 /**
  * @name MajesticLogImport
- * @version 1.7.5
+ * @version 1.7.6
  * @description «Разбор» логов и скриншотов прямо в тикете: причина, как чинить и готовый ответ игроку одной кнопкой. «В анализатор» отправляет файл в Majestic Log Advisor. Ctrl+Shift+L — разбор последнего лога тикета.
  * @author persephonemajestic
  * @source https://github.com/persephonemajestic/majestic-log-advisor/tree/main/plugins/betterdiscord
@@ -14,7 +14,7 @@
    «Разбор» (логи, zip, скриншоты): файл разбирается в приложении, но не добавляется в список; ответ — окно поверх Discord.
    Значки на логах: плагин сам разбирает логи игрока в открытой ветке и подписывает итог рядом с файлом (можно выключить). */
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.5";
+const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.6";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 /* MLA-QUICKUI-START — общий код окна «Разбор» для Vencord и BetterDiscord (в BetterDiscord вставляется скриптом plugins/sync-quickui.py) */
@@ -96,7 +96,8 @@ function makeQuickUI(env) {
             h += '<div class="mla-sec"><span>Шаблоны команды' + (tp.sets && tp.sets.length > 1 && ctx.reload ? '<span class="mla-sets">' + tp.sets.map((n) => '<button type="button" data-set="' + esc(n) + '" class="' + (n === tp.set ? "on" : "") + '">' + esc(n) + "</button>").join("") + "</span>" : "") + "</span>";
             if (tp.ask) h += '<div class="mla-warn"><div>❓ Уточните у игрока: ' + esc(tp.ask) + '</div><button class="mla-b" type="button" data-tpask="1">Спросить</button></div>';
             h += tp.pick.length ? tp.pick.map(tpl).join("") : '<div class="mla-why">Подходящий шаблон не найден — найдите вручную.</div>';
-            if (tp.why) h += '<div class="mla-src">' + esc(tp.why) + (tp.src ? " · " + esc(tp.src) : "") + "</div>";
+            if (tp.why || tp.src) h += '<div class="mla-src">' + (tp.why ? esc(tp.why) + " · " : "") + "подобрано: " + esc(tp.src === "ИИ" ? "ИИ" : tp.src ? "по ключевым словам" : "—") + "</div>";
+            if (tp.aiErr) h += '<div class="mla-src" style="color:var(--text-warning,#f0b232)">ИИ не помог: ' + esc(tp.aiErr) + "</div>";
             h += '<input class="mla-tq" type="search" placeholder="Найти шаблон по названию или тексту…" spellcheck="false"><div class="mla-tl"></div></div>';
         } else if (r.kind === "text") h += '<div class="mla-why">Приложение не нашло шаблонов команды. В Majestic Log Advisor откройте «Ещё» → «Настройки» → «Шаблоны ответов команды»: если там «Шаблонов пока нет» — загрузите файл, если шаблоны есть — нажмите «Обновить» и повторите разбор.</div>';
         if (r.reply) h += '<div class="mla-sec"><span>Ответ игроку — можно поправить</span><textarea class="mla-ta" spellcheck="true"></textarea></div>';
@@ -240,7 +241,7 @@ module.exports = class MajesticLogImport {
         this.onKey = (e) => { if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyL") { e.preventDefault(); e.stopPropagation(); this.hotkey(); } };
         document.addEventListener("keydown", this.onKey, true);
         if (BdApi.Data.load("MajesticLogImport", "told150") !== true) { BdApi.Data.save("MajesticLogImport", "told150", true); setTimeout(() => this.toast("MajesticLogImport 1.5: «Разбор» у логов и скриншотов, «Анализировать» под описанием проблемы — готовый шаблон команды по тексту игрока. " + MLA_HOTKEY + " — разбор тикета с клавиатуры.", "info"), 4000); }
-        BdApi.DOM.addStyle("MajesticLogImport", MLA_QCSS + ".mla-btn{margin-left:8px;padding:2px 8px;border-radius:4px;border:1px solid var(--button-outline-brand-border,#5865f2);background:transparent;color:var(--text-link,#00a8fc);font-size:12px;cursor:pointer;vertical-align:middle}.mla-btn:hover{background:rgba(88,101,242,.15)}.mla-btn[disabled]{opacity:.6;cursor:default}.mla-all{font-weight:600}");
+        BdApi.DOM.addStyle("MajesticLogImport", MLA_QCSS + ".mla-btn{margin-left:8px;padding:2px 8px;border-radius:4px;border:1px solid var(--button-outline-brand-border,#5865f2);background:transparent;color:var(--text-link,#00a8fc);font-size:12px;cursor:pointer;vertical-align:middle}.mla-btn:hover{background:rgba(88,101,242,.15)}.mla-btn[disabled]{opacity:.6;cursor:default}.mla-all{font-weight:600}.mla-mbar{display:none}[id^=chat-messages-]:hover .mla-mbar,.mla-mbar:focus-within{display:flex}");
     }
     stop() {
         if (this.obs) this.obs.disconnect(); this.obs = null; clearInterval(this.timer); clearInterval(this.upTimer); clearTimeout(this.upT);
@@ -299,7 +300,9 @@ module.exports = class MajesticLogImport {
         }
         for (const li of document.querySelectorAll('[id^="chat-messages-"]:not([data-mlat])')) {
             li.setAttribute("data-mlat", "1"); const m = /^chat-messages-(\d+)-(\d+)$/.exec(li.id);
-            if (m && this.joined(m[1])) this.ticketButton(li, m[1], m[2]);
+            if (!m) continue;
+            if (this.joined(m[1])) this.ticketButton(li, m[1], m[2]);
+            if (!li.querySelector(".mla-tk")) this.msgButton(li, m[1], m[2]);
         }
         /* одна кнопка «Все файлы тикета» — у первого файла ветки на экране */
         const one = document.querySelector(".mla-one");
@@ -432,7 +435,7 @@ module.exports = class MajesticLogImport {
         const hit = this.qres.get(ck); if (hit && (mode === "text" ? Date.now() - hit._at < 60000 : mode === "badge" || hit._mode !== "badge")) return hit;
         if (!c.token) { const e = new Error("token"); e.status = 401; throw e; }
         let buf;
-        if (mode === "text") buf = new TextEncoder().encode(this.ticketText(channelId, 4000) || " ");
+        if (mode === "text") buf = new TextEncoder().encode((url.indexOf("msg:") === 0 ? this.msgText(channelId, messageId) : this.ticketText(channelId, 4000)) || " ");
         else { const d = await this.fetch(url); if (!d.ok) { const e = new Error("Discord не отдал файл (" + d.status + ")"); e.status = -1; throw e; } buf = new Uint8Array(await d.arrayBuffer()); }
         const ch = this.store("ChannelStore")?.getChannel(channelId);
         const meta = { name, url: key, ticket: ch?.name || "", guild: ch?.guild_id || "", set: set || "", msgAt: this.msgAt(channelId, messageId), siblings: this.attachments(channelId).map((x) => x.name), mode: mode || "full", noai: !!noai, player: messageId ? this.player(channelId, messageId).player : null, text: mode === "full" ? this.ticketText(channelId, 1500) : "" };
@@ -441,7 +444,7 @@ module.exports = class MajesticLogImport {
         let r; try { r = await this.fetch(base + "/v1/quick", req); } catch (e) { try { r = await fetch(base + "/v1/quick", req); } catch (e2) { const er = new Error("down"); er.status = 0; throw er; } }
         let j = {}; try { j = await r.json(); } catch (e) {}
         if (!r.ok || !j.ok) { const e = new Error(j.error || ""); e.status = r.status; throw e; }
-        j._mode = mode || "full"; j._at = Date.now(); this.qres.set(ck, j); if (this.qres.size > 80) this.qres.delete(this.qres.keys().next().value);
+        j._mode = mode || "full"; j._at = Date.now(); if (!(j.tpl && j.tpl.aiErr)) this.qres.set(ck, j); if (this.qres.size > 80) this.qres.delete(this.qres.keys().next().value);
         return j;
     }
     /* отметка «подходит / не подходит» или фраза к шаблону — в приложение, оттуда команде */
@@ -451,8 +454,8 @@ module.exports = class MajesticLogImport {
         try { await this.fetch(u, req); } catch (e) { try { await fetch(u, req); } catch (e2) {} }
     }
     async openQuick(channelId, messageId, url, name, set) {
-        const text = url.indexOf("ticket:") === 0;
-        this.ui.loading(text ? "тикет" : name);
+        const text = /^(ticket|msg):/.test(url);
+        this.ui.loading(url.indexOf("msg:") === 0 ? "сообщение" : text ? "тикет" : name);
         try {
             const mode = text ? "text" : "full", key = url + "|" + (set || "");
             const ctx = { key, open: !text && FILE_RE.test(name) ? () => this.send(channelId, messageId, url, name, null) : null, reload: (s) => this.openQuick(channelId, messageId, url, name, s), fb: (o) => this.fb(o) };
@@ -493,8 +496,25 @@ module.exports = class MajesticLogImport {
         /* заранее подобрать шаблон без ИИ — окно «Анализировать» откроется мгновенно */
         this.pre = this.pre || {}; if (!this.pre[ch] && !this.attachments(ch, LOG_RE).length && this.cfg().token && Date.now() > this.downUntil) { this.pre[ch] = 1; this.quick(ch, mid, "ticket:" + ch, "ticket.txt", "text", "", true).catch(() => {}); }
     }
+    /* текст одного сообщения: сам текст, заголовки, описание и поля встроенных блоков */
+    msgText(channelId, messageId) {
+        let m = null; try { m = this.store("MessageStore")?.getMessage(channelId, messageId); } catch (e) {}
+        if (!m) return ""; const out = [String(m.content || "")];
+        for (const em of m.embeds || []) { out.push(em.title || em.rawTitle || "", em.description || em.rawDescription || ""); for (const f of em.fields || []) out.push((f.name || f.rawName || "") + ": " + (f.value || f.rawValue || "")); }
+        return out.filter((x) => x && x.trim()).join("\n").trim().slice(0, 4000);
+    }
+    /* «Анализировать» у любого сообщения в любом канале (появляется при наведении): подбор ответа по тексту этого сообщения */
+    msgButton(li, ch, mid) {
+        if (li.querySelector(".mla-mb")) return;
+        let me = ""; try { me = this.store("UserStore")?.getCurrentUser()?.id || ""; } catch (e) {}
+        const m = this.store("MessageStore")?.getMessage(ch, mid); if (!m || (me && m.author?.id === me) || this.msgText(ch, mid).length < 4) return;
+        const acc = li.querySelector('[id^="message-accessories-"]') || li, b = document.createElement("button");
+        b.className = "mla-btn mla-mb"; b.type = "button"; b.textContent = "Анализировать"; b.title = "Подобрать ответ по тексту этого сообщения";
+        b.style.marginLeft = "0"; b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); this.openQuick(ch, mid, "msg:" + ch + ":" + mid, "message.txt"); });
+        const bar = document.createElement("div"); bar.className = "mla-imgbar mla-mbar"; bar.appendChild(b); acc.appendChild(bar);
+    }
     imgButton(li, channelId, messageId, url, name) {
-        const acc = li.querySelector('[id^="message-accessories-"]') || li, key = url.replace(/[?#].*$/, ""); let bar = li.querySelector(".mla-imgbar");
+        const acc = li.querySelector('[id^="message-accessories-"]') || li, key = url.replace(/[?#].*$/, ""); let bar = li.querySelector(".mla-imgbar:not(.mla-mbar)");
         if (bar && Array.from(bar.children).some((x) => x.dataset.u === key)) return;
         if (!bar) { bar = document.createElement("div"); bar.className = "mla-imgbar"; acc.appendChild(bar); }
         const b = document.createElement("button"); b.className = "mla-btn"; b.type = "button"; b.dataset.u = key;

@@ -15,7 +15,7 @@ import { makeQuickUI, MLA_HOTKEY, MLA_QCSS, quickErr } from "./quickui";
 const Native = VencordNative.pluginHelpers.MajesticLogImport as PluginNative<typeof import("./native")>;
 
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.5";
+const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.6";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 const settings = definePluginSettings({
@@ -153,16 +153,16 @@ async function quick(channelId: string, messageId: string, url: string, name: st
     const { token, port } = settings.store; if (!token) throw Object.assign(new Error("token"), { status: 401 });
     const ch: any = ChannelStore.getChannel(channelId);
     const meta = { name, url: keyOf(url), ticket: ch?.name ?? "", guild: ch?.guild_id ?? "", set, msgAt: msgAt(channelId, messageId), siblings: attachmentsOf(channelId).map(x => x.name), mode, noai, player: messageId ? playerOf(channelId, messageId).player : null, text: mode === "full" ? ticketText(channelId, 1500) : "" };
-    const r: any = await Native.quick(Number(port) || 47615, token, url, meta, mode === "text" ? ticketText(channelId, 4000) : "");
+    const r: any = await Native.quick(Number(port) || 47615, token, url, meta, mode === "text" ? (url.startsWith("msg:") ? msgText(channelId, messageId) : ticketText(channelId, 4000)) : "");
     if (!r || r.status !== 200 || !r.j?.ok) throw Object.assign(new Error(r?.j?.error || ""), { status: r?.status ?? 0 });
-    r.j._mode = mode; r.j._at = Date.now(); qres.set(ck, r.j); if (qres.size > 80) qres.delete(qres.keys().next().value as string);
+    r.j._mode = mode; r.j._at = Date.now(); if (!r.j.tpl?.aiErr) qres.set(ck, r.j); if (qres.size > 80) qres.delete(qres.keys().next().value as string);
     return r.j;
 }
 /* отметка «подходит / не подходит» или фраза к шаблону — в приложение, оттуда команде */
 async function fb(o: any) { const { token, port } = settings.store; if (!token) return; try { await Native.quick(Number(port) || 47615, token, "", { name: "fb.txt", mode: "fb" }, JSON.stringify(o)); } catch { } }
 async function openQuick(channelId: string, messageId: string, url: string, name: string, set = "") {
-    const text = url.startsWith("ticket:");
-    ui.loading(text ? "тикет" : name);
+    const text = /^(ticket|msg):/.test(url);
+    ui.loading(url.startsWith("msg:") ? "сообщение" : text ? "тикет" : name);
     try {
         const mode = text ? "text" : "full", ctx: any = { key: url + "|" + set, open: !text && FILE_RE.test(name) ? () => send(channelId, messageId, url, name, null) : null, reload: (s: string) => openQuick(channelId, messageId, url, name, s), fb };
         const r = await quick(channelId, messageId, url, name, mode, set, true); ui.show(r, ctx);
@@ -199,6 +199,23 @@ function ticketButton(li: Element, ch: string, mid: string) {
     /* заранее подобрать шаблон без ИИ — окно «Анализировать» откроется мгновенно */
     if (!prefetched[ch] && !attachmentsOf(ch, LOG_RE).length && settings.store.token && Date.now() > downUntil) { prefetched[ch] = 1; quick(ch, mid, "ticket:" + ch, "ticket.txt", "text", "", true).catch(() => { }); }
 }
+/* текст одного сообщения: сам текст, заголовки, описание и поля встроенных блоков */
+function msgText(ch: string, mid: string) {
+    let m: any = null; try { m = MessageStore.getMessage(ch, mid); } catch { }
+    if (!m) return ""; const out: string[] = [String(m.content ?? "")];
+    for (const em of m.embeds ?? []) { out.push(em.title ?? em.rawTitle ?? "", em.description ?? em.rawDescription ?? ""); for (const f of em.fields ?? []) out.push((f.name ?? f.rawName ?? "") + ": " + (f.value ?? f.rawValue ?? "")); }
+    return out.filter(x => x && x.trim()).join("\n").trim().slice(0, 4000);
+}
+/* «Анализировать» у любого сообщения в любом канале (появляется при наведении): подбор ответа по тексту этого сообщения */
+function msgButton(li: Element, ch: string, mid: string) {
+    if (li.querySelector(".mla-mb")) return;
+    let me = ""; try { me = String(UserStore?.getCurrentUser()?.id ?? ""); } catch { }
+    const m: any = MessageStore.getMessage(ch, mid); if (!m || (me && String(m.author?.id) === me) || msgText(ch, mid).length < 4) return;
+    const acc = li.querySelector('[id^="message-accessories-"]') ?? li, b = document.createElement("button");
+    b.className = "mla-btn mla-mb"; b.type = "button"; b.textContent = "Анализировать"; b.title = "Подобрать ответ по тексту этого сообщения";
+    b.style.marginLeft = "0"; b.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); openQuick(ch, mid, "msg:" + ch + ":" + mid, "message.txt"); });
+    const bar = document.createElement("div"); bar.className = "mla-imgbar mla-mbar"; bar.appendChild(b); acc.appendChild(bar);
+}
 const onKey = (e: KeyboardEvent) => { if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyL") { e.preventDefault(); e.stopPropagation(); hotkey(); } };
 let bq: any[] = [], bBusy = false, downUntil = 0;
 function putBadge(anchor: HTMLElement, r: any, channelId: string, messageId: string, url: string, name: string) {
@@ -222,7 +239,7 @@ async function pumpBadges() {
     } finally { bBusy = false; }
 }
 function imgButton(li: Element, channelId: string, messageId: string, url: string, name: string) {
-    const acc = li.querySelector('[id^="message-accessories-"]') ?? li, key = keyOf(url); let bar = li.querySelector<HTMLElement>(".mla-imgbar");
+    const acc = li.querySelector('[id^="message-accessories-"]') ?? li, key = keyOf(url); let bar = li.querySelector<HTMLElement>(".mla-imgbar:not(.mla-mbar)");
     if (bar && Array.from(bar.children).some((x: any) => x.dataset.u === key)) return;
     if (!bar) { bar = document.createElement("div"); bar.className = "mla-imgbar"; acc.appendChild(bar); }
     const b = document.createElement("button"); b.className = "mla-btn"; b.type = "button"; b.dataset.u = key;
@@ -274,7 +291,9 @@ function scan() {
     }
     for (const li of Array.from(document.querySelectorAll('[id^="chat-messages-"]:not([data-mlat])'))) {
         li.setAttribute("data-mlat", "1"); const m = /^chat-messages-(\d+)-(\d+)$/.exec(li.id);
-        if (m && joined(m[1])) ticketButton(li, m[1], m[2]);
+        if (!m) continue;
+        if (joined(m[1])) ticketButton(li, m[1], m[2]);
+        if (!li.querySelector(".mla-tk")) msgButton(li, m[1], m[2]);
     }
     /* одна кнопка «Все файлы тикета» — у первого файла ветки на экране */
     const first = document.querySelector<HTMLButtonElement>(".mla-one"), ch = first?.dataset.ch ?? "";
@@ -297,7 +316,7 @@ export default definePlugin({
     settings,
     start() {
         style = document.createElement("style");
-        style.textContent = MLA_QCSS + ".mla-btn{margin-left:8px;padding:2px 8px;border-radius:4px;border:1px solid var(--button-outline-brand-border,#5865f2);background:transparent;color:var(--text-link,#00a8fc);font-size:12px;cursor:pointer;vertical-align:middle}.mla-btn:hover{background:rgba(88,101,242,.15)}.mla-btn[disabled]{opacity:.6;cursor:default}.mla-all{font-weight:600}";
+        style.textContent = MLA_QCSS + ".mla-btn{margin-left:8px;padding:2px 8px;border-radius:4px;border:1px solid var(--button-outline-brand-border,#5865f2);background:transparent;color:var(--text-link,#00a8fc);font-size:12px;cursor:pointer;vertical-align:middle}.mla-btn:hover{background:rgba(88,101,242,.15)}.mla-btn[disabled]{opacity:.6;cursor:default}.mla-all{font-weight:600}.mla-mbar{display:none}[id^=chat-messages-]:hover .mla-mbar,.mla-mbar:focus-within{display:flex}";
         document.head.appendChild(style);
         obs = new MutationObserver(() => { clearTimeout(scanT); scanT = window.setTimeout(scan, 150); });
         obs.observe(document.body, { childList: true, subtree: true });

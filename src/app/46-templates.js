@@ -131,11 +131,14 @@ async function tplMatch(text, opt) {
   var text2 = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 3000), loc = tplLocal(set, text2), pick = loc.map(function (x) { return x.i; }), why = '', ask = '', src = pick.length ? 'ключевые слова' : '';
   /* ключевые слова уверенно указали на один шаблон — ИИ не спрашиваем, бесплатный лимит не тратится */
   var sure = loc[0] && loc[0].score >= 2 && (!loc[1] || loc[0].score > loc[1].score);
-  var aiWanted = !sure && srvOn() && text2.length >= 12;
-  if (opt.ai !== false && aiWanted) {
+  var aiWanted = !sure && text2.length >= 12, aiErr = '';
+  if (opt.ai !== false && aiWanted && !srvOn()) aiErr = 'нет входа на сервер команды — откройте Majestic Log Advisor и войдите';
+  else if (opt.ai !== false && aiWanted) {
     var list = set.items.map(function (x, i) { if (x.hide || TPL_SKIP.test(x.t)) return null; var h = tplHint(set.name, x.t); return (i + 1) + '. ' + x.t + (h.when ? ' — когда: ' + h.when : '') + (h.say.length ? ' — игроки пишут: ' + h.say.slice(0, 4).join('; ') : ''); }).filter(Boolean).join('\n');
     var a = await srv('/v1/ai', { body: { system: TPL_SYS, input: 'Шаблоны:\n' + list + '\n\nОбращение игрока:\n' + LA.mask(text2) + (loc.length ? '\n\nПо ключевым словам подходят: ' + loc.map(function (x) { return x.i + 1; }).join(', ') : ''), max: 400 } });
     var j = null; if (a && a.ok) { try { j = JSON.parse(String(a.text).replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch (e) {} }
+    /* причина, по которой ИИ не помог, — показывается в окне «Разбор», чтобы было понятно, что чинить */
+    aiErr = !a ? 'сервер команды не ответил (нет интернета или ключ Gemini не задан на сервере)' : a.error === 'limit' ? 'ваш дневной лимит запросов к ИИ исчерпан' : a.error === 'rate' ? 'бесплатный лимит Gemini на сегодня исчерпан' : !a.ok ? (a.detail || a.error || 'ошибка сервера') : !j ? 'ИИ ответил не по формату' : '';
     if (j && Array.isArray(j.pick)) {
       var ai = j.pick.map(function (n) { return (+n) - 1; }).filter(function (i) { return set.items[i] && !set.items[i].hide; });
       if (ai.length || !pick.length) { pick = ai.concat(pick.filter(function (i) { return ai.indexOf(i) < 0; })).slice(0, 3); src = 'ИИ'; }
@@ -143,7 +146,7 @@ async function tplMatch(text, opt) {
     }
   }
   var V = opt.vars || {}, fill = function (b) { return tplFill(b, V); };
-  return { set: set.name, sets: (TPL.sets || []).map(function (s) { return s.name; }), src: src, why: why, ask: ask, sure: !!sure, more: opt.ai === false && aiWanted,
+  return { set: set.name, sets: (TPL.sets || []).map(function (s) { return s.name; }), src: src, why: why, ask: ask, sure: !!sure, more: opt.ai === false && aiWanted, aiErr: aiErr,
     pick: pick.map(function (i) { var f = tplFit(set.name, set.items[i].t); return { t: set.items[i].t, body: fill(set.items[i].body), up: f.up, down: f.down }; }),
     all: set.items.filter(function (x) { return !x.hide; }).map(function (x) { return { t: x.t, body: fill(x.body) }; }) };
 }

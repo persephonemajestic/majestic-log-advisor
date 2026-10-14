@@ -78,7 +78,8 @@ export function makeQuickUI(env) {
             h += '<div class="mla-sec"><span>Шаблоны команды' + (tp.sets && tp.sets.length > 1 && ctx.reload ? '<span class="mla-sets">' + tp.sets.map((n) => '<button type="button" data-set="' + esc(n) + '" class="' + (n === tp.set ? "on" : "") + '">' + esc(n) + "</button>").join("") + "</span>" : "") + "</span>";
             if (tp.ask) h += '<div class="mla-warn"><div>❓ Уточните у игрока: ' + esc(tp.ask) + '</div><button class="mla-b" type="button" data-tpask="1">Спросить</button></div>';
             h += tp.pick.length ? tp.pick.map(tpl).join("") : '<div class="mla-why">Подходящий шаблон не найден — найдите вручную.</div>';
-            if (tp.why) h += '<div class="mla-src">' + esc(tp.why) + (tp.src ? " · " + esc(tp.src) : "") + "</div>";
+            if (tp.why || tp.src) h += '<div class="mla-src">' + (tp.why ? esc(tp.why) + " · " : "") + "подобрано: " + esc(tp.src === "ИИ" ? "ИИ" : tp.src ? "по ключевым словам" : "—") + "</div>";
+            if (tp.aiErr) h += '<div class="mla-src" style="color:var(--text-warning,#f0b232)">ИИ не помог: ' + esc(tp.aiErr) + "</div>";
             h += '<input class="mla-tq" type="search" placeholder="Найти шаблон по названию или тексту…" spellcheck="false"><div class="mla-tl"></div></div>';
         } else if (r.kind === "text") h += '<div class="mla-why">Приложение не нашло шаблонов команды. В Majestic Log Advisor откройте «Ещё» → «Настройки» → «Шаблоны ответов команды»: если там «Шаблонов пока нет» — загрузите файл, если шаблоны есть — нажмите «Обновить» и повторите разбор.</div>';
         if (r.reply) h += '<div class="mla-sec"><span>Ответ игроку — можно поправить</span><textarea class="mla-ta" spellcheck="true"></textarea></div>';

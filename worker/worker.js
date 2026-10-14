@@ -169,9 +169,9 @@ export default {
       const img = b.image && /^image\/(jpeg|png|webp)$/.test(String(b.image.mime || '')) && typeof b.image.data === 'string' && b.image.data.length <= 6000000 && /^[A-Za-z0-9+/=]+$/.test(b.image.data.slice(0, 200)) ? { mime_type: b.image.mime, data: b.image.data } : null;
       /* Модели по очереди: у бесплатного уровня Gemini свой дневной лимит у каждой модели на весь проект (у Flash-Lite ~500 в день, у Flash ~20),
          поэтому по умолчанию сначала Flash-Lite, при исчерпании лимита (429) — следующая модель. tier=smart (разбор дампа) начинает с Flash. */
-      const lite = String(env.GEMINI_MODELS || 'gemini-3.5-flash-lite,gemini-3.1-flash-lite').split(',').map((x) => x.trim()).filter(Boolean);
-      const smart = String(env.GEMINI_MODEL || 'gemini-3.8-flash').trim();
-      const models = (b.tier === 'smart' ? [smart].concat(lite) : lite.concat([smart])).filter((x, i, a) => a.indexOf(x) === i);
+      const lite = String(env.GEMINI_MODELS || 'gemini-3.5-flash-lite,gemini-2.5-flash-lite').split(',').map((x) => x.trim()).filter(Boolean);
+      const smart = String(env.GEMINI_MODEL || 'gemini-3.5-flash').trim();
+      const models = (b.tier === 'smart' ? [smart].concat(lite) : lite.concat([smart])).concat(['gemini-2.5-flash']).filter((x, i, a) => a.indexOf(x) === i);
       const model = 'auto:' + (b.tier === 'smart' ? 'smart' : 'lite');
       /* кэш: тот же запрос к той же модели и промпту отдаётся из KV и не тратит дневной лимит */
       let ck = ''; try { const dg = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(model + '\n' + sys + '\n' + inp + '\n' + (parseInt(b.max, 10) || 0) + (img ? '\n' + img.data : ''))); ck = 'ac:' + Array.from(new Uint8Array(dg)).slice(0, 16).map((x) => x.toString(16).padStart(2, '0')).join(''); } catch (e) {}
@@ -185,7 +185,7 @@ export default {
           r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + mdl + ':generateContent', { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
           body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text: inp }].concat(img ? [{ inline_data: img }] : []) }], generationConfig: { responseMimeType: 'application/json', temperature: 0.2, maxOutputTokens: Math.max(256, Math.min(parseInt(b.max, 10) || 8192, 8192)) } }) });
         } catch (e) { return json({ ok: false, error: 'upstream', detail: 'нет связи с Gemini' }); }
-        used = mdl; if (r.status !== 429 && r.status !== 404) break;
+        used = mdl; if ([400, 404, 429, 500, 503].indexOf(r.status) < 0) break; /* модели нет, лимит или перегрузка — пробуем следующую */
       }
       if (!r.ok) { await bump(env, 'aiu', [r.status === 429 ? 'rate' : 'fail']); let m = ''; try { m = ((await r.json()).error || {}).message || ''; } catch (e) {} return json({ ok: false, error: r.status === 429 ? 'rate' : 'upstream', detail: 'Gemini ' + r.status + ' (' + used + ')' + (m ? ': ' + String(m).slice(0, 160) : '') }); }
       let j = {}; try { j = await r.json(); } catch (e) {}
