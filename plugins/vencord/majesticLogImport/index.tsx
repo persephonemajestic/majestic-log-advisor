@@ -15,7 +15,7 @@ import { makeQuickUI, MLA_HOTKEY, MLA_QCSS, quickErr } from "./quickui";
 const Native = VencordNative.pluginHelpers.MajesticLogImport as PluginNative<typeof import("./native")>;
 
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.7";
+const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.8";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 const settings = definePluginSettings({
@@ -206,16 +206,31 @@ function msgText(ch: string, mid: string) {
     for (const em of m.embeds ?? []) { out.push(em.title ?? em.rawTitle ?? "", em.description ?? em.rawDescription ?? ""); for (const f of em.fields ?? []) out.push((f.name ?? f.rawName ?? "") + ": " + (f.value ?? f.rawValue ?? "")); }
     return out.filter(x => x && x.trim()).join("\n").trim().slice(0, 4000);
 }
-/* «Анализировать» у любого сообщения в любом канале (появляется при наведении): подбор ответа по тексту этого сообщения */
-function msgButton(li: Element, ch: string, mid: string) {
-    if (li.querySelector(".mla-mb")) return;
-    let me = ""; try { me = String(UserStore?.getCurrentUser()?.id ?? ""); } catch { }
-    const m: any = MessageStore.getMessage(ch, mid); if (!m || (me && String(m.author?.id) === me) || msgText(ch, mid).length < 4) return;
-    const acc = li.querySelector('[id^="message-accessories-"]') ?? li, b = document.createElement("button");
-    b.className = "mla-btn mla-mb"; b.type = "button"; b.textContent = "Анализировать"; b.title = "Подобрать ответ по тексту этого сообщения";
-    b.style.marginLeft = "0"; b.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); openQuick(ch, mid, "msg:" + ch + ":" + mid, "message.txt"); });
-    const bar = document.createElement("div"); bar.className = "mla-imgbar mla-mbar"; bar.appendChild(b); acc.appendChild(bar);
+/* «Анализировать» у любого сообщения в любом канале: одна плавающая кнопка поверх сообщения под курсором.
+   В сами сообщения ничего не вставляется — высота сообщений не меняется, лента при прокрутке не прыгает. */
+let hb: HTMLButtonElement | null = null, hbLi: Element | null = null, hbAt: string[] | null = null;
+const hbOk = new Map<string, boolean>();
+function hbHide() { if (hb) hb.style.display = "none"; hbLi = null; }
+function hbEligible(ch: string, mid: string) {
+    const k = ch + ":" + mid; if (hbOk.has(k)) return hbOk.get(k)!;
+    let ok = false; try { const me = String(UserStore?.getCurrentUser()?.id ?? ""), m: any = MessageStore.getMessage(ch, mid); ok = !!m && !(me && String(m.author?.id) === me) && msgText(ch, mid).length >= 4; } catch { }
+    if (hbOk.size > 500) hbOk.clear(); hbOk.set(k, ok); return ok;
 }
+const onOver = (e: MouseEvent) => {
+    const t = e.target as HTMLElement; if (!hb || t === hb) return; const li = t.closest?.('[id^="chat-messages-"]');
+    if (!li) return hbHide(); const m = /^chat-messages-(\d+)-(\d+)$/.exec(li.id); if (!m || (hbLi === li && hb.style.display === "block")) return;
+    if (!hbEligible(m[1], m[2])) return hbHide();
+    const r = li.getBoundingClientRect(); hbLi = li; hbAt = [m[1], m[2]];
+    hb.style.display = "block"; hb.style.top = Math.max(0, r.bottom - 26) + "px"; hb.style.left = Math.max(0, r.right - hb.offsetWidth - 16) + "px";
+};
+const onScroll = () => hbHide();
+function hoverStart() {
+    hb = document.createElement("button"); hb.className = "mla-btn mla-hb"; hb.type = "button"; hb.textContent = "Анализировать"; hb.title = "Подобрать ответ по тексту этого сообщения";
+    hb.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); const t = hbAt; hbHide(); if (t) openQuick(t[0], t[1], "msg:" + t[0] + ":" + t[1], "message.txt"); });
+    document.body.appendChild(hb);
+    document.addEventListener("mouseover", onOver, { passive: true }); document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+}
+function hoverStop() { document.removeEventListener("mouseover", onOver); document.removeEventListener("scroll", onScroll, true); hb?.remove(); hb = null; }
 const onKey = (e: KeyboardEvent) => { if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyL") { e.preventDefault(); e.stopPropagation(); hotkey(); } };
 let bq: any[] = [], bBusy = false, downUntil = 0;
 function putBadge(anchor: HTMLElement, r: any, channelId: string, messageId: string, url: string, name: string) {
@@ -293,7 +308,6 @@ function scan() {
         li.setAttribute("data-mlat", "1"); const m = /^chat-messages-(\d+)-(\d+)$/.exec(li.id);
         if (!m) continue;
         if (joined(m[1])) ticketButton(li, m[1], m[2]);
-        if (!li.querySelector(".mla-tk")) msgButton(li, m[1], m[2]);
     }
     /* одна кнопка «Все файлы тикета» — у первого файла ветки на экране */
     const first = document.querySelector<HTMLButtonElement>(".mla-one"), ch = first?.dataset.ch ?? "";
@@ -316,7 +330,7 @@ export default definePlugin({
     settings,
     start() {
         style = document.createElement("style");
-        style.textContent = MLA_QCSS + ".mla-btn{margin-left:8px;padding:2px 8px;border-radius:4px;border:1px solid var(--button-outline-brand-border,#5865f2);background:transparent;color:var(--text-link,#00a8fc);font-size:12px;cursor:pointer;vertical-align:middle}.mla-btn:hover{background:rgba(88,101,242,.15)}.mla-btn[disabled]{opacity:.6;cursor:default}.mla-all{font-weight:600}.mla-mbar{display:none}[id^=chat-messages-]:hover .mla-mbar,.mla-mbar:focus-within{display:flex}";
+        style.textContent = MLA_QCSS + ".mla-btn{margin-left:8px;padding:2px 8px;border-radius:4px;border:1px solid var(--button-outline-brand-border,#5865f2);background:transparent;color:var(--text-link,#00a8fc);font-size:12px;cursor:pointer;vertical-align:middle}.mla-btn:hover{background:rgba(88,101,242,.15)}.mla-btn[disabled]{opacity:.6;cursor:default}.mla-all{font-weight:600}.mla-hb{position:fixed;z-index:100;margin:0;display:none;background:var(--background-floating,#111214);box-shadow:0 2px 8px rgba(0,0,0,.3)}";
         document.head.appendChild(style);
         obs = new MutationObserver(() => { clearTimeout(scanT); scanT = window.setTimeout(scan, 150); });
         obs.observe(document.body, { childList: true, subtree: true });
@@ -325,11 +339,12 @@ export default definePlugin({
         upT = window.setTimeout(checkUpdate, 15000);
         upTimer = window.setInterval(checkUpdate, 6 * 3600 * 1000);
         document.addEventListener("keydown", onKey, true);
+        hoverStart();
         if (localStorage.getItem("MajesticLogImport.told150") !== "1") { localStorage.setItem("MajesticLogImport.told150", "1"); setTimeout(() => showToast("MajesticLogImport 1.5: «Разбор» у логов и скриншотов, «Анализировать» под описанием проблемы — готовый шаблон команды по тексту игрока. " + MLA_HOTKEY + " — разбор тикета с клавиатуры.", "message"), 4000); }
     },
     stop() {
         obs?.disconnect(); obs = null; clearInterval(timer); clearTimeout(upT); clearInterval(upTimer); style?.remove(); style = null;
-        document.removeEventListener("keydown", onKey, true); ui.close(); bq = [];
+        document.removeEventListener("keydown", onKey, true); hoverStop(); ui.close(); bq = [];
         document.querySelectorAll(".mla-btn, .mla-badge, .mla-imgbar").forEach(b => b.remove());
         document.querySelectorAll("[data-mla]").forEach(a => a.removeAttribute("data-mla"));
         document.querySelectorAll("[data-mlat]").forEach(a => a.removeAttribute("data-mlat"));

@@ -176,10 +176,12 @@ const EXCASES = [
     ok(await p.evaluate(() => /Ник: Ivan_Petrov/.test(window.__quicks[0].text || '') && !/Support_Guy/.test(window.__quicks[0].text || '')), kind + ': в подбор уходит текст игрока, без сообщений саппорта');
     /* «Анализировать» у каждого чужого сообщения (при наведении) — подбор по тексту этого сообщения */
     await p.keyboard.press('Escape'); await p.mouse.move(1, 1);
-    const mb = await p.evaluate(() => ({ n: document.querySelectorAll('.mla-mb').length, hidden: [...document.querySelectorAll('.mla-mbar')].every((x) => getComputedStyle(x).display === 'none') }));
-    ok(mb.n >= 1 && mb.hidden, kind + ': у сообщений есть «Анализировать», видна при наведении (' + JSON.stringify(mb) + ')');
-    await p.evaluate(() => { window.__quicks = []; document.querySelector('.mla-mb').click(); }); await p.waitForTimeout(300);
+    const mb = await p.evaluate(() => { const li = document.querySelector('[id^="chat-messages-"]'), h0 = li.offsetHeight, hb = document.querySelector('.mla-hb'), hidden = getComputedStyle(hb).display === 'none'; li.querySelector('*').dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); return { hidden, shown: getComputedStyle(hb).display === 'block', same: li.offsetHeight === h0, inside: !!li.querySelector('.mla-hb, .mla-mb') }; });
+    ok(mb.hidden && mb.shown && mb.same && !mb.inside, kind + ': «Анализировать» — плавающая кнопка над сообщением, высота сообщения не меняется (' + JSON.stringify(mb) + ')');
+    await p.evaluate(() => { window.__quicks = []; document.querySelector('.mla-hb').click(); }); await p.waitForTimeout(300);
     ok(await p.evaluate(() => window.__quicks[0] && window.__quicks[0].mode === 'text' && window.__quicks[0].name === 'message.txt' && /^msg:/.test(window.__quicks[0].url)), kind + ': «Анализировать» у сообщения подбирает ответ по его тексту');
+    await p.keyboard.press('Escape'); await p.evaluate(() => { const hb = document.querySelector('.mla-hb'); document.querySelector('[id^="chat-messages-"]').dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); document.dispatchEvent(new Event('scroll')); window.__hbAfterScroll = getComputedStyle(hb).display; });
+    ok(await p.evaluate(() => window.__hbAfterScroll === 'none'), kind + ': при прокрутке кнопка прячется');
     if (kind === 'BetterDiscord') {
       await p.keyboard.press('Escape'); await p.evaluate(() => { window.__p.qres.clear(); window.__quickRes.tpl.aiErr = 'бесплатный лимит Gemini на сегодня исчерпан'; window.__p.textQuick('100'); }); await p.waitForTimeout(300);
       ok(/ИИ не помог: бесплатный лимит Gemini/.test(await p.textContent('.mla-pop').catch(() => '')), kind + ': если ИИ не ответил, окно пишет почему');

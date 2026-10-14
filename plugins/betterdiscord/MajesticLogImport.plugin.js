@@ -1,6 +1,6 @@
 /**
  * @name MajesticLogImport
- * @version 1.7.7
+ * @version 1.7.8
  * @description «Разбор» логов и скриншотов прямо в тикете: причина, как чинить и готовый ответ игроку одной кнопкой. «В анализатор» отправляет файл в Majestic Log Advisor. Ctrl+Shift+L — разбор последнего лога тикета.
  * @author persephonemajestic
  * @source https://github.com/persephonemajestic/majestic-log-advisor/tree/main/plugins/betterdiscord
@@ -14,7 +14,7 @@
    «Разбор» (логи, zip, скриншоты): файл разбирается в приложении, но не добавляется в список; ответ — окно поверх Discord.
    Значки на логах: плагин сам разбирает логи игрока в открытой ветке и подписывает итог рядом с файлом (можно выключить). */
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.7";
+const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.8";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 /* MLA-QUICKUI-START — общий код окна «Разбор» для Vencord и BetterDiscord (в BetterDiscord вставляется скриптом plugins/sync-quickui.py) */
@@ -243,13 +243,14 @@ module.exports = class MajesticLogImport {
         this.ui = makeQuickUI({ insert: (t) => this.insert(t), copy: (t) => this.copy(t), toast: (t, k) => this.toast(t, k) });
         this.onKey = (e) => { if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === "KeyL") { e.preventDefault(); e.stopPropagation(); this.hotkey(); } };
         document.addEventListener("keydown", this.onKey, true);
+        this.hoverStart();
         if (BdApi.Data.load("MajesticLogImport", "told150") !== true) { BdApi.Data.save("MajesticLogImport", "told150", true); setTimeout(() => this.toast("MajesticLogImport 1.5: «Разбор» у логов и скриншотов, «Анализировать» под описанием проблемы — готовый шаблон команды по тексту игрока. " + MLA_HOTKEY + " — разбор тикета с клавиатуры.", "info"), 4000); }
-        BdApi.DOM.addStyle("MajesticLogImport", MLA_QCSS + ".mla-btn{margin-left:8px;padding:2px 8px;border-radius:4px;border:1px solid var(--button-outline-brand-border,#5865f2);background:transparent;color:var(--text-link,#00a8fc);font-size:12px;cursor:pointer;vertical-align:middle}.mla-btn:hover{background:rgba(88,101,242,.15)}.mla-btn[disabled]{opacity:.6;cursor:default}.mla-all{font-weight:600}.mla-mbar{display:none}[id^=chat-messages-]:hover .mla-mbar,.mla-mbar:focus-within{display:flex}");
+        BdApi.DOM.addStyle("MajesticLogImport", MLA_QCSS + ".mla-btn{margin-left:8px;padding:2px 8px;border-radius:4px;border:1px solid var(--button-outline-brand-border,#5865f2);background:transparent;color:var(--text-link,#00a8fc);font-size:12px;cursor:pointer;vertical-align:middle}.mla-btn:hover{background:rgba(88,101,242,.15)}.mla-btn[disabled]{opacity:.6;cursor:default}.mla-all{font-weight:600}.mla-hb{position:fixed;z-index:100;margin:0;display:none;background:var(--background-floating,#111214);box-shadow:0 2px 8px rgba(0,0,0,.3)}");
     }
     stop() {
         if (this.obs) this.obs.disconnect(); this.obs = null; clearInterval(this.timer); clearInterval(this.upTimer); clearTimeout(this.upT);
         BdApi.DOM.removeStyle("MajesticLogImport");
-        document.removeEventListener("keydown", this.onKey, true); if (this.ui) this.ui.close(); this.bq = [];
+        document.removeEventListener("keydown", this.onKey, true); this.hoverStop(); if (this.ui) this.ui.close(); this.bq = [];
         document.querySelectorAll(".mla-btn, .mla-badge, .mla-imgbar").forEach(b => b.remove());
         document.querySelectorAll("[data-mla]").forEach(a => a.removeAttribute("data-mla"));
         document.querySelectorAll("[data-mlat]").forEach(a => a.removeAttribute("data-mlat"));
@@ -305,7 +306,6 @@ module.exports = class MajesticLogImport {
             li.setAttribute("data-mlat", "1"); const m = /^chat-messages-(\d+)-(\d+)$/.exec(li.id);
             if (!m) continue;
             if (this.joined(m[1])) this.ticketButton(li, m[1], m[2]);
-            if (!li.querySelector(".mla-tk")) this.msgButton(li, m[1], m[2]);
         }
         /* одна кнопка «Все файлы тикета» — у первого файла ветки на экране */
         const one = document.querySelector(".mla-one");
@@ -506,16 +506,29 @@ module.exports = class MajesticLogImport {
         for (const em of m.embeds || []) { out.push(em.title || em.rawTitle || "", em.description || em.rawDescription || ""); for (const f of em.fields || []) out.push((f.name || f.rawName || "") + ": " + (f.value || f.rawValue || "")); }
         return out.filter((x) => x && x.trim()).join("\n").trim().slice(0, 4000);
     }
-    /* «Анализировать» у любого сообщения в любом канале (появляется при наведении): подбор ответа по тексту этого сообщения */
-    msgButton(li, ch, mid) {
-        if (li.querySelector(".mla-mb")) return;
-        let me = ""; try { me = this.store("UserStore")?.getCurrentUser()?.id || ""; } catch (e) {}
-        const m = this.store("MessageStore")?.getMessage(ch, mid); if (!m || (me && m.author?.id === me) || this.msgText(ch, mid).length < 4) return;
-        const acc = li.querySelector('[id^="message-accessories-"]') || li, b = document.createElement("button");
-        b.className = "mla-btn mla-mb"; b.type = "button"; b.textContent = "Анализировать"; b.title = "Подобрать ответ по тексту этого сообщения";
-        b.style.marginLeft = "0"; b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); this.openQuick(ch, mid, "msg:" + ch + ":" + mid, "message.txt"); });
-        const bar = document.createElement("div"); bar.className = "mla-imgbar mla-mbar"; bar.appendChild(b); acc.appendChild(bar);
+    /* «Анализировать» у любого сообщения в любом канале: одна плавающая кнопка поверх сообщения под курсором.
+       В сами сообщения ничего не вставляется — высота сообщений не меняется, лента при прокрутке не прыгает. */
+    hoverStart() {
+        const b = this.hb = document.createElement("button"); b.className = "mla-btn mla-hb"; b.type = "button"; b.textContent = "Анализировать"; b.title = "Подобрать ответ по тексту этого сообщения";
+        b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); const t = this.hbAt; this.hbHide(); if (t) this.openQuick(t[0], t[1], "msg:" + t[0] + ":" + t[1], "message.txt"); });
+        document.body.appendChild(b); this.hbOk = new Map();
+        this.onOver = (e) => {
+            if (e.target === b) return; const li = e.target.closest && e.target.closest('[id^="chat-messages-"]');
+            if (!li) return this.hbHide(); const m = /^chat-messages-(\d+)-(\d+)$/.exec(li.id); if (!m || (this.hbLi === li && b.style.display === "block")) return;
+            if (!this.hbEligible(m[1], m[2])) return this.hbHide();
+            const r = li.getBoundingClientRect(); this.hbLi = li; this.hbAt = [m[1], m[2]];
+            b.style.display = "block"; b.style.top = Math.max(0, r.bottom - 26) + "px"; b.style.left = Math.max(0, r.right - b.offsetWidth - 16) + "px";
+        };
+        this.onScroll = () => this.hbHide();
+        document.addEventListener("mouseover", this.onOver, { passive: true }); document.addEventListener("scroll", this.onScroll, { capture: true, passive: true });
     }
+    hbHide() { if (this.hb) this.hb.style.display = "none"; this.hbLi = null; }
+    hbEligible(ch, mid) {
+        const k = ch + ":" + mid; if (this.hbOk.has(k)) return this.hbOk.get(k);
+        let me = "", ok = false; try { me = this.store("UserStore")?.getCurrentUser()?.id || ""; const m = this.store("MessageStore")?.getMessage(ch, mid); ok = !!m && !(me && m.author?.id === me) && this.msgText(ch, mid).length >= 4; } catch (e) {}
+        if (this.hbOk.size > 500) this.hbOk.clear(); this.hbOk.set(k, ok); return ok;
+    }
+    hoverStop() { document.removeEventListener("mouseover", this.onOver); document.removeEventListener("scroll", this.onScroll, true); if (this.hb) this.hb.remove(); this.hb = null; }
     imgButton(li, channelId, messageId, url, name) {
         const acc = li.querySelector('[id^="message-accessories-"]') || li, key = url.replace(/[?#].*$/, ""); let bar = li.querySelector(".mla-imgbar:not(.mla-mbar)");
         if (bar && Array.from(bar.children).some((x) => x.dataset.u === key)) return;
