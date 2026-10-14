@@ -145,6 +145,12 @@ const EXCASES = [
     const qm = await p.evaluate(() => window.__quicks[0]);
     ok(qm && qm.name === 'client.log' && qm.ticket === 'ticket-1234' && qm.siblings.indexOf('main.log') >= 0 && !/\?/.test(qm.url), kind + ': в разбор уходят имя, тикет и остальные файлы тикета');
     await p.click('.mla-pop [data-ask]'); await p.waitForTimeout(100);
+    ok(await p.evaluate(() => !document.querySelector('.mla-pop')), kind + ': после «Попросить у игрока» окно закрывается');
+    /* окно открыто, а фокус в поле сообщения Discord: Enter отправляет сообщение, шаблон не подменяет текст */
+    await p.click('.mla-q >> nth=0'); await p.waitForSelector('.mla-pop textarea', { timeout: 3000 }).catch(() => {});
+    await p.evaluate(() => { let ed = document.getElementById('chatbox'); if (!ed) { ed = document.createElement('div'); ed.id = 'chatbox'; ed.contentEditable = 'true'; document.body.appendChild(ed); } ed.focus(); window.__n0 = window.__ins.length; });
+    await p.keyboard.press('Enter'); await p.waitForTimeout(100);
+    ok(await p.evaluate(() => window.__ins.length === window.__n0 && !!document.querySelector('.mla-pop')), kind + ': Enter в поле сообщения не вставляет шаблон из окна');
     await p.evaluate(() => { document.querySelector('.mla-pop textarea').value = 'Поправленный ответ'; });
     await p.click('.mla-pop [data-a=ins]'); await p.waitForTimeout(100);
     ok(await p.evaluate(() => window.__ins.join('|') === 'Пришлите свежий лог|Поправленный ответ' && !document.querySelector('.mla-pop')), kind + ': «Попросить» и «Вставить ответ в чат» вставляют текст в поле сообщения (с правками)');

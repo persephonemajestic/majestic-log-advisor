@@ -1,6 +1,6 @@
 /**
  * @name MajesticLogImport
- * @version 1.7.6
+ * @version 1.7.7
  * @description «Разбор» логов и скриншотов прямо в тикете: причина, как чинить и готовый ответ игроку одной кнопкой. «В анализатор» отправляет файл в Majestic Log Advisor. Ctrl+Shift+L — разбор последнего лога тикета.
  * @author persephonemajestic
  * @source https://github.com/persephonemajestic/majestic-log-advisor/tree/main/plugins/betterdiscord
@@ -14,7 +14,7 @@
    «Разбор» (логи, zip, скриншоты): файл разбирается в приложении, но не добавляется в список; ответ — окно поверх Discord.
    Значки на логах: плагин сам разбирает логи игрока в открытой ветке и подписывает итог рядом с файлом (можно выключить). */
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.6";
+const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.7";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 /* MLA-QUICKUI-START — общий код окна «Разбор» для Vencord и BetterDiscord (в BetterDiscord вставляется скриптом plugins/sync-quickui.py) */
@@ -50,7 +50,9 @@ function makeQuickUI(env) {
         if (e.key === "Escape") { e.stopPropagation(); close(); return; }
         const typing = /^(INPUT|TEXTAREA)$/.test((document.activeElement || {}).tagName || "") && box.contains(document.activeElement);
         if (cur.keys && e.altKey && /^Digit[1-3]$/.test(e.code)) { e.preventDefault(); e.stopPropagation(); cur.keys.pick(+e.code.slice(5) - 1); return; }
-        if (typing || !cur.keys) return;
+        /* фокус в поле сообщения Discord или другом поле вне окна — клавиши принадлежат Discord (Enter отправляет сообщение) */
+        const ae = document.activeElement, outside = ae && ae !== document.body && !box.contains(ae) && (ae.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
+        if (typing || outside || !cur.keys) return;
         if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); cur.keys.move(e.key === "ArrowDown" ? 1 : -1); }
         else if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); cur.keys.enter(); }
     };
@@ -63,7 +65,8 @@ function makeQuickUI(env) {
         ["mousedown", "keydown", "keypress", "paste"].forEach((ev) => box.addEventListener(ev, (e) => e.stopPropagation()));
         return box;
     };
-    const put = (text, what) => { if (env.insert(text)) env.toast(what + " вставлен в поле сообщения: проверьте и отправьте", "success"); else { env.copy(text); env.toast(what + " скопирован: вставьте в чат (Ctrl+V)", "info"); } };
+    /* после вставки окно закрывается: дальше Enter в поле сообщения отправляет его, а не вставляет шаблон */
+    const put = (text, what) => { close(); if (env.insert(text)) env.toast(what + " вставлен в поле сообщения: проверьте и отправьте", "success"); else { env.copy(text); env.toast(what + " скопирован: вставьте в чат (Ctrl+V)", "info"); } };
     function loading(name) {
         const b = shell("Разбираю " + (name || "файл") + "…");
         b.querySelector(".mla-pop-b").innerHTML = '<div class="mla-why">Файл разбирается в Majestic Log Advisor на этом компьютере.</div>';

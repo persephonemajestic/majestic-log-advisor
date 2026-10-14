@@ -32,7 +32,9 @@ export function makeQuickUI(env) {
         if (e.key === "Escape") { e.stopPropagation(); close(); return; }
         const typing = /^(INPUT|TEXTAREA)$/.test((document.activeElement || {}).tagName || "") && box.contains(document.activeElement);
         if (cur.keys && e.altKey && /^Digit[1-3]$/.test(e.code)) { e.preventDefault(); e.stopPropagation(); cur.keys.pick(+e.code.slice(5) - 1); return; }
-        if (typing || !cur.keys) return;
+        /* фокус в поле сообщения Discord или другом поле вне окна — клавиши принадлежат Discord (Enter отправляет сообщение) */
+        const ae = document.activeElement, outside = ae && ae !== document.body && !box.contains(ae) && (ae.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
+        if (typing || outside || !cur.keys) return;
         if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); cur.keys.move(e.key === "ArrowDown" ? 1 : -1); }
         else if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); cur.keys.enter(); }
     };
@@ -45,7 +47,8 @@ export function makeQuickUI(env) {
         ["mousedown", "keydown", "keypress", "paste"].forEach((ev) => box.addEventListener(ev, (e) => e.stopPropagation()));
         return box;
     };
-    const put = (text, what) => { if (env.insert(text)) env.toast(what + " вставлен в поле сообщения: проверьте и отправьте", "success"); else { env.copy(text); env.toast(what + " скопирован: вставьте в чат (Ctrl+V)", "info"); } };
+    /* после вставки окно закрывается: дальше Enter в поле сообщения отправляет его, а не вставляет шаблон */
+    const put = (text, what) => { close(); if (env.insert(text)) env.toast(what + " вставлен в поле сообщения: проверьте и отправьте", "success"); else { env.copy(text); env.toast(what + " скопирован: вставьте в чат (Ctrl+V)", "info"); } };
     function loading(name) {
         const b = shell("Разбираю " + (name || "файл") + "…");
         b.querySelector(".mla-pop-b").innerHTML = '<div class="mla-why">Файл разбирается в Majestic Log Advisor на этом компьютере.</div>';
