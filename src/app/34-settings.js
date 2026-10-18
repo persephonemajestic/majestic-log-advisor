@@ -23,9 +23,9 @@ function applyView() {
 }
 function openSettings() {
   var K = keyMap(), auto = S.kb.settings.autoUpdate !== false;
-  var h = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" aria-label="Настройки"><b>Настройки</b><h4 style="margin:6px 0 2px">Горячие клавиши</h4><p class="hint" style="margin:0">Нажмите на кнопку справа и затем на нужную клавишу. Одна клавиша без Ctrl и Alt; в полях ввода они не работают. Дополнительно без настройки: J и K листают логи, R копирует ответ игроку, E открывает закрытие дела.</p><div style="display:grid;gap:4px">';
+  var h = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" aria-label="Настройки"><b>Настройки</b><h4 class="kh" style="margin:6px 0 2px">Горячие клавиши</h4><p class="hint kh" style="margin:0">Нажмите на кнопку справа и затем на нужную клавишу. Одна клавиша без Ctrl и Alt; в полях ввода они не работают. Дополнительно без настройки: J и K листают логи, R копирует ответ игроку, E открывает закрытие дела.</p><div class="kh" style="display:grid;gap:4px">';
   h += Object.keys(KEYDEF).map(function (k) { var on = S.bind === k; return '<div class="lt"><span style="flex:1">' + KEYNAME[k] + '</span><button class="btn sm' + (on ? ' primary' : '') + '" data-act="keyBind" data-k="' + k + '" style="min-width:120px">' + (on ? 'Нажмите клавишу…' : esc(codeLabel(K[k]))) + '</button><button class="btn sm ghost" data-act="keyClear" data-k="' + k + '" title="Убрать клавишу" aria-label="Убрать клавишу">×</button></div>'; }).join('');
-  h += '</div><div class="row-actions"><button class="btn sm" data-act="keyReset">Сбросить к стандартным</button></div>';
+  h += '</div><div class="row-actions kh"><button class="btn sm" data-act="keyReset">Сбросить к стандартным</button></div>';
   if (window.nativeApp && window.nativeApp.updateCheck) h += '<h4 style="margin:10px 0 2px">Обновления</h4><label class="tgl"><input type="checkbox" id="autoUpd"' + (auto ? ' checked' : '') + '> Скачивать обновления в фоне (иначе приложение только предложит)</label><label class="tgl"><input type="checkbox" id="autoApply"' + (S.kb.settings.autoApply !== false ? ' checked' : '') + (auto ? '' : ' disabled') + '> Применять сами, когда вы не работаете в приложении: окно свёрнуто 2 минуты или 5 минут без действий. Открытый лог, вкладка и прокрутка сохраняются</label>';
   if (srvOn()) h += '<h4 style="margin:10px 0 2px">Резервная копия базы знаний</h4><p class="hint" style="margin:0">Копия хранится на сервере и делается сама раз в сутки. Её можно вернуть после переустановки Windows. ' + (S.kb.settings.backupAt ? 'Последняя копия: ' + esc(fmtDT(S.kb.settings.backupAt)) + '.' : 'Копии ещё не было.') + '</p><div class="row-actions"><button class="btn sm" data-act="bkNow">Сделать копию сейчас</button><button class="btn sm" data-act="bkRestore">Восстановить из копии</button></div>';
   if (srvOn()) h += '<h4 style="margin:10px 0 2px">Массовые проблемы</h4><p class="hint" style="margin:0">Когда одинаковых проблем в логах команды больше порога, приложение покажет уведомление с быстрым решением.</p><div class="lt"><label class="nl inl">За день<input type="number" min="2" id="massDay" value="' + massTh().day + '" style="width:90px"></label><label class="nl inl">За неделю<input type="number" min="2" id="massWeek" value="' + massTh().week + '" style="width:90px"></label></div>';
@@ -241,9 +241,10 @@ async function pulse() {
     if (r.online != null) { var oe = $('#online'); if (oe) { oe.hidden = false; oe.textContent = 'Онлайн: ' + r.online; oe.title = (r.names || []).join(', '); } }
     if (r.sv !== undefined && r.sv !== S.shared.sv && r.sv !== '') fetchShared();
     if (!first && r.rv && r.rv !== prev.rv) loadTeam(false);
-    if (!S.shellVer && window.nativeApp.shellInfo) { try { var si = await window.nativeApp.shellInfo(); S.shellVer = si && si.version || ''; } catch (e) {} }
+    if (!S.shellVer && window.nativeApp && window.nativeApp.shellInfo) { try { var si = await window.nativeApp.shellInfo(); S.shellVer = si && si.version || ''; } catch (e) {} }
     var vg = function (a, b) { var x = String(a || '').split(/[-.]/).map(Number), y = String(b || '').split(/[-.]/).map(Number); for (var i = 0; i < Math.max(x.length, y.length); i++) { var d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0; } return false; };
-    if (vg(r.app, APP_VERSION) || (S.shellVer && vg(r.shell, S.shellVer))) checkUpdates(false, r.shell);
+    if (WEB) { if (vg(r.app, APP_VERSION)) webUpdate(r.app); }
+    else if (vg(r.app, APP_VERSION) || (S.shellVer && vg(r.shell, S.shellVer))) checkUpdates(false, r.shell);
   } finally { pulseBusy = false; }
 }
 

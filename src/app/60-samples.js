@@ -54,6 +54,7 @@ var SAMPLE_CLIENT = String.raw`[18:58:35.840] Logger initialized
 S.mask = false; /* в интерфейсе ничего не прячем: маска мешала шаблонам (DNS и т.п.); на сервер логи по-прежнему уходят обезличенными */
 var subEl = document.querySelector('#ver'); if (subEl) subEl.textContent = 'версия ' + APP_VERSION;
 if (window.nativeApp && window.nativeApp.shellInfo) window.nativeApp.shellInfo().then(function (i) { if (!i || !i.hwid || !subEl) return; subEl.insertAdjacentHTML('beforeend', '<div style="margin-top:10px;font-family:var(--sans)">Код компьютера<br><code id="hwidCode" style="user-select:all">' + esc(i.hwid) + '</code> <button class="btn sm ghost" id="hwidCopy" type="button">Копировать</button></div>'); var hb = document.getElementById('hwidCopy'); if (hb) hb.addEventListener('click', function () { try { window.nativeApp.copy(i.hwid); status('Код компьютера скопирован.'); } catch (e) {} }); }).catch(function () {});
+if (WEB && subEl) subEl.insertAdjacentHTML('beforeend', '<div style="margin-top:10px;font-family:var(--sans)">Код устройства<br><code id="hwidCode" style="user-select:all">' + webDev() + '</code></div>');
 S.kb.settings.launches = (S.kb.settings.launches || 0) + 1; saveKB();
 (async function startFiles() {
   var restored = false;
@@ -65,6 +66,7 @@ try { applySide(); } catch (e) {}
 render();
 checkAlerts();
 loadTeam(false);
+if (WEB) { webStart(); webShared(); }
 if (samplePromptDue()) { var spTry = 0, spT = setInterval(function () { spTry++; if (S.files.some(function (f) { return f.sample; }) || spTry > 8) { clearInterval(spT); if (samplePromptDue() && S.files.some(function (f) { return f.sample; })) popup('sample', 3, function () { if (samplePromptDue()) showSamplePrompt(); }); } }, 1500); }
 if (srvOn()) { setTimeout(checkNews, 1500); setInterval(checkNews, 30 * 60 * 1000); setTimeout(fetchMass, 6000); setInterval(fetchMass, 30 * 60 * 1000); }
 if (window.nativeApp && window.nativeApp.findLogs && !S.kb.settings.firstRun) { S.kb.settings.firstRun = 1; saveKB(); setTimeout(async function () { var fr = null; try { fr = await window.nativeApp.findLogs(); } catch (e) {} if (fr && fr.files && fr.files.length && !S.files.some(function (x) { return !x.sample; })) popup('logs', 5, function () { if (!S.files.some(function (x) { return !x.sample; })) openLogsPanel(); }); }, 4500); }

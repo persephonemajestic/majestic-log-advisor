@@ -9,7 +9,7 @@ function applyRules() {
 async function loadTeam(manual) {
   try {
     var j;
-    if (window.nativeApp && window.nativeApp.gatedFetch) { var tx = await window.nativeApp.gatedFetch('/v1/rules'); if (!tx) throw new Error('нет ответа сервера'); j = JSON.parse(tx); }
+    if ((window.nativeApp && window.nativeApp.gatedFetch) || WEB) { if (WEB && !srvOn()) return; var tx = await gfetch('/v1/rules'); if (!tx) throw new Error('нет ответа сервера'); j = JSON.parse(tx); }
     else { var ctl = new AbortController(), tm = setTimeout(function () { ctl.abort(); }, 10000); var res = await fetch(TEAM_URL + '?t=' + Date.now(), { cache: 'no-store', signal: ctl.signal }); clearTimeout(tm); if (!res.ok) throw new Error('код ' + res.status); j = await res.json(); }
     if (!j || j.v !== 1 || !Array.isArray(j.rules)) throw new Error('неверный формат файла');
     var ok = j.rules.filter(function (r) { return r && r.pattern && (r.kind === 'main' || r.kind === 'client'); }).map(function (r, i) { return { id: r.id || ('n' + i), kind: r.kind, pattern: String(r.pattern), title: r.title || '', sev: r.sev || 'err', cause: r.cause || '', fix: r.fix || [] }; });

@@ -305,6 +305,20 @@ export default {
       for (let i = 0; i < n; i++) { const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10); const raw = await env.ACCESS.get('d:' + d); if (raw) { try { out.push(Object.assign({ d }, JSON.parse(raw))); } catch (e) {} } }
       return json({ ok: true, today: new Date().toISOString().slice(0, 10), days: out });
     }
+    /* Сайт для телефона: то же приложение, вход по коду устройства (тот же список доступа, что у компьютеров) */
+    if (p === '/m') return Response.redirect(url.origin + '/m/', 301);
+    if (p === '/m/share') return Response.redirect(url.origin + '/m/', 303);
+    if (p.startsWith('/m/')) {
+      if (p !== '/m/' && !/^\/m\/[a-z0-9._-]+$/i.test(p)) return new Response('Not found', { status: 404, headers: NOSTORE });
+      let r = await env.ASSETS.fetch(new Request(url.origin + p, { redirect: 'manual' }));
+      if (p === '/m/' && !r.ok) r = await env.ASSETS.fetch(new Request(url.origin + '/m/index.html', { redirect: 'manual' }));
+      if (!r.ok) return new Response('Not found', { status: 404, headers: NOSTORE });
+      const h = new Headers(r.headers), page = p === '/m/' || p === '/m/index.html';
+      h.set('cache-control', page || /\.(js|webmanifest)$/.test(p) ? 'no-cache' : 'public, max-age=86400');
+      if (p === '/m/sw.js') h.set('service-worker-allowed', '/m/');
+      if (page) { h.set('x-robots-tag', 'noindex'); h.set('content-type', 'text/html; charset=utf-8'); }
+      return new Response(r.body, { status: 200, headers: h });
+    }
     if (p === '/admin') return new Response(ADMIN_HTML, { headers: { 'content-type': 'text/html; charset=utf-8', ...NOSTORE, 'x-robots-tag': 'noindex' } });
     if (p === '/admin/api' && req.method === 'POST') {
       if (!isAdmin(req, env)) return json({ ok: false, error: env.ADMIN_PASS ? 'Неверный пароль' : 'На сервере не задан пароль ADMIN_PASS' }, 401);
@@ -364,7 +378,7 @@ textarea{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--
 .row{display:flex;gap:8px;flex-wrap:wrap}.row input{flex:1 1 180px}table{border-collapse:collapse;width:100%;font-size:14px}td,th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left}code{font:600 13px Consolas,monospace}.m{color:var(--mut);font-size:13px}.w{overflow-x:auto}</style></head><body><main>
 <h1>Доступ к анализатору логов</h1>
 <div class="card" id="login"><div class="row"><input type="password" id="pw" placeholder="Пароль администратора" autocomplete="current-password"><button class="p" id="go">Войти</button></div><div class="m" id="msg"></div></div>
-<div id="app" hidden><div class="card"><b>Добавить компьютер</b><div class="row"><input id="h" placeholder="Код: XXXXX-XXXXX-XXXXX-XXXXX"><input id="n" placeholder="Имя (необязательно)"><button class="p" id="add">Выдать доступ</button></div><div class="m" id="msg2"></div></div>
+<div id="app" hidden><div class="card"><b>Добавить компьютер или телефон</b><div class="m">Код компьютера показан в приложении для Windows. Код телефона — на сайте <code>/m/</code> этого сервера при первом открытии: человек присылает его вам. В имени удобно указать «телефон».</div><div class="row"><input id="h" placeholder="Код: XXXXX-XXXXX-XXXXX-XXXXX"><input id="n" placeholder="Имя (необязательно)"><button class="p" id="add">Выдать доступ</button></div><div class="m" id="msg2"></div></div>
 <div class="card"><b>Объявление для команды</b><div class="m">Появится у всех пользователей при следующем запуске приложения.</div><div class="row"><textarea id="nt" rows="3" placeholder="Например: Добавлено правило про ошибку 0x80070005, обновите приложение"></textarea><button class="p" id="nadd">Отправить</button></div><div class="m" id="msg3"></div><div class="w"><table><tbody id="nl"></tbody></table></div></div>
 <div class="card"><b>Правила команды</b><div class="m">Правила появляются у всех в приложении без обновления. Новое правило применяется к строкам лога, где есть указанный текст.</div><div class="row"><select id="rk"><option value="main">main.log</option><option value="client">client.log</option></select><select id="rs"><option value="err">Ошибка</option><option value="warn">Предупреждение</option><option value="crit">Критично</option><option value="info">Информация</option></select><input id="rp" placeholder="Что искать в строке лога"><input id="rt" placeholder="Название проблемы"></div><div class="row"><textarea id="rc" rows="2" placeholder="Причина проблемы"></textarea><textarea id="rf" rows="3" placeholder="Шаги решения, каждый с новой строки"></textarea></div><div class="row"><button class="p" id="radd">Добавить правило</button></div><div class="m" id="msg4"></div><div class="w"><table><tbody id="rl"></tbody></table></div></div>
 <div class="m" id="live"></div>

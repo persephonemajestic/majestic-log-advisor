@@ -83,7 +83,7 @@ async function selfCheck() {
   try { var all = await LS.index(); out.push(['Сохранённые логи', all.length + ' шт., ' + fmtSize(all.reduce(function (a, m) { return a + (m.size || 0); }, 0))]); } catch (e) { out.push(['Сохранённые логи', 'недоступно']); }
   try { if (navigator.storage && navigator.storage.estimate) { var es = await navigator.storage.estimate(); out.push(['Хранилище', fmtSize(es.usage || 0) + ' из ' + fmtSize(es.quota || 0)]); } } catch (e) {}
   out.push(['Сеть', navigator.onLine ? 'есть' : 'нет']);
-  if (window.nativeApp && window.nativeApp.gatedFetch) { var t0 = Date.now(); try { var r = await window.nativeApp.gatedFetch('/v1/ping', {}); out.push(['Связь с сервером', (r && r.status && r.status < 500 ? 'работает' : 'не отвечает') + ', ' + (Date.now() - t0) + ' мс']); } catch (e) { out.push(['Связь с сервером', 'нет ответа']); } }
+  if (srvOn()) { var t0 = Date.now(); try { var r = await gfetch('/v1/check', {}); out.push(['Связь с сервером', (r ? 'работает' : 'не отвечает') + ', ' + (Date.now() - t0) + ' мс']); } catch (e) { out.push(['Связь с сервером', 'нет ответа']); } }
   /* ИИ (Gemini через сервер команды): ключ на сервере и настоящий короткий запрос; повторная проверка берётся из кэша и лимит не тратит */
   if (srvOn()) {
     var pg = await srv('/v1/ai/ping', {});

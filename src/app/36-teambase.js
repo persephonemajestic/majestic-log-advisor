@@ -1,6 +1,6 @@
 /* ---------- Общая база тикетов, объявления, подсказки (v.18) ---------- */
-function srvOn() { return !!(window.nativeApp && window.nativeApp.gatedFetch); }
-async function srv(path, opts) { try { var t = await window.nativeApp.gatedFetch(path, opts); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
+function srvOn() { return !!((window.nativeApp && window.nativeApp.gatedFetch) || (WEB && lsGet(WEB_OK))); }
+async function srv(path, opts) { try { var t = await gfetch(path, opts); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
 function probTitles(f) { return f.sc.findings.filter(function (g) { return SEV[g.sev] >= SEV.warn; }).slice(0, 4).map(function (g) { return M(g.title); }); }
 function ticketPush(f) {
   if (!srvOn() || f.sample) return; var tag = S.kb.tags[f.hash]; if (!tag) return;

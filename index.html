@@ -1,3 +1,4 @@
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Анализатор логов Majestic</title>
 <style>html{background:#E9E6DC}@media(prefers-color-scheme:dark){html{background:#0A0F15}}html[data-theme=dark]{background:#0A0F15}html[data-theme=light]{background:#E9E6DC}</style>
 <script>try{var __k=window.nativeApp?window.nativeApp.kbLoad():localStorage.getItem('majestic-log-advisor.kb.v1');var __t=__k&&JSON.parse(__k).settings.theme;if(__t==='light'||__t==='dark')document.documentElement.setAttribute('data-theme',__t)}catch(e){}</script>
@@ -411,7 +412,7 @@ table.at td.wrapc { white-space: normal; min-width: 220px; }
 .ai-h { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
 
 /* ---- лог ---- */
-.logview { display: grid; gap: 14px; }
+.logview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .logview .chips:empty { display: none; }
 .lt { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
 .lt input[type=search] { flex: 1 1 220px; width: auto; }
@@ -777,6 +778,118 @@ table.at td .mut { font-size: 12px; }
 /* Мелкие кнопки на карточке лога: побольше область нажатия */
 .fi .rm, .fi .ej { min-width: 20px; }
 
+/* ---------- Телефон (html.mob): экраны «Логи» и «Разбор», панель сверху и вкладки снизу, как в приложениях iPhone ---------- */
+.mtop, .mtab, .msheet { display: none; }
+html.mob { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html.mob body { padding-top: calc(52px + env(safe-area-inset-top, 0px)); padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px)); overflow-x: hidden; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+html.mob .app { min-height: 0; }
+html.mob .bar, html.mob .side-rail, html.mob .side-rs, html.mob .side-h [data-act="sideToggle"], html.mob .tape, html.mob .cmd, html.mob #tabwrap, html.mob .menu-hint { display: none !important; }
+html.mob button, html.mob a, html.mob summary, html.mob [data-act] { touch-action: manipulation; }
+html.mob input:not([type=checkbox]):not([type=radio]):not([type=range]), html.mob select, html.mob textarea { font-size: 16px !important; }
+/* верхняя панель */
+html.mob .mtop { display: grid; grid-template-columns: minmax(84px, auto) minmax(0, 1fr) minmax(84px, auto); align-items: center; position: fixed; z-index: 30; top: 0; left: 0; right: 0; height: calc(52px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) max(6px, env(safe-area-inset-right, 0px)) 0 max(6px, env(safe-area-inset-left, 0px)); background: var(--glass); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); border-bottom: .5px solid var(--line2); }
+.mt-b { display: inline-flex; align-items: center; gap: 2px; height: 44px; min-width: 44px; padding: 0 8px; border: 0; background: none; color: var(--accent); font: 400 17px/1 var(--sans); letter-spacing: -.01em; cursor: pointer; }
+.mt-b svg { width: 24px; height: 24px; flex: none; }
+.mt-back { justify-self: start; visibility: hidden; margin-left: -4px; }
+.mtop.in .mt-back { visibility: visible; }
+.mt-add { justify-self: end; }
+.mt-add svg { width: 26px; height: 26px; }
+.mt-t { display: grid; justify-items: center; min-width: 0; text-align: center; line-height: 1.2; }
+.mt-t b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
+.mt-t span { font-size: 12px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mt-t span:empty { display: none; }
+.mt-t span.st-bad { color: var(--crit); } .mt-t span.st-ok { color: var(--ok); } .mt-t span.st-warn { color: var(--warn); }
+/* вкладки снизу */
+html.mob .mtab { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; padding: 4px max(4px, env(safe-area-inset-right, 0px)) max(4px, env(safe-area-inset-bottom, 0px)) max(4px, env(safe-area-inset-left, 0px)); background: var(--glass); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); border-top: .5px solid var(--line2); }
+.mtab button { position: relative; display: grid; justify-items: center; align-content: center; gap: 2px; min-height: 50px; padding: 2px 0; border: 0; background: none; color: var(--muted); font: 500 10.5px/1.1 var(--sans); letter-spacing: .01em; cursor: pointer; }
+.mtab button svg { width: 27px; height: 27px; }
+.mtab button[aria-current="page"] { color: var(--accent); }
+.mtab button:active svg { transform: scale(.9); }
+.mtab .mn { position: absolute; top: 3px; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: #fff; font: 600 11px/18px var(--sans); font-style: normal; text-align: center; }
+/* экраны */
+html.mob .work { display: block; }
+html.mob[data-ms="list"] .work-main { display: none; }
+html.mob[data-ms="view"] .side { display: none; }
+html.mob .side { position: static; height: auto; max-height: none; border: 0; background: transparent; padding: 6px max(14px, env(safe-area-inset-left, 0px)) 16px; }
+html.mob .side-sc { overflow: visible; max-height: none; flex: none; }
+html.mob .side-h { padding: 6px 2px 8px; }
+html.mob .side-h > b { font-size: 30px; font-weight: 700; letter-spacing: -.03em; }
+html.mob .side-q { margin: 0 0 10px; min-height: 40px; border-radius: 12px; }
+html.mob .side .flist > li { margin-bottom: 8px; }
+html.mob .fi { padding: 13px 14px; border-radius: 14px; min-height: 60px; }
+html.mob .fi:hover { transform: none; }
+html.mob .fi:active { transform: scale(.985); background: var(--raise); }
+html.mob .fi .nm { font-size: 15px; }
+html.mob .fi .r2 { font-size: 13px; }
+html.mob .fi .rm, html.mob .fi .ej, html.mob .fi .pinb { opacity: .55; min-width: 32px; min-height: 32px; font-size: 18px; }
+html.mob .drop { margin: 12px 0 0; padding: 18px 14px; border-radius: 14px; border-style: solid; background: var(--accent-soft); border-color: var(--accent-line, var(--accent)); color: var(--muted); font-size: 13px; text-align: center; }
+html.mob .drop b { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--accent); font-size: 17px; margin-bottom: 4px; }
+html.mob .drop b svg { width: 22px; height: 22px; }
+/* разбор */
+html.mob .main { display: block; padding: 12px max(12px, env(safe-area-inset-left, 0px)) 28px max(12px, env(safe-area-inset-right, 0px)); max-width: none; }
+html.mob #view > * + * { margin-top: 12px; }
+html.mob .card { border-radius: 16px; }
+html.mob .btn { min-height: 40px; border-radius: 10px; }
+html.mob .btn.sm { min-height: 36px; }
+html.mob .answer .btn.primary, html.mob .answer [data-act="copyReply"] { min-height: 46px; font-size: 16px; }
+html.mob pre, html.mob code { overflow-wrap: anywhere; }
+html.mob table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+html.mob .lvh { top: calc(52px + env(safe-area-inset-top, 0px)); }
+html.mob .lt .seg { flex-wrap: wrap; }
+html.mob .lt-nav { margin-left: 0; }
+html.mob .sc { height: calc(100dvh - 190px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+/* окна — листом снизу */
+html.mob .panel { place-items: end stretch; padding: 0; }
+html.mob .panel .box { width: 100%; max-width: none; max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 18px); padding: 22px 16px calc(18px + env(safe-area-inset-bottom, 0px)); border-radius: 18px 18px 0 0; border-bottom: 0; animation: msUp .28s cubic-bezier(.2, .8, .2, 1); }
+html.mob .panel .box .row-actions { position: sticky; bottom: calc(-18px - env(safe-area-inset-bottom, 0px)); margin: 0 -16px calc(-18px - env(safe-area-inset-bottom, 0px)); padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--surface); border-top: .5px solid var(--line); }
+@keyframes msUp { from { transform: translateY(40px); opacity: .4; } to { transform: none; opacity: 1; } }
+html.mob .panel { z-index: 45; }
+html.mob .panel .kh { display: none !important; }
+html.mob .tlr { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 8px 10px; }
+html.mob .tlr .tf, html.mob .tlr .td { display: none; }
+html.mob .tlr.k-bad .tt { color: var(--crit); }
+/* уведомление над вкладками */
+html.mob #toast { left: 12px; right: 12px; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); max-width: none; border-radius: 14px; text-align: center; font-size: 14px; }
+.mhint { display: none; }
+html.mob .mhint { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 12px; padding: 12px 6px 12px 14px; border-radius: 14px; background: var(--accent-soft); border: .5px solid var(--accent-line, var(--accent)); font-size: 14px; line-height: 1.45; color: var(--ink2, var(--ink)); }
+.mhint > div { flex: 1; } .mhint b { display: block; color: var(--ink); }
+.mhint button { min-width: 36px; min-height: 36px; border: 0; background: none; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
+/* лист «Ещё» */
+html.mob .msheet { display: block; position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+html.mob .msheet.open { pointer-events: auto; }
+.ms-bg { position: absolute; inset: 0; background: rgba(0, 0, 0, .35); opacity: 0; transition: opacity .25s; }
+.msheet.open .ms-bg { opacity: 1; }
+.ms-box { position: absolute; left: 0; right: 0; bottom: 0; max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px); overflow: auto; padding: 6px max(14px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px)); background: var(--bg); border-radius: 18px 18px 0 0; box-shadow: 0 -10px 40px rgba(0, 0, 0, .25); transform: translateY(105%); transition: transform .32s cubic-bezier(.2, .8, .2, 1); }
+.msheet.open .ms-box { transform: none; }
+.ms-grab { width: 38px; height: 5px; margin: 2px auto 6px; border-radius: 3px; background: var(--line2); }
+.ms-h { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 10px; }
+.ms-h b { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+.ms-x { border: 0; background: none; color: var(--accent); font: 600 17px var(--sans); padding: 8px 4px; cursor: pointer; }
+.ms-g { margin-bottom: 18px; background: var(--surface); border: .5px solid var(--line); border-radius: 14px; overflow: hidden; }
+.ms-gt { padding: 10px 16px 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.ms-r { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 50px; padding: 0 12px 0 16px; border: 0; border-top: .5px solid var(--line); background: none; color: var(--ink); font: 400 16px/1.25 var(--sans); text-align: left; cursor: pointer; }
+.ms-gt + .ms-r { border-top: 0; }
+.ms-r:active { background: var(--raise); }
+.ms-r span { display: grid; gap: 1px; padding: 8px 0; }
+.ms-r small { font-size: 13px; color: var(--muted); }
+.ms-r svg { width: 18px; height: 18px; color: var(--muted); flex: none; }
+.ms-ver { padding: 2px 6px; font-size: 12px; color: var(--muted); text-align: center; }
+.ms-ver code { font-size: 13px; }
+/* экран доступа (сайт для телефона) */
+html.gated body > *:not(#webGate):not(#toast) { visibility: hidden; }
+#webGate { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; overflow: auto; padding: calc(24px + env(safe-area-inset-top, 0px)) 20px calc(24px + env(safe-area-inset-bottom, 0px)); background: var(--bg); color: var(--ink); }
+.wg-box { display: grid; justify-items: center; gap: 14px; width: min(400px, 100%); text-align: center; }
+.wg-ic { width: 76px; height: 76px; border-radius: 18px; box-shadow: 0 8px 24px rgba(0, 0, 0, .25); }
+.wg-box h2 { margin: 4px 0 0; font-size: 24px; font-weight: 700; letter-spacing: -.03em; }
+.wg-t { margin: 0; color: var(--ink2, var(--ink)); font-size: 15px; line-height: 1.5; }
+.wg-code { display: grid; gap: 6px; width: 100%; padding: 16px 12px; border: 1.5px dashed var(--accent); border-radius: 14px; background: var(--accent-soft); color: var(--ink); font: 600 clamp(17px, 5.2vw, 22px)/1.2 var(--mono); letter-spacing: .04em; cursor: pointer; }
+.wg-code span { font: 400 13px var(--sans); letter-spacing: 0; color: var(--accent); }
+.wg-code:active { transform: scale(.98); }
+.wg-go { width: 100%; min-height: 50px; font-size: 17px; border-radius: 14px; }
+.wg-h { min-height: 1.4em; margin: 0; font-size: 14px; color: var(--muted); }
+.wg-tip { margin: 6px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--surface); border: .5px solid var(--line); font-size: 13px; line-height: 1.5; color: var(--muted); text-align: left; }
+.ios-share { display: inline-block; width: 14px; height: 16px; vertical-align: -2px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 16'%3E%3Cpath d='M7 1v9M3.5 4.5L7 1l3.5 3.5M2 7.5v6.5h10V7.5' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 16'%3E%3Cpath d='M7 1v9M3.5 4.5L7 1l3.5 3.5M2 7.5v6.5h10V7.5' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat; }
+@media (prefers-reduced-motion: reduce) { .ms-box, .ms-bg { transition: none; } html.mob .panel .box { animation: none; } }
 </style>
 
 <div class="app">
@@ -3146,7 +3259,7 @@ var STRU = { ok: 'Успех', bad: 'Сбой', warn: 'Внимание', unk: '
 var SRCRU = { guide: 'из руководства', obs: 'по наблюдению в логах', infer: 'вывод, в руководстве нет', web: 'по открытым источникам', user: 'ваше правило', team: 'правило команды' };
 var SRCTIP = { team: 'Общее правило команды из файла rules.json в репозитории проекта', user: 'Правило, которое добавили вы или коллега через «Добавить решение»', guide: 'Правило взято из документа «Руководство по диагностике ошибок и работе с логами»', obs: 'Строка встречается в успешных заходах загруженных логов, поэтому считается шумом', web: 'Случая нет в руководстве. Объяснение собрано по справкам Rockstar, форумам RAGE и cfx.re и реальным логам. Проверяйте его', infer: 'Этого случая нет в руководстве. Объяснение построено по логам и общим признакам, проверяйте его' };
 var PSTEPS_UI = [['admin', 'Администратор'], ['pirate', 'Очистка файлов'], ['backup', 'Резервная копия'], ['patch', 'Патч игры'], ['job', 'Процесс игры'], ['inject', 'Внедрение'], ['injected', 'Клиент внедрён'], ['entry', 'Запуск клиента'], ['finished', 'Готово'], ['window', 'Окно игры']];
-var SAMPLE = null, APP_VERSION = '2026-10-14.124';
+var SAMPLE = null, APP_VERSION = '2026-10-19.125';
 var ROW = 20, KBKEY = 'majestic-log-advisor.kb.v1';
 
 var $ = function (s) { return document.querySelector(s); };
@@ -3181,8 +3294,105 @@ function fnv(s) { var h = 2166136261 >>> 0; for (var i = 0; i < s.length; i++) {
 async function fnvAsync(s, pause) { var h = 2166136261 >>> 0, CH = 4000000; for (var a = 0; a < s.length; a += CH) { var e = Math.min(s.length, a + CH); for (var i = a; i < e; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } if (e < s.length) await pause(); } return h.toString(16) + '-' + s.length; }
 function niceName(n) { return n.replace(/^[0-9a-f]{8}-/i, ''); }
 function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ'; }
+/* ---------- Сайт для телефона (/m/) ----------
+   То же приложение, открытое в браузере телефона. Вместо кода компьютера (HWID) — случайный код устройства, который
+   хранится на телефоне; администратор добавляет его в тот же список доступа. Запросы к серверу команды идут напрямую
+   (сайт открыт с того же адреса, что и сервер). Логи по-прежнему разбираются на самом телефоне. */
+var WEB = !window.nativeApp && /^https?:$/.test(location.protocol) && (window.MLA_WEB === 1 || /^\/m(\/|$)/.test(location.pathname));
+var WEB_KEY = 'mla.dev', WEB_OK = 'mla.webok', IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+var HW_RE = /^[0-9A-F]{5}(-[0-9A-F]{5}){3}$/;
+function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+function webDev() {
+  var d = lsGet(WEB_KEY); if (HW_RE.test(d)) return d;
+  var a = new Uint8Array(10); crypto.getRandomValues(a);
+  d = Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('').toUpperCase().match(/.{5}/g).join('-');
+  lsSet(WEB_KEY, d); return d;
+}
+/* как gatedFetch в приложении для Windows: путь /v1/…, тело — JSON; ответ — текст или null */
+async function webFetch(p, opts) {
+  p = String(p || ''); if (!/^\/v1\/[a-z0-9\/._-]+$/i.test(p)) return null; opts = opts || {};
+  var q = opts.query && typeof opts.query === 'object' ? '&' + Object.keys(opts.query).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(String(opts.query[k]).slice(0, 200)); }).join('&') : '';
+  var init = { cache: 'no-store', headers: { 'X-HWID': webDev() } };
+  if (opts.body != null) { init.method = 'POST'; init.body = JSON.stringify(opts.body); if (init.body.length > 4500000) return null; init.headers['content-type'] = 'application/json'; }
+  try { var r = await fetch(p + '?t=' + Date.now() + q, init); return r.ok ? await r.text() : null; } catch (e) { return null; }
+}
+/* запрос к серверу команды из приложения для Windows или с телефона */
+async function gfetch(p, opts) { if (window.nativeApp && window.nativeApp.gatedFetch) return window.nativeApp.gatedFetch(p, opts); if (WEB) return webFetch(p, opts); return null; }
+
+/* ---------- Экран доступа ---------- */
+async function webCheck() {
+  try { var r = await fetch('/v1/check?t=' + Date.now(), { cache: 'no-store', headers: { 'X-HWID': webDev() } }); if (r.status === 403) return { st: 'deny' }; var j = await r.json(); return j && j.ok ? { st: 'ok', n: j.n || '' } : { st: 'deny' }; } catch (e) { return { st: 'net' }; }
+}
+function webGate(state) {
+  var g = document.getElementById('webGate');
+  if (state === 'ok') { if (g) g.remove(); document.documentElement.classList.remove('gated'); return; }
+  document.documentElement.classList.add('gated');
+  if (!g) { g = document.createElement('div'); g.id = 'webGate'; g.setAttribute('role', 'dialog'); g.setAttribute('aria-label', 'Доступ к анализатору'); document.body.appendChild(g); }
+  var code = webDev();
+  g.innerHTML = '<div class="wg-box">' +
+    '<img class="wg-ic" src="/m/icon-180.png" alt="" width="72" height="72">' +
+    '<h2>Анализатор логов Majestic</h2>' +
+    (state === 'net' ? '<p class="wg-t">Нет связи с сервером команды. Проверьте интернет и попробуйте ещё раз.</p>' :
+      '<p class="wg-t">Чтобы пользоваться анализатором, отправьте этот код администратору. Он добавит телефон в список доступа — так же, как компьютер.</p>') +
+    '<button class="wg-code" type="button" data-wg="copy" aria-label="Скопировать код устройства">' + code + '<span>Нажмите, чтобы скопировать</span></button>' +
+    '<button class="btn primary wg-go" type="button" data-wg="check">Проверить доступ</button>' +
+    '<p class="wg-h" id="wgMsg" role="status" aria-live="polite"></p>' +
+    (IOS && !navigator.standalone ? '<p class="wg-tip"><b>Совет.</b> Нажмите «Поделиться» <span class="ios-share" aria-hidden="true"></span> → «На экран „Домой“». Анализатор откроется как приложение, а код устройства не потеряется.</p>' : '') +
+    '</div>';
+}
+function webCopy(text) { try { navigator.clipboard.writeText(text); return true; } catch (e) {} try { var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); return true; } catch (e) { return false; } }
+async function webStart() {
+  if (!WEB) return;
+  document.documentElement.classList.add('web');
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+  try { if ('serviceWorker' in navigator) navigator.serviceWorker.register('/m/sw.js', { scope: '/m/' }).catch(function () {}); } catch (e) {}
+  /* iPhone не даёт выбрать .log, если поле выбора ограничено типами файлов — снимаем ограничение */
+  if (IOS) document.querySelectorAll('input[type=file]').forEach(function (x) { x.removeAttribute('accept'); });
+  document.addEventListener('click', async function (e) {
+    var b = e.target.closest && e.target.closest('[data-wg]'); if (!b) return;
+    var k = b.getAttribute('data-wg'), msg = document.getElementById('wgMsg');
+    if (k === 'copy') { webCopy(webDev()); if (msg) msg.textContent = 'Код скопирован. Отправьте его администратору.'; }
+    if (k === 'check') { b.disabled = true; if (msg) msg.textContent = 'Проверяю…'; var r = await webCheck(); b.disabled = false; webApply(r); if (r.st === 'deny' && document.getElementById('wgMsg')) document.getElementById('wgMsg').textContent = 'Доступа пока нет. Как только администратор добавит код, нажмите ещё раз.'; }
+  });
+  var known = lsGet(WEB_OK);
+  if (!known) webGate('wait');
+  var r = await webCheck(); webApply(r);
+  /* пока экран доступа открыт — тихо проверяем раз в 15 секунд */
+  setInterval(function () { if (document.getElementById('webGate') && !document.hidden) webCheck().then(function (x) { if (x.st === 'ok') webApply(x); }); }, 15000);
+}
+function webApply(r) {
+  if (r.st === 'ok') { var was = !!lsGet(WEB_OK); lsSet(WEB_OK, r.n || '1'); webGate('ok'); if (!was) { status('Доступ открыт' + (r.n ? ': ' + r.n : '') + '. Добавьте лог кнопкой «+».'); try { loadTeam(false); checkNews(); fetchShared(); pulse(); tplFetch(); } catch (e) {} } }
+  else if (r.st === 'deny') { lsSet(WEB_OK, null); webGate('deny'); }
+  else if (!lsGet(WEB_OK)) webGate('net');
+}
+/* файлы, которыми поделились из Discord или «Файлов» на Android (share target), лежат в кэше service worker */
+async function webShared() {
+  if (!WEB || !/[?&]share=1/.test(location.search) || !window.caches) return;
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  try {
+    var c = await caches.open('mla-share'), ks = await c.keys(), files = [];
+    for (var i = 0; i < ks.length; i++) { var r = await c.match(ks[i]); if (!r) continue; var b = await r.blob(); files.push(new File([b], decodeURIComponent(r.headers.get('x-name') || 'file'), { type: b.type })); await c.delete(ks[i]); }
+    if (files.length) readFiles(files);
+  } catch (e) {}
+}
+/* новая версия на сервере: на телефоне достаточно перезагрузить страницу; если человек ничего не делает — обновляем сами */
+var webUpdAt = '';
+function webUpdate(v) {
+  if (webUpdAt === v) return; webUpdAt = v;
+  var idle = function () { return !document.querySelector('#panelHost .panel, .msheet.open') && !(document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)); };
+  if (document.hidden && idle()) { location.reload(); return; }
+  var l = document.getElementById('updLine'); if (l) { l.hidden = false; l.textContent = 'Обновить до ' + v; l.onclick = function () { location.reload(); }; }
+  document.documentElement.classList.add('has-upd');
+  document.addEventListener('visibilitychange', function () { if (document.hidden && idle()) location.reload(); });
+}
 /* ---------- Версия 13: отчёты, все логи, окно загрузки, команда, слежение ---------- */
 var CHANGELOG = [
+  { v: '2026-10-19.125', items: [
+    'Анализатор на телефоне: сайт /m/ на сервере команды для iPhone и Android. Вход по коду устройства — администратор добавляет его так же, как код компьютера.',
+    'На телефоне своя раскладка: список логов и разбор отдельными экранами, вкладки снизу («Логи», «Диагноз», «Лог», «История», «Ещё»), окна открываются листом снизу, крупная кнопка «Копировать ответ».',
+    'Сайт ставится на экран «Домой» и открывается как приложение; новые версии подтягиваются сами. На Android логи можно отправить в анализатор через «Поделиться».'
+  ] },
   { v: '2026-10-14.124', items: [
     'Плагин 1.7.6: «Анализировать» у любого сообщения в любом канале Discord — кнопка появляется при наведении на сообщение и подбирает ответ по его тексту.',
     'Плагин 1.7.8: «Анализировать» у сообщений — одна плавающая кнопка поверх сообщения под курсором. Лента при прокрутке больше не прыгает и не тормозит.',
@@ -3678,7 +3888,7 @@ function applyRules() {
 async function loadTeam(manual) {
   try {
     var j;
-    if (window.nativeApp && window.nativeApp.gatedFetch) { var tx = await window.nativeApp.gatedFetch('/v1/rules'); if (!tx) throw new Error('нет ответа сервера'); j = JSON.parse(tx); }
+    if ((window.nativeApp && window.nativeApp.gatedFetch) || WEB) { if (WEB && !srvOn()) return; var tx = await gfetch('/v1/rules'); if (!tx) throw new Error('нет ответа сервера'); j = JSON.parse(tx); }
     else { var ctl = new AbortController(), tm = setTimeout(function () { ctl.abort(); }, 10000); var res = await fetch(TEAM_URL + '?t=' + Date.now(), { cache: 'no-store', signal: ctl.signal }); clearTimeout(tm); if (!res.ok) throw new Error('код ' + res.status); j = await res.json(); }
     if (!j || j.v !== 1 || !Array.isArray(j.rules)) throw new Error('неверный формат файла');
     var ok = j.rules.filter(function (r) { return r && r.pattern && (r.kind === 'main' || r.kind === 'client'); }).map(function (r, i) { return { id: r.id || ('n' + i), kind: r.kind, pattern: String(r.pattern), title: r.title || '', sev: r.sev || 'err', cause: r.cause || '', fix: r.fix || [] }; });
@@ -5279,9 +5489,9 @@ function applyView() {
 }
 function openSettings() {
   var K = keyMap(), auto = S.kb.settings.autoUpdate !== false;
-  var h = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" aria-label="Настройки"><b>Настройки</b><h4 style="margin:6px 0 2px">Горячие клавиши</h4><p class="hint" style="margin:0">Нажмите на кнопку справа и затем на нужную клавишу. Одна клавиша без Ctrl и Alt; в полях ввода они не работают. Дополнительно без настройки: J и K листают логи, R копирует ответ игроку, E открывает закрытие дела.</p><div style="display:grid;gap:4px">';
+  var h = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" aria-label="Настройки"><b>Настройки</b><h4 class="kh" style="margin:6px 0 2px">Горячие клавиши</h4><p class="hint kh" style="margin:0">Нажмите на кнопку справа и затем на нужную клавишу. Одна клавиша без Ctrl и Alt; в полях ввода они не работают. Дополнительно без настройки: J и K листают логи, R копирует ответ игроку, E открывает закрытие дела.</p><div class="kh" style="display:grid;gap:4px">';
   h += Object.keys(KEYDEF).map(function (k) { var on = S.bind === k; return '<div class="lt"><span style="flex:1">' + KEYNAME[k] + '</span><button class="btn sm' + (on ? ' primary' : '') + '" data-act="keyBind" data-k="' + k + '" style="min-width:120px">' + (on ? 'Нажмите клавишу…' : esc(codeLabel(K[k]))) + '</button><button class="btn sm ghost" data-act="keyClear" data-k="' + k + '" title="Убрать клавишу" aria-label="Убрать клавишу">×</button></div>'; }).join('');
-  h += '</div><div class="row-actions"><button class="btn sm" data-act="keyReset">Сбросить к стандартным</button></div>';
+  h += '</div><div class="row-actions kh"><button class="btn sm" data-act="keyReset">Сбросить к стандартным</button></div>';
   if (window.nativeApp && window.nativeApp.updateCheck) h += '<h4 style="margin:10px 0 2px">Обновления</h4><label class="tgl"><input type="checkbox" id="autoUpd"' + (auto ? ' checked' : '') + '> Скачивать обновления в фоне (иначе приложение только предложит)</label><label class="tgl"><input type="checkbox" id="autoApply"' + (S.kb.settings.autoApply !== false ? ' checked' : '') + (auto ? '' : ' disabled') + '> Применять сами, когда вы не работаете в приложении: окно свёрнуто 2 минуты или 5 минут без действий. Открытый лог, вкладка и прокрутка сохраняются</label>';
   if (srvOn()) h += '<h4 style="margin:10px 0 2px">Резервная копия базы знаний</h4><p class="hint" style="margin:0">Копия хранится на сервере и делается сама раз в сутки. Её можно вернуть после переустановки Windows. ' + (S.kb.settings.backupAt ? 'Последняя копия: ' + esc(fmtDT(S.kb.settings.backupAt)) + '.' : 'Копии ещё не было.') + '</p><div class="row-actions"><button class="btn sm" data-act="bkNow">Сделать копию сейчас</button><button class="btn sm" data-act="bkRestore">Восстановить из копии</button></div>';
   if (srvOn()) h += '<h4 style="margin:10px 0 2px">Массовые проблемы</h4><p class="hint" style="margin:0">Когда одинаковых проблем в логах команды больше порога, приложение покажет уведомление с быстрым решением.</p><div class="lt"><label class="nl inl">За день<input type="number" min="2" id="massDay" value="' + massTh().day + '" style="width:90px"></label><label class="nl inl">За неделю<input type="number" min="2" id="massWeek" value="' + massTh().week + '" style="width:90px"></label></div>';
@@ -5497,9 +5707,10 @@ async function pulse() {
     if (r.online != null) { var oe = $('#online'); if (oe) { oe.hidden = false; oe.textContent = 'Онлайн: ' + r.online; oe.title = (r.names || []).join(', '); } }
     if (r.sv !== undefined && r.sv !== S.shared.sv && r.sv !== '') fetchShared();
     if (!first && r.rv && r.rv !== prev.rv) loadTeam(false);
-    if (!S.shellVer && window.nativeApp.shellInfo) { try { var si = await window.nativeApp.shellInfo(); S.shellVer = si && si.version || ''; } catch (e) {} }
+    if (!S.shellVer && window.nativeApp && window.nativeApp.shellInfo) { try { var si = await window.nativeApp.shellInfo(); S.shellVer = si && si.version || ''; } catch (e) {} }
     var vg = function (a, b) { var x = String(a || '').split(/[-.]/).map(Number), y = String(b || '').split(/[-.]/).map(Number); for (var i = 0; i < Math.max(x.length, y.length); i++) { var d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0; } return false; };
-    if (vg(r.app, APP_VERSION) || (S.shellVer && vg(r.shell, S.shellVer))) checkUpdates(false, r.shell);
+    if (WEB) { if (vg(r.app, APP_VERSION)) webUpdate(r.app); }
+    else if (vg(r.app, APP_VERSION) || (S.shellVer && vg(r.shell, S.shellVer))) checkUpdates(false, r.shell);
   } finally { pulseBusy = false; }
 }
 /* ---------- Сохранение загруженных логов между запусками (v.28) ---------- */
@@ -5569,8 +5780,8 @@ function togglePin(id) {
   saveKB(); renderList();
 }
 /* ---------- Общая база тикетов, объявления, подсказки (v.18) ---------- */
-function srvOn() { return !!(window.nativeApp && window.nativeApp.gatedFetch); }
-async function srv(path, opts) { try { var t = await window.nativeApp.gatedFetch(path, opts); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
+function srvOn() { return !!((window.nativeApp && window.nativeApp.gatedFetch) || (WEB && lsGet(WEB_OK))); }
+async function srv(path, opts) { try { var t = await gfetch(path, opts); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
 function probTitles(f) { return f.sc.findings.filter(function (g) { return SEV[g.sev] >= SEV.warn; }).slice(0, 4).map(function (g) { return M(g.title); }); }
 function ticketPush(f) {
   if (!srvOn() || f.sample) return; var tag = S.kb.tags[f.hash]; if (!tag) return;
@@ -6034,7 +6245,7 @@ async function selfCheck() {
   try { var all = await LS.index(); out.push(['Сохранённые логи', all.length + ' шт., ' + fmtSize(all.reduce(function (a, m) { return a + (m.size || 0); }, 0))]); } catch (e) { out.push(['Сохранённые логи', 'недоступно']); }
   try { if (navigator.storage && navigator.storage.estimate) { var es = await navigator.storage.estimate(); out.push(['Хранилище', fmtSize(es.usage || 0) + ' из ' + fmtSize(es.quota || 0)]); } } catch (e) {}
   out.push(['Сеть', navigator.onLine ? 'есть' : 'нет']);
-  if (window.nativeApp && window.nativeApp.gatedFetch) { var t0 = Date.now(); try { var r = await window.nativeApp.gatedFetch('/v1/ping', {}); out.push(['Связь с сервером', (r && r.status && r.status < 500 ? 'работает' : 'не отвечает') + ', ' + (Date.now() - t0) + ' мс']); } catch (e) { out.push(['Связь с сервером', 'нет ответа']); } }
+  if (srvOn()) { var t0 = Date.now(); try { var r = await gfetch('/v1/check', {}); out.push(['Связь с сервером', (r ? 'работает' : 'не отвечает') + ', ' + (Date.now() - t0) + ' мс']); } catch (e) { out.push(['Связь с сервером', 'нет ответа']); } }
   /* ИИ (Gemini через сервер команды): ключ на сервере и настоящий короткий запрос; повторная проверка берётся из кэша и лимит не тратит */
   if (srvOn()) {
     var pg = await srv('/v1/ai/ping', {});
@@ -7110,6 +7321,120 @@ document.addEventListener('click', function (e) {
 });
 tplLoadCache();
 setTimeout(function () { tplFetch(); }, 4000); setInterval(function () { tplFetch(); }, 30 * 60000);
+/* ---------- Телефон: два экрана (список логов и разбор), верхняя панель и вкладки внизу, как в приложениях iPhone ----------
+   Включается на узком экране (до 760 px) — на сайте для телефона и в узком окне. Разметка компьютерной версии не меняется:
+   поверх неё добавляются панели, а лишнее прячется стилями html.mob. */
+var MQ = window.matchMedia ? window.matchMedia('(max-width: 760px)') : { matches: false, addEventListener: function () {} };
+var MS = { scr: 'list', built: false, want: false, wantN: -1 };
+var MI = {
+  list: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 8.5h8M8 12h8M8 15.5h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  diag: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12.5h4l2.5-6.5 4 13 2.5-7.5 1.2 1H21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  log: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14M5 9.5h10M5 13.5h14M5 17.5h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  hist: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  more: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="18" cy="12" r="1.7" fill="currentColor"/></svg>',
+  back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  add: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+  chev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+var MTABS = [['list', 'Логи'], ['diag', 'Диагноз'], ['log', 'Лог'], ['hist', 'История'], ['more', 'Ещё']];
+var MSTAT = { bad: 'Сбой', warn: 'Есть замечания', ok: 'Успешно', unk: 'Без итога' };
+/* на компьютере узкое окно остаётся компьютерным (там свои стрелки вкладок); телефонная раскладка — на сайте и на сенсорных экранах */
+var COARSE = window.matchMedia ? window.matchMedia('(pointer: coarse)') : { matches: false };
+function isMob() { return !!MQ.matches && (WEB || !!COARSE.matches); }
+function mobBuild() {
+  if (MS.built) return; MS.built = true;
+  var top = document.createElement('header'); top.id = 'mTop'; top.className = 'mtop';
+  top.innerHTML = '<button class="mt-b mt-back" type="button" data-m="back" aria-label="К списку логов">' + MI.back + '<span>Логи</span></button>' +
+    '<div class="mt-t"><b id="mTitle">Логи</b><span id="mSub"></span></div>' +
+    '<button class="mt-b mt-add" type="button" data-m="add" aria-label="Добавить логи">' + MI.add + '</button>';
+  document.body.insertBefore(top, document.body.firstChild);
+  var tb = document.createElement('nav'); tb.id = 'mTab'; tb.className = 'mtab'; tb.setAttribute('aria-label', 'Разделы');
+  tb.innerHTML = MTABS.map(function (x) { return '<button type="button" data-m="tab" data-t="' + x[0] + '">' + MI[x[0]] + '<span>' + x[1] + '</span><i class="mn" hidden></i></button>'; }).join('');
+  document.body.appendChild(tb);
+  var sh = document.createElement('div'); sh.id = 'mSheet'; sh.className = 'msheet'; sh.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(sh);
+  document.addEventListener('click', mobClick, true);
+  window.addEventListener('popstate', function () { if (!isMob()) return; if (mSheetOpen()) { mSheet(false); return; } if (MS.scr !== 'list') mobScr('list', true); });
+}
+function mobApply() {
+  var on = isMob(); document.documentElement.classList.toggle('mob', on);
+  if (!on) return; mobBuild(); document.documentElement.setAttribute('data-ms', MS.scr); mobSync();
+  /* iPhone в Safari: одна подсказка, как поставить на экран «Домой» (иначе Safari может со временем стереть код устройства) */
+  if (WEB && IOS && !navigator.standalone && !lsGet('mla.a2hs') && !document.getElementById('mHint')) { var sd = document.querySelector('.side'), sq = document.querySelector('.side-q'); if (sd && sq) { var hn = document.createElement('div'); hn.id = 'mHint'; hn.className = 'mhint'; hn.innerHTML = '<div><b>Установите как приложение</b>Нажмите «Поделиться» <span class="ios-share" aria-hidden="true"></span> внизу Safari → «На экран „Домой“».</div><button type="button" data-m="a2hs" aria-label="Скрыть подсказку">×</button>'; sq.insertAdjacentElement('afterend', hn); } }
+  var d = document.getElementById('drop'); if (d && !d.getAttribute('data-m')) { d.setAttribute('data-m', '1'); d.innerHTML = '<b>' + MI.add + 'Выбрать файлы</b>main.log, client.log, zip, дамп или журнал Windows'; }
+}
+function mobScr(scr, fromPop) {
+  var was = MS.scr; MS.scr = scr; document.documentElement.setAttribute('data-ms', scr);
+  if (!fromPop) { try { if (scr !== 'list' && was === 'list') history.pushState({ m: 'view' }, ''); else if (scr === 'list' && history.state && history.state.m === 'view') { history.back(); } } catch (e) {} }
+  mobSync(); window.scrollTo(0, 0);
+}
+function mobClick(e) {
+  if (!isMob()) return;
+  var t = e.target.closest && e.target.closest('[data-m]');
+  /* открыли лог из списка — после отрисовки показываем экран разбора */
+  if (!t) { var o = e.target.closest && e.target.closest('.side [data-act]'); if (o && /^(open|gcase|openDiag|copen)$/.test(o.getAttribute('data-act')) && !e.target.closest('[data-act="rm"],[data-act="ej"],.pinb')) MS.want = true; var oo = e.target.closest && e.target.closest('#view [data-act="openDiag"], #view [data-act="copen"], #view [data-act="sjump"]'); if (oo) setTimeout(function () { window.scrollTo(0, 0); }, 0); return; }
+  var k = t.getAttribute('data-m');
+  if (k === 'back') { e.preventDefault(); mobScr('list'); }
+  else if (k === 'add') { e.preventDefault(); $('#fileIn').click(); }
+  else if (k === 'tab') {
+    e.preventDefault(); var tab = t.getAttribute('data-t');
+    if (tab === 'more') return mSheet(true);
+    if (tab === 'list') return mobScr('list');
+    if ((tab === 'diag' || tab === 'log') && !active()) { status('Сначала добавьте лог кнопкой «+» или выберите его в списке.'); return mobScr('list'); }
+    S.tab = tab; S.sel = -1; render(); mobScr('view');
+  }
+  else if (k === 'a2hs') { e.preventDefault(); lsSet('mla.a2hs', '1'); var mh = document.getElementById('mHint'); if (mh) mh.remove(); }
+  else if (k === 'sheet') { e.preventDefault(); mSheet(false); }
+  else if (k === 'go') { e.preventDefault(); var g = t.getAttribute('data-g'); mSheet(false); setTimeout(function () { mobGo(g); }, 60); }
+}
+function mobGo(g) {
+  if (g.indexOf('tab:') === 0) { S.tab = g.slice(4); S.sel = -1; render(); mobScr('view'); return; }
+  if (g === 'theme') { $('#btnTheme').click(); return; }
+  var b = document.getElementById(g); if (b) b.click();
+}
+function mSheetOpen() { var s = document.getElementById('mSheet'); return !!(s && s.classList.contains('open')); }
+function mSheet(on) {
+  var s = document.getElementById('mSheet'); if (!s) return;
+  if (!on) { s.classList.remove('open'); s.setAttribute('aria-hidden', 'true'); return; }
+  var main = { diag: 1, log: 1, hist: 1 }, tabs = Array.prototype.slice.call(document.querySelectorAll('#tabs .tab')).filter(function (x) { return !main[x.getAttribute('data-tab')]; });
+  var row = function (g, label, sub) { return '<button class="ms-r" type="button" data-m="go" data-g="' + g + '"><span>' + label + (sub ? '<small>' + sub + '</small>' : '') + '</span>' + MI.chev + '</button>'; };
+  var vis = function (id) { var b = document.getElementById(id); return b && !b.hidden; };
+  var theme = ($('#btnTheme') && $('#btnTheme').textContent || '').replace(/^Тема:\s*/, '');
+  var h = '<div class="ms-bg" data-m="sheet"></div><div class="ms-box" role="dialog" aria-label="Ещё"><div class="ms-grab" aria-hidden="true"></div>' +
+    '<div class="ms-h"><b>Ещё</b><button class="ms-x" type="button" data-m="sheet">Готово</button></div>' +
+    (tabs.length ? '<div class="ms-g"><div class="ms-gt">Разделы</div>' + tabs.map(function (x) { var n = x.querySelector('.n'); return row('tab:' + x.getAttribute('data-tab'), x.firstChild.textContent, n ? n.textContent : ''); }).join('') + '</div>' : '') +
+    '<div class="ms-g"><div class="ms-gt">Действия</div>' + row('btnDump', 'Только дамп или журнал Windows') + row('btnSet', 'Настройки') + row('theme', 'Тема оформления', theme) + '</div>' +
+    '<div class="ms-g"><div class="ms-gt">Справка</div>' + row('btnHelp', 'Инструкция') + row('btnNew', 'Что нового') + (vis('btnBug') ? row('btnBug', 'Сообщить о проблеме') : '') + '</div>' +
+    '<div class="ms-ver">' + ($('#ver') ? $('#ver').innerHTML : '') + '</div></div>';
+  s.innerHTML = h; s.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(function () { s.classList.add('open'); });
+  try { if (!(history.state && history.state.m === 'sheet')) history.pushState({ m: 'sheet', prev: history.state && history.state.m }, ''); } catch (e) {}
+}
+function mobSync() {
+  if (!MS.built || !isMob()) return;
+  var f = active(), view = MS.scr !== 'list', tl = $('#mTitle'), sb = $('#mSub'), top = $('#mTop');
+  var tabName = { diag: 'Диагноз', log: 'Лог', hist: 'История', cmp: 'Сравнение', rep: 'Отчёты', all: 'Все логи', stats: 'Сводка', case: 'Дело', mass: 'Массовые проблемы' }[S.tab] || '';
+  var fileTab = S.tab === 'diag' || S.tab === 'log' || S.tab === 'case';
+  if (!view) { tl.textContent = 'Логи'; sb.textContent = ''; sb.className = ''; }
+  else if (fileTab && f) { tl.textContent = f.label; var st = f.sc && f.sc.verdict ? f.sc.verdict.status : 'unk'; sb.textContent = (MSTAT[st] || '') + (S.tab !== 'diag' ? ' · ' + tabName : ''); sb.className = 'st-' + st; }
+  else { tl.textContent = tabName || 'Логи'; sb.textContent = ''; sb.className = ''; }
+  top.classList.toggle('in', view);
+  var cur = view ? (S.tab === 'diag' || S.tab === 'log' || S.tab === 'hist' ? S.tab : 'more') : 'list';
+  document.querySelectorAll('#mTab [data-t]').forEach(function (b) { var t = b.getAttribute('data-t'); if (t === cur) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+  var n = S.files.filter(function (x) { return !x.sample; }).length, mn = document.querySelector('#mTab [data-t="list"] .mn');
+  if (mn) { mn.hidden = !n; mn.textContent = n > 99 ? '99+' : String(n); }
+}
+/* перерисовка: если пользователь только что выбрал или добавил лог — показать разбор */
+function realN() { return S.files.filter(function (x) { return !x.sample; }).length; }
+render = (function (orig) { return function () {
+  orig.apply(this, arguments); if (!isMob()) return;
+  var go = (MS.want && active()) || (MS.wantN >= 0 && realN() > MS.wantN && active());
+  if (go) { MS.want = false; MS.wantN = -1; var fixTab = S.tab !== 'diag' && S.tab !== 'log' && S.tab !== 'case'; if (fixTab) S.tab = 'diag'; if (MS.scr === 'list') mobScr('view'); if (fixTab) orig.apply(this, arguments); }
+  mobSync();
+}; })(render);
+readFiles = (function (orig) { return function () { if (isMob()) MS.wantN = realN(); return orig.apply(this, arguments); }; })(readFiles);
+if (MQ.addEventListener) MQ.addEventListener('change', mobApply); else if (MQ.addListener) MQ.addListener(mobApply);
+mobApply();
 /* ---------- События ---------- */
 document.addEventListener('click', function (ev) {
   var t = ev.target.closest('[data-act]'); if (!t) return;
@@ -7339,7 +7664,8 @@ function openHelp() {
     sec('Дамп краша и журнал Windows', ['Под диагнозом есть строка «Дамп краша и журнал Windows». Добавьте туда <code>.dmp</code>, <code>.evtx</code> или zip краш-отчёта.', 'Дамп показывает модуль, где упал клиент, и код исключения. Журнал показывает синие экраны, сбои драйвера видеокарты, диска и памяти в те же минуты.', 'Если лога нет, нажмите «Только дамп» в меню «Ещё».', 'Кнопка «Разобрать с ИИ» отправляет короткую сводку (несколько строк), а не весь файл.']) +
     sec('Discord (плагин MajesticLogImport)', ['У логов и скриншотов игрока в тикете — кнопка «Разбор»: окно с причиной, как чинить, ключевыми строками и готовым ответом игроку. Ответ можно поправить и вставить в чат одной кнопкой.', '<b>Ctrl+Shift+L</b> в открытой ветке тикета — разбор последнего лога игрока без поиска файла.', 'Значки рядом с логами («МОД», «Сеть игрока», «старый»…) — итог разбора ещё до клика. Окно предупредит, если лог старый или не хватает client.log, и подставит вежливую просьбу.', 'Скриншоты: чёрные полосы по краям находятся сразу, текст ошибки на экране читает ИИ и сверяет с правилами анализатора.', '«Передать дальше» вставляет в чат сводку для старших: причина, что уже предложено, ключевые строки.', 'Шаблоны команды: окно предлагает подходящий шаблон по тексту игрока, скриншоту и логу; кнопка «Анализировать» под описанием проблемы от бота (или Ctrl+Shift+L). Отмечайте «Подходит / Не подходит» и добавляйте «+ фразу» — так подбор становится точнее у всей команды. В окне: Enter — вставить выбранный шаблон, Alt+1…3 — по номеру, ↑↓ — выбор.', 'В текстах шаблонов можно писать {ник}, {статик}, {сервер}, {файл}, {моды}, {код} — подставятся сами.']) +
     sec('Папки (дела)', ['Бросьте лог на другой лог: оба окажутся в новой папке. Бросьте лог на плитку папки: он добавится в неё.', 'У дела есть статус, итог и таймер ожидания игрока. Логи с одним номером тикета собираются в папку сами.']) +
-    sec('Горячие клавиши', ['? показывает все клавиши, Ctrl+K открывает список команд, / — поиск по логу, 1–9 — вкладки. Свои клавиши назначаются в «Настройках».']) +
+    sec('На телефоне', ['Сайт <code>' + (WEB ? location.origin : 'https://majestic-log-advisor.requesteadm.workers.dev') + '/m/</code> открывается в Safari или Chrome. Код устройства отправьте администратору, как код компьютера.', 'iPhone: «Поделиться» → «На экран „Домой“» — анализатор откроется как приложение. Лог из Discord: открыть файл → «Поделиться» → «Сохранить в Файлы», затем «+» в анализаторе. На Android можно сразу «Поделиться» → «Логи Majestic».', 'Внизу вкладки: «Логи» — список, «Диагноз», «Лог», «История», «Ещё» — остальные разделы и настройки. «‹ Логи» вверху возвращает к списку.']) +
+    (WEB ? '' : sec('Горячие клавиши', ['? показывает все клавиши, Ctrl+K открывает список команд, / — поиск по логу, 1–9 — вкладки. Свои клавиши назначаются в «Настройках».'])) +
     '<div><h4 style="margin:6px 0 4px">Что попросить у игрока</h4><p class="hint" style="margin:0 0 6px">Готовое сообщение.</p><textarea readonly style="height:150px" id="askTxt">' + esc(PLAYER_ASK) + '</textarea></div>' +
     '<div class="row-actions"><button class="btn sm primary" data-act="helpAsk">Копировать сообщение</button><button class="btn sm ghost" data-act="closePanel">Закрыть</button></div></div></div>';
 }
@@ -7415,6 +7741,8 @@ if (window.nativeApp) {
   if (window.nativeApp.findLogs) { $('#btnLogs').hidden = false; $('#btnLogs').addEventListener('click', openLogsPanel); }
   if (window.nativeApp.updateInfo) { $('#btnUpd').hidden = false; $('#btnUpd').addEventListener('click', function () { var o = $('#upOv'); S.updDismiss = null; checkUpdates(true).then(function () { if (!$('#upOv')) openUpdate(); }); }); updatedNotice(); $('#updLine').addEventListener('click', function () { $('#btnUpd').click(); }); setTimeout(checkUpdates, 2000); setInterval(checkUpdates, 30 * 60 * 1000); setTimeout(fetchShared, 3000); setTimeout(backupMaybe, 25000); setInterval(backupMaybe, 6 * 3600000); setTimeout(pulse, 2500); setInterval(pulse, 40000); window.addEventListener('focus', function () { pulse(); }); }
 }
+/* сайт для телефона: связь с сервером команды — так же, как в приложении для Windows */
+if (WEB) { setTimeout(fetchShared, 3000); setTimeout(pulse, 2500); setInterval(pulse, 40000); window.addEventListener('focus', function () { pulse(); }); document.addEventListener('visibilitychange', function () { if (!document.hidden) pulse(); }); }
 var drop = $('#drop');
 drop.addEventListener('click', function () { $('#fileIn').click(); });
 ['dragenter', 'dragover'].forEach(function (n) { document.addEventListener(n, function (e) { e.preventDefault(); if (!barDrag) drop.classList.add('over'); }); });
@@ -7490,6 +7818,7 @@ var SAMPLE_CLIENT = String.raw`[18:58:35.840] Logger initialized
 S.mask = false; /* в интерфейсе ничего не прячем: маска мешала шаблонам (DNS и т.п.); на сервер логи по-прежнему уходят обезличенными */
 var subEl = document.querySelector('#ver'); if (subEl) subEl.textContent = 'версия ' + APP_VERSION;
 if (window.nativeApp && window.nativeApp.shellInfo) window.nativeApp.shellInfo().then(function (i) { if (!i || !i.hwid || !subEl) return; subEl.insertAdjacentHTML('beforeend', '<div style="margin-top:10px;font-family:var(--sans)">Код компьютера<br><code id="hwidCode" style="user-select:all">' + esc(i.hwid) + '</code> <button class="btn sm ghost" id="hwidCopy" type="button">Копировать</button></div>'); var hb = document.getElementById('hwidCopy'); if (hb) hb.addEventListener('click', function () { try { window.nativeApp.copy(i.hwid); status('Код компьютера скопирован.'); } catch (e) {} }); }).catch(function () {});
+if (WEB && subEl) subEl.insertAdjacentHTML('beforeend', '<div style="margin-top:10px;font-family:var(--sans)">Код устройства<br><code id="hwidCode" style="user-select:all">' + webDev() + '</code></div>');
 S.kb.settings.launches = (S.kb.settings.launches || 0) + 1; saveKB();
 (async function startFiles() {
   var restored = false;
@@ -7501,6 +7830,7 @@ try { applySide(); } catch (e) {}
 render();
 checkAlerts();
 loadTeam(false);
+if (WEB) { webStart(); webShared(); }
 if (samplePromptDue()) { var spTry = 0, spT = setInterval(function () { spTry++; if (S.files.some(function (f) { return f.sample; }) || spTry > 8) { clearInterval(spT); if (samplePromptDue() && S.files.some(function (f) { return f.sample; })) popup('sample', 3, function () { if (samplePromptDue()) showSamplePrompt(); }); } }, 1500); }
 if (srvOn()) { setTimeout(checkNews, 1500); setInterval(checkNews, 30 * 60 * 1000); setTimeout(fetchMass, 6000); setInterval(fetchMass, 30 * 60 * 1000); }
 if (window.nativeApp && window.nativeApp.findLogs && !S.kb.settings.firstRun) { S.kb.settings.firstRun = 1; saveKB(); setTimeout(async function () { var fr = null; try { fr = await window.nativeApp.findLogs(); } catch (e) {} if (fr && fr.files && fr.files.length && !S.files.some(function (x) { return !x.sample; })) popup('logs', 5, function () { if (!S.files.some(function (x) { return !x.sample; })) openLogsPanel(); }); }, 4500); }
