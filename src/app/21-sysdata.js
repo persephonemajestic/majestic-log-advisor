@@ -43,7 +43,13 @@ async function ingestSys(files, texts) {
   if (sysOnlyOn()) { parts.forEach(function (p) { S.sysOnly.sys = mergeSys(S.sysOnly.sys, p); }); drawSys(S.sysOnly); status('Данные прочитаны.'); return; }
   var f = active();
   if (f && !f.sample) { parts.forEach(function (p) { attachSysPart(f, p); }); S.tab = 'diag'; render(); status('Системные данные добавлены к логу «' + f.label + '».'); }
-  else { S.pendingParts = (S.pendingParts || []).concat(parts); status('Данные прочитаны. Откройте или добавьте лог игрока: они привяжутся к нему.'); }
+  /* лога игрока ещё нет — журнал или дамп сразу разбираются в окне «Дамп без лога» (раньше данные молча ждали лог, и казалось, что файл не добавился);
+     когда лог появится, они привяжутся и к нему */
+  else {
+    S.pendingParts = (S.pendingParts || []).concat(parts);
+    S.sysOnly = S.sysOnly || { label: 'Дамп без лога', sys: null }; parts.forEach(function (p) { S.sysOnly.sys = mergeSys(S.sysOnly.sys, p); });
+    openSysOnly(); status('Прочитано: ' + parts.map(function (p) { return p.name || (p.dump && p.dump.name) || 'дамп'; }).join(', ') + '. Добавьте лог игрока — данные привяжутся и к нему.');
+  }
 }
 function sysOnlyOn() { return !!document.getElementById('sysOnlyBox'); }
 function openSysOnly() {
