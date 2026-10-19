@@ -35,12 +35,15 @@ const srv = http.createServer(async (q, r) => {
   ok(await p.isVisible('#webGate #wgForm') && await p.isVisible('[data-wg=tab][data-m=register]'), 'без входа виден экран «Вход / Регистрация»');
   ok(await p.evaluate(() => [...document.querySelectorAll('input[type=file]')].every((x) => !x.hasAttribute('accept'))), 'на iPhone выбор файлов не ограничен типами (иначе .log не выбрать)');
   await p.tap('[data-wg=tab][data-m=register]'); await p.waitForTimeout(200);
-  await p.fill('#wgL', 'Ivan_Petrov'); await p.fill('#wgP', '12345'); await p.fill('#wgP2', '12345'); await p.tap('#wgForm [type=submit]'); await p.waitForTimeout(300);
-  ok(/8 символов/.test(await p.textContent('#wgMsg')) && !(await kv.has('u:ivan_petrov')), 'короткий пароль не принимается');
-  await p.fill('#wgP', 'qwerty123'); await p.fill('#wgP2', 'qwerty123'); await p.tap('#wgForm [type=submit]'); await p.waitForTimeout(300);
-  ok(/простой/.test(await p.textContent('#wgMsg')), 'популярный пароль не принимается');
-  await p.fill('#wgP', 'Kot4ik-Murzik9'); await p.fill('#wgP2', 'Kot4ik-Murzik9'); await p.waitForTimeout(100);
-  ok(await p.evaluate(() => document.querySelectorAll('#wgRules li.ok').length === 3), 'подсказки к паролю отмечаются галочками');
+  await p.fill('#wgL', 'Ivan_Petrov'); await p.fill('#wgP', '12345'); await p.fill('#wgP2', '12345');
+  ok(await p.isDisabled('#wgForm [type=submit]') && !(await p.evaluate(() => document.querySelector('#wgRules [data-r=len]').classList.contains('ok'))) && !kv.has('u:ivan_petrov'), 'короткий пароль: кнопка недоступна, требование не отмечено');
+  await p.fill('#wgP', 'qwerty123'); await p.fill('#wgP2', 'qwerty123');
+  ok(await p.isDisabled('#wgForm [type=submit]') && !(await p.evaluate(() => document.querySelector('#wgRules [data-r=vary]').classList.contains('ok'))), 'популярный пароль не принимается');
+  await p.fill('#wgP', 'Kot4ik-Murzik9'); await p.fill('#wgP2', 'Kot4ik-Murzik8');
+  const mm = await p.evaluate(() => ({ bad: document.getElementById('wgP2').classList.contains('bad'), err: document.getElementById('wgP2e').textContent, li: document.querySelector('#wgRules [data-r=same]').classList.contains('bad'), dis: document.querySelector('#wgForm [type=submit]').disabled }));
+  ok(mm.bad && /не совпадают/.test(mm.err) && mm.li && mm.dis, 'разные пароли: поле подсвечено красным, «Пароли не совпадают», регистрация недоступна (' + JSON.stringify(mm) + ')');
+  await p.fill('#wgP2', 'Kot4ik-Murzik9'); await p.waitForTimeout(100);
+  ok(await p.evaluate(() => document.querySelectorAll('#wgRules li.ok').length === 4 && document.getElementById('wgP2').classList.contains('good') && !document.getElementById('wgP2e').textContent) && !(await p.isDisabled('#wgForm [type=submit]')), 'одинаковые пароли: все галочки, кнопка доступна');
   await p.tap('#wgForm [type=submit]'); await p.waitForTimeout(800);
   ok(/ждёт подтверждения/.test(await p.textContent('#webGate')) && /Ivan_Petrov/.test(await p.textContent('#webGate')), 'после регистрации — «ждёт подтверждения»');
   ok((await admin({ action: 'users' })).list.some((x) => x.login === 'Ivan_Petrov' && x.st === 'pending'), 'пользователь появился в админке');
@@ -92,8 +95,10 @@ const srv = http.createServer(async (q, r) => {
   /* личный кабинет: смена пароля и выход */
   await p4.tap('#mTab [data-t=more]'); await p4.waitForTimeout(450); await p4.tap('[data-g=btnAcc]'); await p4.waitForTimeout(500);
   ok(/Ivan_Petrov/.test(await p4.textContent('#panelHost')), 'в «Ещё» → «Аккаунт» виден логин');
-  await p4.fill('#apOld', 'Kot4ik-Murzik9'); await p4.fill('#apNew', '11111111'); await p4.fill('#apNew2', '11111111'); await p4.tap('#accPw [type=submit]'); await p4.waitForTimeout(300);
-  ok(/буквы/.test(await p4.textContent('#apMsg')), 'слабый новый пароль не принимается');
+  await p4.fill('#apOld', 'Kot4ik-Murzik9'); await p4.fill('#apNew', '11111111'); await p4.fill('#apNew2', '11111111');
+  ok(await p4.isDisabled('#accPw [type=submit]'), 'слабый новый пароль: кнопка недоступна');
+  await p4.fill('#apNew', 'Novy-Parol-2026'); await p4.fill('#apNew2', 'Novy-Parol-2025');
+  ok(await p4.isDisabled('#accPw [type=submit]') && /не совпадают/.test(await p4.textContent('#apNew2e')) && await p4.evaluate(() => document.getElementById('apNew2').classList.contains('bad')), 'смена пароля: разные пароли подсвечены, кнопка недоступна');
   await p4.fill('#apNew', 'Novy-Parol-2026'); await p4.fill('#apNew2', 'Novy-Parol-2026'); await p4.tap('#accPw [type=submit]'); await p4.waitForTimeout(800);
   ok(!(await p4.isVisible('#accPw')) && (await p4.textContent('#toast').catch(() => '')).includes('Пароль изменён'), 'пароль сменён в личном кабинете');
   await p.reload(); await p.waitForTimeout(1000);

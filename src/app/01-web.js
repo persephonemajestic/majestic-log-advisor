@@ -46,8 +46,17 @@ function pwRules(pw, login) {
 }
 function pwIssue(pw, login) { var r = pwRules(pw, login); return !r.len ? 'Пароль: не меньше 8 символов.' : !r.mix ? 'В пароле нужны буквы и хотя бы одна цифра.' : !r.vary ? 'Пароль слишком простой: без повторов, без логина и не из популярных (qwerty123, 12345678…).' : ''; }
 var MARK = '<svg class="wg-mk" viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="8" fill="var(--ink)"/><path d="M6 20h6l3.5-9 5 16 3.5-10 2 3H30" fill="none" stroke="var(--bg)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-function pwRulesHtml(id) { return '<ul class="wg-rules" id="' + id + '"><li data-r="len">Не меньше 8 символов</li><li data-r="mix">Буквы и цифры</li><li data-r="vary">Не простой: без повторов, без логина, не qwerty123 и не 12345678</li></ul>'; }
-function pwRulesDraw(id, pw, login) { var ul = document.getElementById(id); if (!ul) return; var r = pwRules(pw, login); ul.querySelectorAll('li').forEach(function (li) { li.classList.toggle('ok', !!r[li.getAttribute('data-r')] && !!pw); }); }
+function pwRulesHtml(id) { return '<ul class="wg-rules" id="' + id + '"><li data-r="len">Не меньше 8 символов</li><li data-r="mix">Буквы и цифры</li><li data-r="vary">Не простой: без повторов, без логина, не qwerty123 и не 12345678</li><li data-r="same">Пароли совпадают</li></ul>'; }
+/* живая проверка нового пароля: галочки требований, подсветка поля повтора, кнопка доступна, только когда всё верно */
+function pwLive(f) {
+  var pw = $(f.pw) ? $(f.pw).value : '', p2el = $(f.pw2), p2 = p2el ? p2el.value : '', login = f.login ? ($(f.login) ? $(f.login).value : f.login) : '';
+  var r = pwRules(pw, login); r.same = !!pw && pw === p2;
+  var ul = document.getElementById(f.rules); if (ul) ul.querySelectorAll('li').forEach(function (li) { var k = li.getAttribute('data-r'); li.classList.toggle('ok', !!r[k] && !!pw); li.classList.toggle('bad', k === 'same' && !!p2 && !r.same); });
+  if (p2el) { var mism = !!p2 && !r.same; p2el.classList.toggle('bad', mism); p2el.classList.toggle('good', !!p2 && r.same); p2el.setAttribute('aria-invalid', String(mism)); var e = document.getElementById(f.err); if (e) e.textContent = mism ? 'Пароли не совпадают' : ''; }
+  var all = r.len && r.mix && r.vary && r.same, btn = document.querySelector(f.btn); if (btn) btn.disabled = !all;
+  return all;
+}
+var PWF_REG = { pw: '#wgP', pw2: '#wgP2', login: '#wgL', rules: 'wgRules', err: 'wgP2e', btn: '#wgForm [type=submit]' }, PWF_ACC = { pw: '#apNew', pw2: '#apNew2', rules: 'apRules', err: 'apNew2e', btn: '#accPw [type=submit]' };
 function accGate(state, msg) {
   var g = document.getElementById('webGate');
   if (state === 'ok') { if (g) g.remove(); document.documentElement.classList.remove('gated'); return; }
@@ -62,12 +71,14 @@ function accGate(state, msg) {
     h += '<div class="wg-tabs" role="tablist"><button type="button" role="tab" data-wg="tab" data-m="login" aria-selected="' + !reg + '">Вход</button><button type="button" role="tab" data-wg="tab" data-m="register" aria-selected="' + reg + '">Регистрация</button></div>' +
       '<form class="wg-f" id="wgForm" novalidate><label>Логин<input id="wgL" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="24" required></label>' +
       '<label>Пароль<span class="wg-pw"><input id="wgP" type="password" autocomplete="' + (reg ? 'new-password' : 'current-password') + '" maxlength="128" required><button type="button" class="wg-eye" data-wg="eye" aria-label="Показать пароль">Показать</button></span></label>' +
-      (reg ? '<label>Повторите пароль<input id="wgP2" type="password" autocomplete="new-password" maxlength="128" required></label>' + pwRulesHtml('wgRules') : '') +
-      '<button class="btn primary wg-go" type="submit">' + (reg ? 'Зарегистрироваться' : 'Войти') + '</button></form>' +
+      (reg ? '<label>Повторите пароль<input id="wgP2" type="password" autocomplete="new-password" maxlength="128" required aria-describedby="wgP2e"><span class="wg-err" id="wgP2e" role="alert"></span></label>' + pwRulesHtml('wgRules') : '') +
+      '<p class="wg-h wg-msg" id="wgMsg" role="status" aria-live="polite">' + esc(msg || '') + '</p>' +
+      '<button class="btn primary wg-go" type="submit"' + (reg ? ' disabled' : '') + '>' + (reg ? 'Зарегистрироваться' : 'Войти') + '</button></form>' +
       (reg ? '<p class="wg-tip">Логин — латинские буквы и цифры, от 3 символов. После регистрации администратор выдаст доступ, и анализатор откроется сам. Один аккаунт — на компьютере и на телефоне.</p>' : '<p class="wg-tip">Забыли пароль? Напишите администратору: он сбросит пароль, а новый вы поменяете в личном кабинете.</p>') +
       (ACCS.closable ? '<button class="btn ghost wg-alt" type="button" data-wg="close">Позже</button>' : '');
   }
-  h += '<p class="wg-h" id="wgMsg" role="status" aria-live="polite">' + esc(msg || '') + '</p>' +
+  if (h.indexOf('id="wgMsg"') < 0) h += '<p class="wg-h" id="wgMsg" role="status" aria-live="polite">' + esc(msg || '') + '</p>';
+  h += 
     (WEB && IOS && !navigator.standalone && state !== 'wait' ? '<p class="wg-tip"><b>Совет.</b> Нажмите «Поделиться» <span class="ios-share" aria-hidden="true"></span> → «На экран „Домой“» — анализатор откроется как приложение.</p>' : '') + '</div>';
   g.innerHTML = h;
   var li = document.getElementById('wgL'); if (li && !('ontouchstart' in window)) li.focus();
@@ -88,17 +99,18 @@ async function accCheck(quiet) {
   if (me.legacy) return accOk(null, true);
   lsSet(ACC_OK, null); if (WEB) lsSet(WEB_OK, null); ACCS.user = null; if (!quiet || !document.getElementById('wgForm')) accGate('login');
 }
+function gm(t, err) { var m = $('#wgMsg'); if (m) { m.textContent = t; m.classList.toggle('err', !!err); } }
 async function accSubmit() {
   var l = ($('#wgL').value || '').trim(), pw = $('#wgP').value || '', reg = ACCS.mode === 'register', msg = $('#wgMsg'), btn = document.querySelector('#wgForm [type=submit]');
-  if (!/^[A-Za-z0-9_.-]{3,24}$/.test(l)) { msg.textContent = 'Логин: от 3 до 24 символов — латинские буквы, цифры, точка, дефис или _.'; return; }
-  if (reg) { var bad = pwIssue(pw, l); if (bad) { msg.textContent = bad; return; } if (pw !== ($('#wgP2').value || '')) { msg.textContent = 'Пароли не совпадают.'; return; } }
-  else if (!pw) { msg.textContent = 'Введите пароль.'; return; }
-  btn.disabled = true; msg.textContent = reg ? 'Создаю аккаунт…' : 'Вхожу…';
+  if (!/^[A-Za-z0-9_.-]{3,24}$/.test(l)) { gm('Логин: от 3 до 24 символов — латинские буквы, цифры, точка, дефис или _.', true); return; }
+  if (reg) { var bad = pwIssue(pw, l); if (bad) { gm(bad, true); $('#wgP').focus(); return; } if (pw !== ($('#wgP2').value || '')) { pwLive(PWF_REG); gm('Пароли не совпадают — введите одинаковый пароль в оба поля.', true); $('#wgP2').focus(); return; } }
+  else if (!pw) { gm('Введите пароль.', true); return; }
+  btn.disabled = true; gm(reg ? 'Создаю аккаунт…' : 'Вхожу…', false);
   var dev = WEB ? (IOS ? 'iPhone' : /Android/.test(navigator.userAgent) ? 'Android' : 'браузер') : 'Windows';
   var r = await accReq(reg ? '/v1/auth/register' : '/v1/auth/login', { login: l, pass: pw, dev: dev });
   btn.disabled = false;
-  if (!r) { msg.textContent = 'Нет связи с сервером. Проверьте интернет.'; return; }
-  if (!r.ok) { msg.textContent = r.error || 'Не получилось.'; return; }
+  if (!r) { gm('Нет связи с сервером. Проверьте интернет.', true); return; }
+  if (!r.ok) { gm(r.error || 'Не получилось.', true); return; }
   await accSave(r.token, r.user.login);
   if (r.user.st === 'ok') accOk(r.user, false); else { ACCS.user = r.user; accGate(r.user.st === 'off' ? 'off' : 'pending'); }
 }
@@ -111,7 +123,7 @@ function openAccount(note) {
   var u = ACCS.user, h = '<div class="panel" data-act="closePanel"><div class="box acc-box" role="dialog" aria-label="Аккаунт" data-act="noop"><b>Аккаунт</b>';
   if (note) h += '<div class="alertbox"><b>' + esc(note) + '</b></div>';
   if (u) h += '<p style="margin:0">Вы вошли как <b>' + esc(u.login) + '</b>. Этот аккаунт работает и на компьютере, и на телефоне.</p>' +
-    '<h4 style="margin:6px 0 0">Сменить пароль</h4><form id="accPw" class="wg-f" novalidate><label>Текущий пароль<input id="apOld" type="password" autocomplete="current-password"></label><label>Новый пароль<input id="apNew" type="password" autocomplete="new-password"></label><label>Повторите новый пароль<input id="apNew2" type="password" autocomplete="new-password"></label>' + pwRulesHtml('apRules') + '<button class="btn primary" type="submit">Сменить пароль</button><p class="hint" id="apMsg" role="status" aria-live="polite" style="margin:0"></p></form>' +
+    '<h4 style="margin:6px 0 0">Сменить пароль</h4><form id="accPw" class="wg-f" novalidate><label>Текущий пароль<input id="apOld" type="password" autocomplete="current-password"></label><label>Новый пароль<input id="apNew" type="password" autocomplete="new-password"></label><label>Повторите новый пароль<input id="apNew2" type="password" autocomplete="new-password" aria-describedby="apNew2e"><span class="wg-err" id="apNew2e" role="alert"></span></label>' + pwRulesHtml('apRules') + '<button class="btn primary" type="submit" disabled>Сменить пароль</button><p class="hint" id="apMsg" role="status" aria-live="polite" style="margin:0"></p></form>' +
     '<div class="row-actions"><button class="btn" type="button" data-wg="logoutAsk">Выйти из аккаунта</button><button class="btn ghost" type="button" data-act="closePanel">Закрыть</button></div>';
   else h += '<p style="margin:0">Сейчас вы заходите по коду этого ' + (WEB ? 'телефона' : 'компьютера') + '. Войдите в аккаунт или зарегистрируйтесь — тогда один и тот же доступ будет и на компьютере, и на телефоне, и вход не будет слетать.</p>' +
     '<div class="row-actions"><button class="btn primary" type="button" data-wg="opengate">Войти или зарегистрироваться</button><button class="btn ghost" type="button" data-act="closePanel">Закрыть</button></div>';
@@ -119,7 +131,7 @@ function openAccount(note) {
 }
 async function accPassSubmit() {
   var m = $('#apMsg'), o = $('#apOld').value || '', n = $('#apNew').value || '', bad = pwIssue(n, ACCS.user && ACCS.user.login);
-  if (!o) { m.textContent = 'Введите текущий пароль.'; return; } if (bad) { m.textContent = bad; return; } if (n !== ($('#apNew2').value || '')) { m.textContent = 'Новые пароли не совпадают.'; return; }
+  if (!o) { m.textContent = 'Введите текущий пароль.'; return; } if (bad) { m.textContent = bad; return; } if (n !== ($('#apNew2').value || '')) { pwLive(PWF_ACC); m.textContent = 'Новые пароли не совпадают.'; $('#apNew2').focus(); return; }
   m.textContent = 'Сохраняю…'; var r = await accReq('/v1/auth/pass', { old: o, pass: n });
   if (!r) { m.textContent = 'Нет связи с сервером.'; return; } if (!r.ok) { m.textContent = r.error || 'Не получилось.'; return; }
   ACCS.user = r.user; $('#panelHost').innerHTML = ''; status('Пароль изменён. На других устройствах войдите с новым паролем.');
@@ -138,7 +150,7 @@ async function webStart() {
     var b = e.target.closest && e.target.closest('[data-wg]'); if (!b) return;
     var k = b.getAttribute('data-wg');
     if (k === 'tab') { ACCS.mode = b.getAttribute('data-m'); var keep = $('#wgL') ? $('#wgL').value : ''; accGate('login'); if ($('#wgL')) $('#wgL').value = keep; }
-    else if (k === 'eye') { var pi = $('#wgP'); if (pi) { var sh = pi.type === 'password'; pi.type = sh ? 'text' : 'password'; b.textContent = sh ? 'Скрыть' : 'Показать'; } }
+    else if (k === 'eye') { var pi = $('#wgP'); if (pi) { var sh = pi.type === 'password'; pi.type = sh ? 'text' : 'password'; if ($('#wgP2')) $('#wgP2').type = pi.type; b.textContent = sh ? 'Скрыть' : 'Показать'; } }
     else if (k === 'retry') { b.disabled = true; await accCheck(); }
     else if (k === 'logout') accLogout();
     else if (k === 'logoutAsk') { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Точно выйти?'; return; } accLogout(); }
@@ -146,7 +158,11 @@ async function webStart() {
     else if (k === 'opengate') { $('#panelHost').innerHTML = ''; ACCS.closable = true; ACCS.mode = 'login'; accGate('login'); }
   });
   document.addEventListener('submit', function (e) { if (e.target.id === 'wgForm') { e.preventDefault(); accSubmit(); } else if (e.target.id === 'accPw') { e.preventDefault(); accPassSubmit(); } });
-  document.addEventListener('input', function (e) { var id = e.target.id; if (id === 'wgP' || id === 'wgL') pwRulesDraw('wgRules', $('#wgP') && $('#wgP').value, $('#wgL') && $('#wgL').value); if (id === 'apNew') pwRulesDraw('apRules', e.target.value, ACCS.user && ACCS.user.login); });
+  document.addEventListener('input', function (e) {
+    var id = e.target.id;
+    if ((id === 'wgP' || id === 'wgL' || id === 'wgP2') && $('#wgP2')) { pwLive(PWF_REG); if ($('#wgMsg')) $('#wgMsg').textContent = ''; }
+    if (id === 'apNew' || id === 'apNew2' || id === 'apOld') { PWF_ACC.login = ACCS.user && ACCS.user.login; pwLive(PWF_ACC); }
+  });
   if (!lsGet(ACC_OK)) accGate('wait');
   await accCheck();
   /* пока окно входа открыто в ожидании подтверждения — тихо проверяем раз в 15 секунд */

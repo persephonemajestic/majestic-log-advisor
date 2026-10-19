@@ -863,6 +863,16 @@ html.mob .tlr.k-bad .tt { color: var(--crit); }
 .wg-rules li::before { content: '○'; display: inline-block; width: 18px; color: var(--muted); }
 .wg-rules li.ok { color: var(--ok); } .wg-rules li.ok::before { content: '✓'; color: var(--ok); font-weight: 700; }
 .wg-alt { width: 100%; min-height: 44px; }
+.wg-f input.bad { border-color: var(--crit); background: color-mix(in srgb, var(--crit) 8%, var(--surface)); }
+.wg-f input.bad:focus { outline-color: var(--crit); }
+.wg-f input.good { border-color: var(--ok); }
+.wg-err { font-size: 13px; font-weight: 600; color: var(--crit); }
+.wg-err:empty { display: none; }
+.wg-rules li.bad { color: var(--crit); } .wg-rules li.bad::before { content: '✕'; color: var(--crit); font-weight: 700; }
+.wg-msg { margin: 0; text-align: left; color: var(--muted); }
+.wg-msg.err { color: var(--crit); font-weight: 600; }
+.wg-msg:empty { display: none; }
+.wg-f .btn[disabled] { opacity: .45; cursor: not-allowed; }
 .acc-box .wg-f { max-width: 420px; }
 .wg-own { width: 100%; text-align: left; }
 .wg-own summary { cursor: pointer; color: var(--accent); font-size: 15px; text-align: center; list-style: none; padding: 6px 0; }
