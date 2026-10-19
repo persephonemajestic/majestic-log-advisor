@@ -1,6 +1,6 @@
 /**
  * @name MajesticLogImport
- * @version 1.7.8
+ * @version 1.7.9
  * @description «Разбор» логов и скриншотов прямо в тикете: причина, как чинить и готовый ответ игроку одной кнопкой. «В анализатор» отправляет файл в Majestic Log Advisor. Ctrl+Shift+L — разбор последнего лога тикета.
  * @author persephonemajestic
  * @source https://github.com/persephonemajestic/majestic-log-advisor/tree/main/plugins/betterdiscord
@@ -14,7 +14,7 @@
    «Разбор» (логи, zip, скриншоты): файл разбирается в приложении, но не добавляется в список; ответ — окно поверх Discord.
    Значки на логах: плагин сам разбирает логи игрока в открытой ветке и подписывает итог рядом с файлом (можно выключить). */
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.8";
+const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.9";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 /* MLA-QUICKUI-START — общий код окна «Разбор» для Vencord и BetterDiscord (в BetterDiscord вставляется скриптом plugins/sync-quickui.py) */

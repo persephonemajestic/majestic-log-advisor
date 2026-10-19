@@ -79,4 +79,19 @@ function runInst(sb, input, env, args) {
   runInst(sb, '4\n0\n', { MPI_AUTOSTART: f }); ok(fs.existsSync(f) && /--auto/.test(fs.readFileSync(f, 'utf8')), 'автозапуск включается (команда с --auto)');
   const r = runInst(sb, '4\n0\n', { MPI_AUTOSTART: f }); ok(!fs.existsSync(f) && /выключено/.test(r.stdout), 'автозапуск выключается');
 }
+/* совместимость чужих плагинов с новым Vencord: Toasts убрали из @webpack/common, showToast принимает объект */
+{
+  const sb = sandbox(), v = path.join(sb.home, 'Vencord'), up = path.join(v, 'src', 'userplugins');
+  fs.mkdirSync(path.join(v, 'src', 'plugins'), { recursive: true }); fs.writeFileSync(path.join(v, 'package.json'), '{"name":"vencord"}');
+  const old = 'import { ChannelStore, RestAPI, SelectedChannelStore, Toasts, UserStore } from "@webpack/common";\nToasts.show({ message: "Кикнуто", id: Toasts.genId(), type: Toasts.Type.SUCCESS });\n';
+  const okNew = 'import { showToast } from "@webpack/common";\nshowToast({ text: "ok", variant: "success" });\n';
+  for (const [d, f, src] of [['supportKick', 'index.tsx', old], ['ticketSound', 'index.ts', old.replace('ChannelStore, RestAPI, ', '')], ['modern', 'index.ts', okNew]]) { fs.mkdirSync(path.join(up, d), { recursive: true }); fs.writeFileSync(path.join(up, d, f), src); }
+  const r = runInst(sb, '1\n\nд\n0\n');
+  const k = fs.readFileSync(path.join(up, 'supportKick', 'index.tsx'), 'utf8');
+  ok(!/import \{[^}]*\bToasts\b[^}]*\} from "@webpack\/common"/.test(k) && /showToast as __mpiShowToast/.test(k) && /const Toasts: any/.test(k) && /Toasts\.show\(/.test(k), 'старые Toasts в чужом плагине заменены прослойкой, сам код плагина не тронут');
+  ok(fs.readFileSync(path.join(up, 'modern', 'index.ts'), 'utf8') === okNew, 'плагин под новое API не трогается');
+  ok(/Подправил совместимость с новым Vencord.*supportKick/.test(r.stdout) && /ticketSound/.test(r.stdout), 'установщик сообщает, какие плагины подправил');
+  const bk = path.join(sb.data, 'backup'), last = fs.readdirSync(bk).sort().pop(); ok(fs.readFileSync(path.join(bk, last, 'supportKick', 'index.tsx'), 'utf8') === old, 'в резервной копии — оригинал без правок');
+  const r2 = runInst(sb, '1\n\nд\n0\n'); ok(!/Подправил совместимость/.test(r2.stdout) && (fs.readFileSync(path.join(up, 'supportKick', 'index.tsx'), 'utf8').match(/MPI-compat/g) || []).length === 1, 'повторный запуск не правит второй раз');
+}
 process.exit(bad ? 1 : 0);

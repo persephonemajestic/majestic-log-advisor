@@ -7,15 +7,18 @@
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { insertTextIntoChatInputBox } from "@utils/discord";
-import { Button, ChannelStore, JoinedThreadsStore, MessageStore, React, SelectedChannelStore, showToast, UserStore } from "@webpack/common";
+import { Button, ChannelStore, JoinedThreadsStore, MessageStore, React, SelectedChannelStore, showToast as vcShowToast, UserStore } from "@webpack/common";
 
 import { cmpVer, extractPlayer } from "./extract";
 import { makeQuickUI, MLA_HOTKEY, MLA_QCSS, quickErr } from "./quickui";
 
+/* Vencord (октябрь 2026): showToast принимает объект { text, variant }; тип «message/success/failure» переводим в variant */
+function showToast(text: string, kind: string = "message") { try { (vcShowToast as any)({ text, variant: kind === "success" ? "success" : kind === "failure" ? "critical" : "default" }); } catch { } }
+
 const Native = VencordNative.pluginHelpers.MajesticLogImport as PluginNative<typeof import("./native")>;
 
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.8";
+const QKEY = "MajesticLogImport.queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.9";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 const settings = definePluginSettings({

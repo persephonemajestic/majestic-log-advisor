@@ -5,7 +5,7 @@
     {
       "id": "majesticLogImport",
       "title": "MajesticLogImport — «Разбор» и «В анализатор» на логах и скриншотах в тикетах",
-      "version": "1.7.8",
+      "version": "1.7.9",
       "vencord": {
         "dir": "majesticLogImport",
         "path": "plugins/vencord/majesticLogImport",

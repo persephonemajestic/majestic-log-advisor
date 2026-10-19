@@ -190,6 +190,41 @@ async function putVencordPlugin(vdir, p, localDir) {
   fs.rmSync(dst, { recursive: true, force: true }); fs.renameSync(tmp, dst);
   return dst;
 }
+/* ---------- совместимость чужих плагинов с новым Vencord ----------
+   В Vencord (октябрь 2026) из "@webpack/common" убрали Toasts, а showToast теперь принимает объект { text, variant }.
+   Плагины, написанные под старое API (Toasts.show, showToast("текст", Toasts.Type.SUCCESS)), ломают сборку всего Vencord.
+   Перед сборкой подставляем в такие файлы небольшую прослойку: старые вызовы продолжают работать. Резервная копия уже сделана. */
+const COMPAT_MARK = '/* MPI-compat: toasts */';
+const COMPAT_SHIM = [COMPAT_MARK,
+  'const __mpiV = (t: any) => t === "success" || t === 1 ? "success" : t === "failure" || t === 2 ? "critical" : "default";',
+  'const __mpiToast = (m: any, type?: any, o?: any) => { try { if (m && typeof m === "object" && "text" in m) return (__mpiShowToast as any)(m); const t = m && typeof m === "object" ? m : { message: m, type, options: o }; (__mpiShowToast as any)({ text: String(t.message ?? ""), variant: __mpiV(t.type), position: t.options && t.options.position === 1 ? "bottom" : undefined, duration: t.options && t.options.duration }); } catch { } };'];
+const SHIM_SHOW = 'const showToast = (m: any, type?: any, o?: any) => __mpiToast(m, type, o);';
+const SHIM_TOASTS = 'const Toasts: any = { Type: { MESSAGE: "message", SUCCESS: "success", FAILURE: "failure", CUSTOM: "custom", CLIP: "clip", LINK: "link", FORWARD: "forward", INVITE: "invite", BOOKMARK: "bookmark", CLOCK: "clock" }, Position: { TOP: 0, BOTTOM: 1 }, genId: () => String(Date.now()) + Math.random().toString(36).slice(2), create: (message: any, type?: any, options?: any) => ({ message, type, options }), show: (t: any) => __mpiToast(t), pop: () => { } };';
+function compatSource(src) {
+  if (src.indexOf(COMPAT_MARK) >= 0) return null;
+  const re = /import\s*\{([^}]*)\}\s*from\s*["']@webpack\/common["'];?/g; let m, out = src, changed = false, needShow = false, needToasts = false;
+  while ((m = re.exec(src))) {
+    const names = m[1].split(',').map((x) => x.trim()).filter(Boolean);
+    const hasT = names.indexOf('Toasts') >= 0, hasS = names.indexOf('showToast') >= 0;
+    if (!hasT && !hasS) continue;
+    /* showToast уже в новом виде (только объекты) — не трогаем */
+    if (!hasT && !/showToast\(\s*[^{\s)]/.test(src)) continue;
+    const rest = names.filter((x) => x !== 'Toasts' && x !== 'showToast').concat(['showToast as __mpiShowToast']);
+    out = out.replace(m[0], 'import { ' + rest.join(', ') + ' } from "@webpack/common";'); changed = true; needShow = needShow || hasS; needToasts = needToasts || hasT;
+  }
+  if (!changed) return null;
+  /* прослойка — после последнего import */
+  const imps = [...out.matchAll(/^import[^;]*;\s*$/gm)], at = imps.length ? imps[imps.length - 1].index + imps[imps.length - 1][0].length : 0;
+  const shim = '\n' + COMPAT_SHIM.concat(needShow ? [SHIM_SHOW] : [], needToasts ? [SHIM_TOASTS] : []).join('\n') + '\n';
+  return out.slice(0, at) + shim + out.slice(at);
+}
+function compatUserplugins(up, skip) {
+  const fixed = [];
+  const walk = (d) => { for (const n of fs.readdirSync(d)) { const f = path.join(d, n), st = fs.statSync(f); if (st.isDirectory()) { if (n !== 'node_modules' && !/\.mpi-new$/.test(n)) walk(f); } else if (/\.(tsx?|jsx?)$/.test(n)) { let src; try { src = fs.readFileSync(f, 'utf8'); } catch (e) { continue; } const res = compatSource(src); if (res) { fs.writeFileSync(f, res); fixed.push(path.relative(up, f)); } } } };
+  if (!exists(up)) return fixed;
+  for (const n of fs.readdirSync(up)) { if ((skip || []).indexOf(n) >= 0) continue; const f = path.join(up, n); if (fs.statSync(f).isDirectory()) walk(f); else if (/\.(tsx?|jsx?)$/.test(n)) { const res = compatSource(fs.readFileSync(f, 'utf8')); if (res) { fs.writeFileSync(f, res); fixed.push(n); } } }
+  return fixed;
+}
 function build(vdir) { return (run('pnpm', ['install', '--frozen-lockfile'], { cwd: vdir }) || run('pnpm', ['install'], { cwd: vdir })) && run('pnpm', ['build'], { cwd: vdir }); }
 async function vencordFlow(list, localDir, opts) {
   opts = opts || {};
@@ -206,10 +241,11 @@ async function vencordFlow(list, localDir, opts) {
   if (localDir) mine.push(path.basename(await putVencordPlugin(vdir, null, localDir)));
   for (const p of list) { mine.push(path.basename(await putVencordPlugin(vdir, p))); say('  ✓ ' + p.title + ' ' + p.version); }
   const others = before.filter((x) => mine.indexOf(x) < 0); if (others.length) say('Ваши другие плагины остаются на месте: ' + others.join(', '));
+  const fx = compatUserplugins(up, mine); if (fx.length) say('Подправил совместимость с новым Vencord (старые уведомления Toasts) в: ' + fx.join(', ') + '. Копия до правки — в резервной папке.');
   say('\nСобираю Vencord (первый раз это занимает пару минут)…');
   if (!build(vdir)) {
     say('\nСборка не удалась. Возвращаю плагины из резервной копии и собираю как было…');
-    if (bk) { fs.rmSync(up, { recursive: true, force: true }); copyDir(bk, up); } else for (const m of mine) fs.rmSync(path.join(up, m), { recursive: true, force: true });
+    if (bk) { fs.rmSync(up, { recursive: true, force: true }); copyDir(bk, up); compatUserplugins(up, []); } else for (const m of mine) fs.rmSync(path.join(up, m), { recursive: true, force: true });
     build(vdir); say('Плагины возвращены. Пришлите текст ошибки выше разработчику.'); return false;
   }
   cfg.installed = cfg.installed || {}; list.forEach((p) => { cfg.installed[p.id] = Object.assign(cfg.installed[p.id] || {}, { vencord: p.version, at: Date.now() }); }); writeCfg(cfg);
@@ -289,4 +325,4 @@ async function main() {
   rl.close();
 }
 if (require.main === module) main();
-module.exports = { isVencord, putVencordPlugin, backupUserplugins, autoCmd };
+module.exports = { isVencord, putVencordPlugin, backupUserplugins, autoCmd, compatSource, compatUserplugins };
