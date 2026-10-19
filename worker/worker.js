@@ -69,7 +69,7 @@ async function rlHit(env, k, ttl) { let n = 0; try { n = parseInt(await env.ACCE
 async function rlGet(env, k) { try { return parseInt(await env.ACCESS.get(k), 10) || 0; } catch (e) { return 0; } }
 const ipOf = (req) => String(req.headers.get('CF-Connecting-IP') || 'x').slice(0, 64);
 const userView = (u) => ({ login: u.login, st: u.st, must: !!u.must });
-async function authApi(p, req, env) {
+async function authApi(p, req, env, ctx) {
   let b = {}; if (req.method === 'POST') { try { b = await req.json(); } catch (e) {} }
   if (p === '/v1/auth/register' && req.method === 'POST') {
     const login = String(b.login || '').trim(), pw = String(b.pass || '');
@@ -80,6 +80,7 @@ async function authApi(p, req, env) {
     await rlHit(env, 'rg:' + ipOf(req), 3600);
     const u = { login, k, st: 'pending', at: Date.now(), seen: Date.now(), ss: [] }; await setPw(u, pw);
     const tok = await sessionNew(env, u, b.dev); await touchAv(env);
+    bg(ctx, tgSay(env, '🆕 <b>Новая регистрация:</b> ' + tgEsc(u.login) + (b.dev ? ' (' + tgEsc(String(b.dev).slice(0, 20)) + ')' : '') + '\nВыдать доступ?', [[['✅ Выдать доступ', 'u:ok:' + u.login], ['⛔ Отклонить', 'u:off:' + u.login]]]));
     return json({ ok: true, token: tok, user: userView(u) });
   }
   if (p === '/v1/auth/login' && req.method === 'POST') {
@@ -171,10 +172,112 @@ async function samplesExport(env) {
   return { ok: true, n, days: Object.keys(days).length };
 }
 
+/* ---------- Telegram-бот администратора ----------
+   Токен — секрет TG_TOKEN в Cloudflare. Бот отвечает только привязанному чату (tg:chat): привязка — кодом из админки (/start 123456).
+   Пишет: регистрации (кнопки «Выдать доступ» / «Отклонить»), баг-репорты со скриншотом, массовые проблемы, кончился ИИ,
+   фразы для шаблонов на проверку, сводку раз в день. Команды: /users, /pending, /stats, /reports, /news, /help. */
+const tgEsc = (t) => String(t == null ? '' : t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+async function tgApi(env, method, payload, form) {
+  if (!env.TG_TOKEN) return null;
+  try { const r = await fetch('https://api.telegram.org/bot' + env.TG_TOKEN + '/' + method, form ? { method: 'POST', body: form } : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload || {}) }); return await r.json(); } catch (e) { return null; }
+}
+async function tgChat(env) { if (!env.TG_TOKEN) return ''; try { return (await env.ACCESS.get('tg:chat')) || ''; } catch (e) { return ''; } }
+const kb = (rows) => ({ inline_keyboard: rows.map((r) => r.map((b) => ({ text: b[0], callback_data: b[1] }))) });
+async function tgSay(env, text, rows, chatId) { const chat = chatId || (await tgChat(env)); if (!chat) return null; return tgApi(env, 'sendMessage', Object.assign({ chat_id: chat, text: String(text).slice(0, 4000), parse_mode: 'HTML', disable_web_page_preview: true }, rows ? { reply_markup: kb(rows) } : {})); }
+function bg(ctx, pr) { const p2 = Promise.resolve(pr).catch(() => null); if (ctx && ctx.waitUntil) ctx.waitUntil(p2); return p2; }
+const tgSecret = async (env) => (await sha256hex('tg-hook:' + (env.TG_TOKEN || ''))).slice(0, 48);
+const ST_RU = { pending: '⏳ ждёт', ok: '✅ доступ', off: '⛔ закрыт' };
+function userRows(u) { const L = u.login; return [[u.st === 'ok' ? ['⛔ Забрать доступ', 'u:off:' + L] : ['✅ Выдать доступ', 'u:ok:' + L], ['🔑 Сбросить пароль', 'u:rst:' + L]], [['⏏ Завершить сеансы', 'u:kick:' + L]]]; }
+async function usersAll(env) { const out = []; let cursor; do { const l = await env.ACCESS.list({ prefix: 'u:', cursor }); for (const k of l.keys) { const u = await userGet(env, k.name.slice(2)); if (u) out.push(u); } cursor = l.list_complete ? null : l.cursor; } while (cursor); return out; }
+async function tgSummary(env, title) {
+  const day = new Date().toISOString().slice(0, 10), d = await kvJson(env, 'd:' + day, null), ai = await kvJson(env, 'aiu:' + day, {}), tm = await kvJson(env, 'tplm:' + day, {});
+  const us = await usersAll(env), pend = us.filter((u) => u.st === 'pending'), hp = (await kvJson(env, 'tplpend', [])).length;
+  let rp = 0, cursor; do { const l = await env.ACCESS.list({ prefix: 'rp:', cursor }); for (const k of l.keys) { const r = await kvJson(env, k.name, null); if (r && Date.now() - (r.at || 0) < 86400000) rp++; } cursor = l.list_complete ? null : l.cursor; } while (cursor);
+  const top = d ? Object.keys(d.probs || {}).map((k) => d.probs[k]).sort((a, c) => c.c - a.c).slice(0, 5) : [];
+  return '<b>' + tgEsc(title || 'Сводка') + ' за ' + day.split('-').reverse().join('.') + '</b>\n' +
+    '📄 Логов разобрано: <b>' + (d ? d.n : 0) + '</b>' + (d ? ', со сбоем: ' + d.bad + ', с модами: ' + d.mods : '') + '\n' +
+    (top.length ? '\n<b>Частые проблемы</b>\n' + top.map((x, i) => (i + 1) + '. ' + tgEsc(x.t) + ' — ' + x.c).join('\n') + '\n' : '') +
+    '\n🤖 ИИ: запросов ' + ((ai.ok || 0) + (ai.cached || 0)) + (ai.rate ? ', упёрлись в лимит: ' + ai.rate : '') + (ai.fail ? ', ошибок: ' + ai.fail : '') +
+    '\n📋 Шаблоны: показано ' + (tm.shown || 0) + ', вставлено ' + ((tm.r1 || 0) + (tm.r2 || 0) + (tm.r3 || 0)) + (hp ? ', фраз на проверке: ' + hp : '') +
+    '\n🐞 Баг-репортов за сутки: ' + rp +
+    '\n👥 Пользователей: ' + us.length + (pend.length ? ', <b>ждут доступа: ' + pend.length + '</b> (' + pend.map((u) => tgEsc(u.login)).join(', ') + ')' : '');
+}
+async function tgNotifyReport(env, r) {
+  const t = '🐞 <b>Баг-репорт</b> от ' + tgEsc(r.by) + (r.v ? ' · версия ' + tgEsc(r.v) : '') + (r.page ? ' · ' + tgEsc(r.page) : '') + '\n\n' + tgEsc(r.text || '(без текста)') + (r.link ? '\n\n🔗 ' + tgEsc(r.link) : '') + (r.diag ? '\n\n<i>' + tgEsc(r.diag.slice(0, 600)) + '</i>' : '');
+  const chat = await tgChat(env); if (!chat) return;
+  const rows = [[['🗑 Удалить отчёт', 'r:del:' + r.id]]];
+  if (r.shot) {
+    try {
+      const m = /^data:(image\/\w+);base64,(.*)$/.exec(r.shot), bin = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0)), fd = new FormData();
+      fd.append('chat_id', chat); fd.append('caption', t.slice(0, 1000)); fd.append('parse_mode', 'HTML'); fd.append('reply_markup', JSON.stringify(kb(rows))); fd.append('photo', new Blob([bin], { type: m[1] }), 'shot.' + m[1].split('/')[1]);
+      const res = await tgApi(env, 'sendPhoto', null, fd); if (res && res.ok) { if (t.length > 1000) await tgSay(env, t.slice(1000)); return; }
+    } catch (e) {}
+  }
+  await tgSay(env, t, rows);
+}
+async function tgHook(req, env, ctx) {
+  if (!env.TG_TOKEN || req.headers.get('X-Telegram-Bot-Api-Secret-Token') !== (await tgSecret(env))) return new Response('no', { status: 403 });
+  let up = {}; try { up = await req.json(); } catch (e) {}
+  const chat = await tgChat(env), msg = up.message, cq = up.callback_query;
+  if (msg && msg.chat) {
+    const cid = String(msg.chat.id), text = String(msg.text || '').trim();
+    /* привязка: /start 123456 или просто код из админки */
+    const code = (/^(?:\/start\s+)?(\d{6})$/.exec(text) || [])[1];
+    if (code && msg.chat.type === 'private') {
+      const want = await env.ACCESS.get('tg:code');
+      if (want && same(code, want)) { await env.ACCESS.put('tg:chat', cid); await env.ACCESS.delete('tg:code'); await tgSay(env, '✅ Бот привязан. Сюда будут приходить регистрации, баг-репорты, массовые проблемы и сводка за день.\n\n' + TG_HELP, null, cid); }
+      else { if ((await rlHit(env, 'tg:bad', 900)) >= 10) await env.ACCESS.delete('tg:code'); await tgSay(env, 'Код не подошёл или устарел. Получите новый в админке: «Telegram-бот» → «Привязать».', null, cid); }
+      return json({ ok: true });
+    }
+    if (!chat || cid !== chat) { if (/^\/start/.test(text)) await tgSay(env, 'Это закрытый бот. Чтобы привязать его, отправьте код из админки.', null, cid); return json({ ok: true }); }
+    const cmd = (/^\/(\w+)(?:@\w+)?\s*([\s\S]*)$/.exec(text) || []);
+    if (cmd[1] === 'users' || cmd[1] === 'pending') {
+      const us = (await usersAll(env)).filter((u) => cmd[1] === 'users' || u.st === 'pending').sort((a, c) => (a.st === 'pending' ? 0 : 1) - (c.st === 'pending' ? 0 : 1) || (c.seen || 0) - (a.seen || 0));
+      if (!us.length) await tgSay(env, cmd[1] === 'pending' ? 'Никто не ждёт доступа.' : 'Пользователей пока нет.');
+      for (const u of us.slice(0, 25)) await tgSay(env, '<b>' + tgEsc(u.login) + '</b> — ' + ST_RU[u.st] + (u.must ? ' · временный пароль' : '') + '\nПоследний вход: ' + (u.seen ? new Date(u.seen).toLocaleString('ru-RU', { timeZone: 'Asia/Yekaterinburg' }) : '—'), userRows(u));
+      if (us.length > 25) await tgSay(env, 'Показаны 25 из ' + us.length + '. Остальные — в админке.');
+    } else if (cmd[1] === 'stats') await tgSay(env, await tgSummary(env, 'Сводка'));
+    else if (cmd[1] === 'reports') {
+      const out = []; let cursor; do { const l = await env.ACCESS.list({ prefix: 'rp:', cursor }); for (const k of l.keys) { const r = await kvJson(env, k.name, null); if (r) out.push(r); } cursor = l.list_complete ? null : l.cursor; } while (cursor);
+      out.sort((a, c) => c.at - a.at); if (!out.length) await tgSay(env, 'Баг-репортов нет.'); for (const r of out.slice(0, 5)) await tgNotifyReport(env, r);
+    } else if (cmd[1] === 'news') {
+      const t = String(cmd[2] || '').trim().slice(0, 1500); if (!t) await tgSay(env, 'Напишите текст после команды: <code>/news Обновите приложение</code>');
+      else { const list = await getNews(env); list.unshift({ id: Date.now().toString(36), at: Date.now(), text: t }); await env.ACCESS.put('news', JSON.stringify(list.slice(0, 30))); await touchAv(env); await tgSay(env, '📢 Объявление опубликовано, команда увидит его в приложении.'); }
+    } else await tgSay(env, TG_HELP);
+    return json({ ok: true });
+  }
+  if (cq && cq.message) {
+    const cid = String(cq.message.chat.id), data = String(cq.data || ''), ans = (t) => tgApi(env, 'answerCallbackQuery', { callback_query_id: cq.id, text: t || '' });
+    if (!chat || cid !== chat) { await ans('Нет доступа'); return json({ ok: true }); }
+    const edit = (t, rows) => tgApi(env, 'editMessageText', Object.assign({ chat_id: cid, message_id: cq.message.message_id, text: t, parse_mode: 'HTML' }, rows ? { reply_markup: kb(rows) } : {}));
+    const mu = /^u:(ok|off|rst|kick):(.+)$/.exec(data), mh = /^h:(ok|no):(.+)$/.exec(data), mr = /^r:del:(.+)$/.exec(data);
+    if (mu) {
+      const u = await userGet(env, mu[2].toLowerCase()); if (!u) { await ans('Пользователь не найден'); return json({ ok: true }); }
+      if (mu[1] === 'ok' || mu[1] === 'off') { u.st = mu[1]; await userPut(env, u); await touchAv(env); await ans(mu[1] === 'ok' ? 'Доступ выдан' : 'Доступ закрыт'); await edit('<b>' + tgEsc(u.login) + '</b> — ' + ST_RU[u.st], userRows(u)); }
+      else if (mu[1] === 'kick') { await sessionsEnd(env, u, null); await userPut(env, u); await ans('Сеансы завершены'); }
+      else { const pw = genPass(); await setPw(u, pw); u.must = true; await sessionsEnd(env, u, null); await userPut(env, u); await ans('Пароль сброшен'); await tgSay(env, '🔑 Новый пароль для <b>' + tgEsc(u.login) + '</b>:\n<code>' + tgEsc(pw) + '</code>\nПередайте его человеку — после входа приложение предложит задать свой.'); }
+    } else if (mh) {
+      let pend = await kvJson(env, 'tplpend', []); const it = pend.find((x) => x.id === mh[2]); pend = pend.filter((x) => x.id !== mh[2]);
+      if (it && mh[1] === 'ok') { const hints = await kvJson(env, 'tplh', {}); hints[it.set] = hints[it.set] || {}; const h = hints[it.set][it.t] = hints[it.set][it.t] || { say: [], when: '' }; if (it.say && h.say.indexOf(it.say) < 0) h.say = h.say.concat([it.say]).slice(-HINT_MAX); if (it.when) h.when = it.when; await env.ACCESS.put('tplh', JSON.stringify(hints)); }
+      await env.ACCESS.put('tplpend', JSON.stringify(pend)); await ans(it ? (mh[1] === 'ok' ? 'Добавлено' : 'Отклонено') : 'Уже обработано');
+      if (it) await edit((mh[1] === 'ok' ? '✅ Добавлено к шаблону' : '✖ Отклонено') + ' «' + tgEsc(it.t) + '»: ' + tgEsc(it.say || it.when));
+    } else if (mr) { await env.ACCESS.delete('rp:' + mr[1].slice(0, 20)); await touchAv(env); await ans('Отчёт удалён'); try { await tgApi(env, 'deleteMessage', { chat_id: cid, message_id: cq.message.message_id }); } catch (e) {} }
+    else await ans('');
+    return json({ ok: true });
+  }
+  return json({ ok: true });
+}
+const TG_HELP = '<b>Команды</b>\n/pending — кто ждёт доступа\n/users — все пользователи с кнопками\n/stats — сводка за сегодня\n/reports — последние баг-репорты\n/news <i>текст</i> — объявление команде\n\nРегистрации, баг-репорты, массовые проблемы и вечерняя сводка приходят сами.';
+function genPass() { const AB = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789', r = rnd(12); let pw = ''; for (let i = 0; i < 12; i++) pw += AB[r[i] % AB.length]; if (!/\d/.test(pw)) pw = pw.slice(0, 11) + '7'; if (!/[a-z]/i.test(pw)) pw = 'k' + pw.slice(1); return pw; }
+
 export default {
-  async scheduled(ev, env, ctx) { ctx.waitUntil(samplesExport(env).catch(() => null)); },
-  async fetch(req, env) {
+  async scheduled(ev, env, ctx) {
+    if (ev && ev.cron === '0 15 * * *') { ctx.waitUntil(tgSay(env, await tgSummary(env, 'Сводка')).catch(() => null)); return; }
+    ctx.waitUntil(samplesExport(env).catch(() => null));
+  },
+  async fetch(req, env, ctx) {
     const url = new URL(req.url), p = url.pathname;
+    if (p === '/tg/hook' && req.method === 'POST') return tgHook(req, env, ctx);
     if (p === '/v1/samples/put' && req.method === 'POST') {
       const u = await who(req, env); if (!u) return deny();
       let b = {}; try { b = await req.json(); } catch (e) {}
@@ -187,7 +290,7 @@ export default {
       await env.ACCESS.put(dk, String(dn + 1), { expirationTtl: 3 * 86400 });
       return json({ ok: true });
     }
-    if (p.startsWith('/v1/auth/')) return authApi(p, req, env);
+    if (p.startsWith('/v1/auth/')) return authApi(p, req, env, ctx);
     if (p === '/v1/check') { const u = await who(req, env); return u ? json({ ok: true, n: u.n }) : deny(); }
     if (p === '/v1/rules') {
       if (!(await who(req, env))) return deny();
@@ -285,6 +388,7 @@ export default {
         } catch (e) { return json({ ok: false, error: 'upstream', detail: 'нет связи с Gemini' }); }
         used = mdl; if ([400, 404, 429, 500, 503].indexOf(r.status) < 0) break; /* модели нет, лимит или перегрузка — пробуем следующую */
       }
+      if (!r.ok && r.status === 429) { const ak = 'tga:' + day; if (!(await env.ACCESS.get(ak))) { await env.ACCESS.put(ak, '1', { expirationTtl: 2 * 86400 }); bg(ctx, tgSay(env, '🤖 <b>Бесплатный лимит ИИ на сегодня закончился.</b> Разбор работает без ИИ до завтра.')); } }
       if (!r.ok) { await bump(env, 'aiu', [r.status === 429 ? 'rate' : 'fail']); let m = ''; try { m = ((await r.json()).error || {}).message || ''; } catch (e) {} return json({ ok: false, error: r.status === 429 ? 'rate' : 'upstream', detail: 'Gemini ' + r.status + ' (' + used + ')' + (m ? ': ' + String(m).slice(0, 160) : '') }); }
       let j = {}; try { j = await r.json(); } catch (e) {}
       const t = (((j.candidates || [])[0] || {}).content || {}).parts; const text = t ? t.map(x => x.text || '').join('') : '';
@@ -317,7 +421,9 @@ export default {
     }
     if (p === '/v1/tplhint/suggest' && req.method === 'POST') {
       const u = await who(req, env); if (!u) return deny(); let b = {}; try { b = await req.json(); } catch (e) {}
-      const n = await addPending(env, [{ set: b.set, t: b.t, say: b.say, when: b.when, by: u.n || '' }]); return json({ ok: !!n, error: n ? '' : 'empty' });
+      const n = await addPending(env, [{ set: b.set, t: b.t, say: b.say, when: b.when, by: u.n || '' }]);
+      if (n) bg(ctx, (async () => { const pend = await kvJson(env, 'tplpend', []), it = pend[pend.length - 1]; if (it) await tgSay(env, '💬 <b>Фраза для шаблона</b> от ' + tgEsc(it.by || 'саппорта') + '\nШаблон: «' + tgEsc(it.t) + '» (' + tgEsc(it.set) + ')\nИгроки пишут: <i>' + tgEsc(it.say || it.when) + '</i>', [[['✅ Добавить', 'h:ok:' + it.id], ['✖ Отклонить', 'h:no:' + it.id]]]); })());
+      return json({ ok: !!n, error: n ? '' : 'empty' });
     }
     if (p === '/v1/tplhint/admin' && req.method === 'POST') {
       const u = await who(req, env); if (!u) return deny(); let b = {}; try { b = await req.json(); } catch (e) {}
@@ -348,8 +454,9 @@ export default {
       let shot = typeof b.shot === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(b.shot) ? b.shot : ''; if (shot.length > 1500000) shot = '';
       if (!text && !link && !shot) return json({ ok: false }, 400);
       const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-      await env.ACCESS.put('rp:' + id, JSON.stringify({ id, at: Date.now(), by: u.n || 'без имени', page: String(b.page || '').slice(0, 60), text, link, v: String(b.v || '').slice(0, 20), diag: String(b.diag || '').slice(0, 1500), shot }), { expirationTtl: 90 * 86400 });
-      await touchAv(env);
+      const rec = { id, at: Date.now(), by: u.n || 'без имени', page: String(b.page || '').slice(0, 60), text, link, v: String(b.v || '').slice(0, 20), diag: String(b.diag || '').slice(0, 1500), shot };
+      await env.ACCESS.put('rp:' + id, JSON.stringify(rec), { expirationTtl: 90 * 86400 });
+      await touchAv(env); bg(ctx, tgNotifyReport(env, rec));
       return json({ ok: true });
     }
     if (p === '/v1/news') { if (!(await who(req, env))) return deny(); return json({ ok: true, list: await getNews(env) }); }
@@ -394,7 +501,12 @@ export default {
         }
         added++;
       }
-      if (acc && added) await env.ACCESS.put('d:' + day, JSON.stringify(acc), TTL);
+      if (acc && added) {
+        await env.ACCESS.put('d:' + day, JSON.stringify(acc), TTL);
+        /* массовая проблема: одна и та же проблема в 20+ логах за день — одно сообщение в Telegram */
+        const lim = parseInt(env.MASS_TG || '20', 10) || 20, hot = Object.keys(acc.probs).filter((k) => acc.probs[k].c >= lim);
+        if (hot.length && (await tgChat(env))) bg(ctx, (async () => { for (const k of hot) { const mk = 'tgm:' + day + ':' + k.slice(0, 60); if (await env.ACCESS.get(mk)) continue; await env.ACCESS.put(mk, '1', { expirationTtl: 2 * 86400 }); const o = acc.probs[k]; await tgSay(env, '🔥 <b>Массовая проблема</b>: ' + tgEsc(o.t) + '\nЗа сегодня уже в ' + o.c + ' логах.' + (o.fx && o.fx.length ? '\n\nЧто советовать: ' + o.fx.map(tgEsc).join('; ') : '')); } })());
+      }
       return json({ ok: true, added });
     }
     if (p === '/v1/stats') {
@@ -466,13 +578,23 @@ export default {
         out.sort((a, c) => (a.st === 'pending' ? 0 : 1) - (c.st === 'pending' ? 0 : 1) || (c.seen || 0) - (a.seen || 0));
         return json({ ok: true, list: out, legacy: (await env.ACCESS.get('legacy')) !== '0' });
       }
+      if (b.action === 'tgInfo') { let me = null; if (env.TG_TOKEN) { const r = await tgApi(env, 'getMe', {}); me = r && r.ok ? r.result.username : null; } return json({ ok: true, token: !!env.TG_TOKEN, bot: me, bound: !!(await env.ACCESS.get('tg:chat')) }); }
+      if (b.action === 'tgLink') {
+        if (!env.TG_TOKEN) return json({ ok: false, error: 'Сначала добавьте секрет TG_TOKEN в Cloudflare' });
+        const hook = await tgApi(env, 'setWebhook', { url: url.origin + '/tg/hook', secret_token: await tgSecret(env), allowed_updates: ['message', 'callback_query'], drop_pending_updates: true });
+        if (!hook || !hook.ok) return json({ ok: false, error: 'Telegram не принял настройку: ' + ((hook && hook.description) || 'нет ответа') });
+        await tgApi(env, 'setMyCommands', { commands: [{ command: 'pending', description: 'Кто ждёт доступа' }, { command: 'users', description: 'Все пользователи' }, { command: 'stats', description: 'Сводка за сегодня' }, { command: 'reports', description: 'Баг-репорты' }, { command: 'news', description: 'Объявление команде' }] });
+        const code = String(100000 + (rnd(4).reduce((a, x) => a * 256 + x, 0) % 900000)); await env.ACCESS.put('tg:code', code, { expirationTtl: 900 });
+        const me = await tgApi(env, 'getMe', {}); return json({ ok: true, code, bot: me && me.ok ? me.result.username : '' });
+      }
+      if (b.action === 'tgUnlink') { await env.ACCESS.delete('tg:chat'); return json({ ok: true }); }
+      if (b.action === 'tgTest') { const r = await tgSay(env, await tgSummary(env, 'Проверка: сводка')); return json({ ok: !!(r && r.ok), error: r && r.ok ? '' : 'Бот не привязан или токен неверный' }); }
       if (b.action === 'legacySet') { await env.ACCESS.put('legacy', b.on ? '1' : '0'); await touchAv(env); return json({ ok: true, legacy: !!b.on }); }
       if (/^user(Set|Reset|Kick|Del)$/.test(b.action || '')) {
         const u = await userGet(env, String(b.login || '').trim().toLowerCase()); if (!u) return json({ ok: false, error: 'Пользователь не найден' }, 404);
         if (b.action === 'userSet') { if (['ok', 'off', 'pending'].indexOf(b.st) < 0) return json({ ok: false }, 400); u.st = b.st; await userPut(env, u); await touchAv(env); return json({ ok: true }); }
         if (b.action === 'userReset') {
-          const AB = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789', r = rnd(12); let pw = ''; for (let i = 0; i < 12; i++) pw += AB[r[i] % AB.length];
-          if (!/\d/.test(pw)) pw = pw.slice(0, 11) + '7'; if (!/[a-z]/i.test(pw)) pw = 'k' + pw.slice(1);
+          const pw = genPass();
           await setPw(u, pw); u.must = true; await sessionsEnd(env, u, null); await userPut(env, u); return json({ ok: true, pass: pw });
         }
         if (b.action === 'userKick') { await sessionsEnd(env, u, null); await userPut(env, u); return json({ ok: true }); }
@@ -495,7 +617,9 @@ textarea{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--
 .row{display:flex;gap:8px;flex-wrap:wrap}.row input{flex:1 1 180px}table{border-collapse:collapse;width:100%;font-size:14px}td,th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left}code{font:600 13px Consolas,monospace}.m{color:var(--mut);font-size:13px}.w{overflow-x:auto}</style></head><body><main>
 <h1>Доступ к анализатору логов</h1>
 <div class="card" id="login"><div class="row"><input type="password" id="pw" placeholder="Пароль администратора" autocomplete="current-password"><button class="p" id="go">Войти</button></div><div class="m" id="msg"></div></div>
-<div id="app" hidden><div class="card" id="usersCard"><b>Пользователи <span class="m" id="ucnt"></span></b><div class="m">Человек сам регистрируется в приложении (кнопка «Регистрация» на экране входа) и появляется здесь со статусом «Ожидает». Нажмите «Выдать доступ». «Сбросить пароль» создаёт случайный пароль: передайте его человеку, после входа он сменит его в личном кабинете.</div><div class="w"><table><thead><tr><th>Логин</th><th>Статус</th><th>Последний вход</th><th></th></tr></thead><tbody id="ul"></tbody></table></div><div class="m" id="umsg"></div><label class="m" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="legacy"> Пускать и по старым кодам компьютеров и телефонов (список ниже)</label></div>
+<div id="app" hidden><div class="card" id="tgCard"><b>Telegram-бот</b><div class="m" id="tgSt">Проверяю…</div><div class="row"><button class="p" id="tgLink">Привязать бота</button><button id="tgTest">Прислать сводку сейчас</button><button class="d" id="tgUnlink">Отвязать</button></div><div class="m" id="tgMsg"></div>
+<details class="m"><summary>Как подключить (один раз)</summary><ol style="margin:6px 0 0;padding-left:20px"><li>В Telegram откройте <b>@BotFather</b> → <code>/newbot</code> → придумайте имя и адрес бота. Он пришлёт токен вида <code>123456:ABC…</code>.</li><li>Cloudflare → Workers &amp; Pages → <b>majestic-log-advisor</b> → Settings → Variables and Secrets → Add → тип <b>Secret</b>, имя <code>TG_TOKEN</code>, значение — токен → Deploy.</li><li>Здесь нажмите «Привязать бота», откройте бота по ссылке и отправьте ему код.</li></ol></details></div>
+<div class="card" id="usersCard"><b>Пользователи <span class="m" id="ucnt"></span></b><div class="m">Человек сам регистрируется в приложении (кнопка «Регистрация» на экране входа) и появляется здесь со статусом «Ожидает». Нажмите «Выдать доступ». «Сбросить пароль» создаёт случайный пароль: передайте его человеку, после входа он сменит его в личном кабинете.</div><div class="w"><table><thead><tr><th>Логин</th><th>Статус</th><th>Последний вход</th><th></th></tr></thead><tbody id="ul"></tbody></table></div><div class="m" id="umsg"></div><label class="m" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="legacy"> Пускать и по старым кодам компьютеров и телефонов (список ниже)</label></div>
 <div class="card"><b>Добавить компьютер или телефон</b><div class="m">Код компьютера показан в приложении для Windows. Код телефона — на сайте <code>/m/</code> этого сервера при первом открытии: человек присылает его вам. В имени удобно указать «телефон».</div><div class="row"><input id="h" placeholder="Код: XXXXX-XXXXX-XXXXX-XXXXX"><input id="n" placeholder="Имя (необязательно)"><button class="p" id="add">Выдать доступ</button></div><div class="m" id="msg2"></div></div>
 <div class="card"><b>Объявление для команды</b><div class="m">Появится у всех пользователей при следующем запуске приложения.</div><div class="row"><textarea id="nt" rows="3" placeholder="Например: Добавлено правило про ошибку 0x80070005, обновите приложение"></textarea><button class="p" id="nadd">Отправить</button></div><div class="m" id="msg3"></div><div class="w"><table><tbody id="nl"></tbody></table></div></div>
 <div class="card"><b>Правила команды</b><div class="m">Правила появляются у всех в приложении без обновления. Новое правило применяется к строкам лога, где есть указанный текст.</div><div class="row"><select id="rk"><option value="main">main.log</option><option value="client">client.log</option></select><select id="rs"><option value="err">Ошибка</option><option value="warn">Предупреждение</option><option value="crit">Критично</option><option value="info">Информация</option></select><input id="rp" placeholder="Что искать в строке лога"><input id="rt" placeholder="Название проблемы"></div><div class="row"><textarea id="rc" rows="2" placeholder="Причина проблемы"></textarea><textarea id="rf" rows="3" placeholder="Шаги решения, каждый с новой строки"></textarea></div><div class="row"><button class="p" id="radd">Добавить правило</button></div><div class="m" id="msg4"></div><div class="w"><table><tbody id="rl"></tbody></table></div></div>
@@ -513,7 +637,7 @@ const SIG={};const same=(k,v)=>{const x=JSON.stringify(v);if(SIG[k]===x)return t
 async function load(){const r=await api({action:'list'});if(!r.ok){$('#msg').textContent=r.error||'Ошибка';$('#login').hidden=false;$('#app').hidden=true;return}
 $('#login').hidden=true;$('#app').hidden=false;if(same('l',r.list))return;$('#cnt').textContent='('+r.list.length+')';
 $('#tb').innerHTML=r.list.map(x=>'<tr><td><code>'+esc(x.h)+'</code></td><td>'+esc(x.n)+'</td><td class="m">'+fmt(x.seen)+'</td><td><button class="d" data-h="'+esc(x.h)+'">Отозвать</button></td></tr>').join('')||'<tr><td colspan="4" class="m">Список пуст</td></tr>'}
-$('#go').onclick=()=>{PW=$('#pw').value;try{sessionStorage.setItem('pw',PW)}catch(e){}load().then(()=>poll(true));loadUsers();loadNews();loadRules();loadReports();loadStats();loadSmp();loadTpl()};$('#pw').onkeydown=e=>{if(e.key==='Enter')$('#go').click()};
+$('#go').onclick=()=>{PW=$('#pw').value;try{sessionStorage.setItem('pw',PW)}catch(e){}load().then(()=>poll(true));loadUsers();loadTg();loadNews();loadRules();loadReports();loadStats();loadSmp();loadTpl()};$('#pw').onkeydown=e=>{if(e.key==='Enter')$('#go').click()};
 $('#add').onclick=async()=>{const r=await api({action:'add',h:$('#h').value,n:$('#n').value});$('#msg2').textContent=r.ok?'Доступ выдан.':(r.error||'Ошибка');if(r.ok){$('#h').value='';$('#n').value='';load()}};
 $('#tb').onclick=async e=>{const h=e.target.getAttribute&&e.target.getAttribute('data-h');if(!h)return;if(e.target.dataset.sure!=='1'){e.target.dataset.sure='1';e.target.textContent='Точно отозвать?';return}await api({action:'del',h});load()};
 const UST={pending:'Ожидает',ok:'Доступ выдан',off:'Доступ закрыт'};
@@ -525,6 +649,10 @@ let r;if(a==='ok'||a==='off')r=await api({action:'userSet',login:u,st:a});else i
 $('#umsg').innerHTML=!r.ok?esc(r.error||'Ошибка'):a==='reset'?'Новый пароль для <b>'+esc(u)+'</b>: <code style="user-select:all;font-size:16px">'+esc(r.pass)+'</code> <button id="ucp">Скопировать</button><br>Передайте его человеку. После входа приложение предложит сменить пароль на свой.':a==='ok'?'Доступ выдан: '+esc(u)+'.':a==='off'?'Доступ закрыт: '+esc(u)+'.':a==='kick'?'Сеансы завершены: '+esc(u)+' войдёт заново.':'Удалён: '+esc(u)+'.';
 if(r.pass){$('#ucp').onclick=()=>{navigator.clipboard.writeText(r.pass);$('#ucp').textContent='Скопировано'}}SIG.u='';loadUsers()};
 $('#legacy').onchange=async()=>{const on=$('#legacy').checked;if(!on&&!confirm('Выключить вход по кодам? Пустит только по аккаунтам.')){$('#legacy').checked=true;return}await api({action:'legacySet',on});$('#umsg').textContent=on?'Вход по кодам включён.':'Вход по кодам выключен: только аккаунты.'};
+async function loadTg(){const r=await api({action:'tgInfo'});if(!r.ok)return;$('#tgSt').innerHTML=!r.token?'Не подключён: нет секрета <code>TG_TOKEN</code> в Cloudflare (см. «Как подключить»).':!r.bot?'Токен задан, но Telegram его не принимает — проверьте токен.':r.bound?'✅ Работает: бот <b>@'+esc(r.bot)+'</b> привязан к вашему Telegram. Сюда приходят регистрации, баг-репорты, массовые проблемы и сводка в 20:00 (по Екатеринбургу).':'Бот <b>@'+esc(r.bot)+'</b> найден, но ещё не привязан — нажмите «Привязать бота».';$('#tgUnlink').hidden=!r.bound;$('#tgTest').hidden=!r.bound}
+$('#tgLink').onclick=async()=>{const r=await api({action:'tgLink'});$('#tgMsg').innerHTML=!r.ok?esc(r.error||'Ошибка'):'Откройте <a href="https://t.me/'+esc(r.bot)+'?start='+esc(r.code)+'" target="_blank" rel="noopener">@'+esc(r.bot)+'</a> и нажмите «Старт» (или отправьте боту код <b style="font-size:17px">'+esc(r.code)+'</b>). Код действует 15 минут.';setTimeout(loadTg,20000)};
+$('#tgTest').onclick=async()=>{const r=await api({action:'tgTest'});$('#tgMsg').textContent=r.ok?'Сводка отправлена в Telegram.':(r.error||'Ошибка')};
+$('#tgUnlink').onclick=async e=>{if(e.target.dataset.sure!=='1'){e.target.dataset.sure='1';e.target.textContent='Точно отвязать?';return}await api({action:'tgUnlink'});e.target.dataset.sure='';e.target.textContent='Отвязать';$('#tgMsg').textContent='Бот отвязан.';loadTg()};
 async function loadNews(){const r=await api({action:'newsList'});if(!r.ok||same('n',r.list))return;$('#nl').innerHTML=r.list.map(x=>'<tr><td class="m">'+fmt(x.at)+'</td><td>'+esc(x.text)+'</td><td><button class="d" data-n="'+esc(x.id)+'">Удалить</button></td></tr>').join('')||'<tr><td class="m">Объявлений нет</td></tr>'}
 $('#nadd').onclick=async()=>{const r=await api({action:'newsAdd',text:$('#nt').value});$('#msg3').textContent=r.ok?'Отправлено.':(r.error||'Ошибка');if(r.ok){$('#nt').value='';loadNews()}};
 $('#nl').onclick=async e=>{const n=e.target.getAttribute&&e.target.getAttribute('data-n');if(!n)return;await api({action:'newsDel',id:n});loadNews()};
@@ -551,5 +679,5 @@ let AV=null,BUSY=false;
 function stamp(){const d=new Date(),p=n=>(n<10?'0':'')+n;$('#live').textContent='Обновляется само. Проверено в '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())}
 async function poll(force){if(BUSY||!PW||$('#app').hidden||(document.hidden&&!force))return;BUSY=true;try{const r=await api({action:'ping'});if(r.ok){if(force||r.v!==AV){AV=r.v;await Promise.all([load(),loadUsers(),loadNews(),loadReports(),loadStats()])}stamp()}}catch(e){$('#live').textContent='Нет связи, пробую снова…'}BUSY=false}
 setInterval(()=>poll(false),15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll(true)});
-if(PW){load().then(()=>poll(true));loadUsers();loadNews();loadRules();loadReports();loadStats();loadSmp();loadTpl()}
+if(PW){load().then(()=>poll(true));loadUsers();loadTg();loadNews();loadRules();loadReports();loadStats();loadSmp();loadTpl()}
 </script></main></body></html>`;

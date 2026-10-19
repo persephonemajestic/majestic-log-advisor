@@ -1,0 +1,58 @@
+// Сервер: Telegram-бот администратора (привязка кодом, регистрации с кнопками, баг-репорты со скриншотом, массовые проблемы,
+// лимит ИИ, фразы для шаблонов, команды, вечерняя сводка). Telegram и Gemini подменены.
+import W from '../worker/worker.js';
+const kv = new Map(), sent = [];
+const env = { ADMIN_PASS: 'adm', TG_TOKEN: '123:TEST', GEMINI_API_KEY: 'k', ACCESS: { get: async (k) => kv.get(k) ?? null, put: async (k, v) => { kv.set(k, v); }, delete: async (k) => { kv.delete(k); }, list: async ({ prefix }) => ({ keys: [...kv.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })), list_complete: true }) } };
+globalThis.fetch = async (u, o) => {
+  u = String(u);
+  if (u.startsWith('https://api.telegram.org/bot123:TEST/')) { const m = u.split('/').pop(); let body = null; if (o.body instanceof FormData) body = Object.fromEntries([...o.body.entries()].map(([k, v]) => [k, typeof v === 'string' ? v : '[file ' + v.size + ']'])); else body = JSON.parse(o.body || '{}'); sent.push({ m, body }); return new Response(JSON.stringify({ ok: true, result: m === 'getMe' ? { username: 'mla_test_bot' } : { message_id: 1 } })); }
+  if (u.includes('generativelanguage')) return new Response(JSON.stringify({ error: { message: 'quota' } }), { status: 429 });
+  throw new Error('net ' + u);
+};
+const ctx = { waits: [], waitUntil(p) { this.waits.push(p); } }, flush = async () => { await Promise.all(ctx.waits.splice(0)); };
+const call = async (path, body, h = {}) => { const r = await W.fetch(new Request('https://x' + path, { method: body ? 'POST' : 'GET', headers: Object.assign({ 'content-type': 'application/json', 'CF-Connecting-IP': '9.9.9.9' }, h), body: body ? JSON.stringify(body) : undefined }), env, ctx); await flush(); let j = {}; try { j = await r.json(); } catch (e) {} return { s: r.status, j }; };
+const admin = (b) => call('/admin/api', b, { Authorization: 'Bearer adm' }).then((r) => r.j);
+let secret = ''; const hook = (up, sec) => call('/tg/hook', up, { 'X-Telegram-Bot-Api-Secret-Token': sec === undefined ? secret : sec });
+const msg = (text, chat = 777) => hook({ message: { chat: { id: chat, type: 'private' }, text } });
+const cb = (data, chat = 777) => hook({ callback_query: { id: 'q1', data, message: { chat: { id: chat }, message_id: 5 } } });
+const last = (m) => sent.filter((x) => x.m === m).pop();
+let bad = 0; const ok = (c, m) => { if (!c) bad++; console.log((c ? 'PASS ' : 'FAIL ') + m); };
+let r = await admin({ action: 'tgLink' }); const wh = sent.find((x) => x.m === 'setWebhook'); secret = wh && wh.body.secret_token;
+ok(r.ok && /^\d{6}$/.test(r.code) && r.bot === 'mla_test_bot' && /\/tg\/hook$/.test(wh.body.url) && secret, 'привязка: веб-хук с секретом и код из 6 цифр');
+ok((await hook({ message: { chat: { id: 1 }, text: '/start' } }, 'wrong')).s === 403, 'запрос не от Telegram (без секрета) отклоняется');
+await msg('/start', 555); ok(/закрытый бот/.test(last('sendMessage').body.text) && !kv.get('tg:chat'), 'чужой человек: «закрытый бот», ничего не привязано');
+await msg('/start 000000'); ok(/не подошёл/.test(last('sendMessage').body.text), 'неверный код не привязывает');
+for (let i = 0; i < 10; i++) await msg('/start 11111' + i, 600 + i);
+ok(!kv.get('tg:code'), 'после 10 неверных кодов код привязки сгорает');
+kv.delete('tg:bad'); r = await admin({ action: 'tgLink' });
+await msg('/start ' + r.code); ok(kv.get('tg:chat') === '777' && /привязан/.test(last('sendMessage').body.text) && !kv.get('tg:code'), 'верный код привязывает чат (код одноразовый)');
+ok((await admin({ action: 'tgInfo' })).bound === true, 'в админке видно «привязан»');
+sent.length = 0; await call('/v1/auth/register', { login: 'Ivan_Petrov', pass: 'Kot4ik-Murzik9', dev: 'iPhone' });
+let m = last('sendMessage'); ok(m && /Новая регистрация/.test(m.body.text) && m.body.chat_id === '777' && m.body.reply_markup.inline_keyboard[0][0].callback_data === 'u:ok:Ivan_Petrov', 'регистрация приходит с кнопками «Выдать доступ / Отклонить»');
+await cb('u:ok:Ivan_Petrov', 555); ok(JSON.parse(kv.get('u:ivan_petrov')).st === 'pending', 'кнопка из чужого чата не работает');
+await cb('u:ok:Ivan_Petrov'); ok(JSON.parse(kv.get('u:ivan_petrov')).st === 'ok' && last('answerCallbackQuery').body.text === 'Доступ выдан' && /доступ/.test(last('editMessageText').body.text), 'кнопка «Выдать доступ» выдаёт доступ');
+sent.length = 0; await cb('u:rst:Ivan_Petrov'); const pw = (/<code>([^<]+)<\/code>/.exec(last('sendMessage').body.text) || [])[1];
+ok(pw && pw.length === 12 && (await call('/v1/auth/login', { login: 'Ivan_Petrov', pass: pw })).j.ok, 'сброс пароля из бота присылает рабочий временный пароль');
+await cb('u:off:Ivan_Petrov'); ok(JSON.parse(kv.get('u:ivan_petrov')).st === 'off', 'кнопка «Забрать доступ»');
+sent.length = 0; await msg('/users'); ok(sent.some((x) => /Ivan_Petrov/.test(x.body.text) && x.body.reply_markup), '/users — список с кнопками');
+sent.length = 0; await msg('/pending'); ok(/Никто не ждёт/.test(last('sendMessage').body.text), '/pending');
+kv.set('h:AAAAA-BBBBB-CCCCC-DDDDD', JSON.stringify({ n: 'Саппорт ПК' })); const HW = { 'X-HWID': 'AAAAA-BBBBB-CCCCC-DDDDD' };
+sent.length = 0; await call('/v1/report', { text: 'Не грузится лог', v: '2026-10-19.130', page: 'diag', shot: 'data:image/png;base64,' + Buffer.from('PNGDATA').toString('base64') }, HW);
+const ph = last('sendPhoto'); ok(ph && /Баг-репорт/.test(ph.body.caption) && /Не грузится лог/.test(ph.body.caption) && /\[file/.test(ph.body.photo) && /r:del:/.test(ph.body.reply_markup), 'баг-репорт приходит со скриншотом и кнопкой «Удалить»');
+const rid = /r:del:([^"]+)/.exec(ph.body.reply_markup)[1]; await cb('r:del:' + rid); ok(!kv.get('rp:' + rid), 'кнопка удаляет отчёт');
+sent.length = 0; await call('/v1/report', { text: 'Без скриншота' }, HW); ok(/Без скриншота/.test(last('sendMessage').body.text), 'баг-репорт без скриншота — текстом');
+sent.length = 0; for (let i = 0; i < 22; i++) await call('/v1/logs/put', { items: [{ hash: 'h' + i + 'abcd', st: 'bad', probs: [{ k: 'm-patch', t: 'Не найден модуль патчера', fx: ['Переустановить лаунчер'] }] }] }, HW);
+ok(sent.filter((x) => /Массовая проблема/.test(x.body.text || '')).length === 1, 'массовая проблема (20+ логов за день) — одно сообщение, без повторов');
+sent.length = 0; await call('/v1/ai', { input: 'проверка запроса к модели ИИ', system: 's' }, HW); await call('/v1/ai', { input: 'проверка запроса к модели ИИ 2', system: 's' }, HW);
+ok(sent.filter((x) => /лимит ИИ/.test(x.body.text || '')).length === 1, 'кончился лимит ИИ — одно сообщение за день');
+sent.length = 0; await call('/v1/tplhint/suggest', { set: 'Majestic RP', t: 'Проблемы с донатом', say: 'не пришли коины после оплаты' }, HW);
+m = last('sendMessage'); const hid = /h:ok:([^"]+)/.exec(JSON.stringify(m.body.reply_markup))[1];
+ok(/Фраза для шаблона/.test(m.body.text), 'фраза для шаблона приходит на проверку');
+await cb('h:ok:' + hid); ok(JSON.parse(kv.get('tplh'))['Majestic RP']['Проблемы с донатом'].say.includes('не пришли коины после оплаты') && !JSON.parse(kv.get('tplpend')).length, 'кнопка «Добавить» добавляет фразу к шаблону');
+sent.length = 0; await msg('/stats'); ok(/Логов разобрано: <b>22<\/b>/.test(last('sendMessage').body.text) && /Не найден модуль патчера/.test(last('sendMessage').body.text), '/stats — сводка с частыми проблемами');
+await msg('/news Обновите приложение'); ok(JSON.parse(kv.get('news'))[0].text === 'Обновите приложение', '/news публикует объявление');
+sent.length = 0; await msg('что-то'); ok(/Команды/.test(last('sendMessage').body.text), 'непонятное сообщение — список команд');
+sent.length = 0; const sc = { waits: [], waitUntil(p) { this.waits.push(p); } }; await W.scheduled({ cron: '0 15 * * *' }, env, sc); await Promise.all(sc.waits);
+ok(/Сводка за/.test((last('sendMessage') || { body: {} }).body.text || ''), 'вечерняя сводка по расписанию');
+await admin({ action: 'tgUnlink' }); sent.length = 0; await call('/v1/report', { text: 'после отвязки' }, HW); ok(!sent.length, 'после отвязки бот молчит');
+process.exit(bad ? 1 : 0);
