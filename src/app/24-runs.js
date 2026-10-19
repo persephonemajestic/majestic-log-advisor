@@ -45,7 +45,7 @@ function chainOf(f, max) {
   for (var i = es.length - 1; i >= 0 && rows.length < 60; i--) {
     var e = es[i]; if (e.i >= d.i) continue; if (e.i < d.i - 600) break;
     if (e.sev < SEV.unk && !(e.rid >= 0 && e.sev > SEV.noise)) continue;
-    if (/ERR_SYS_FILELOAD|Missing rpf|Callstack/.test(e.text)) continue;
+    if (/ERR_SYS_FILELOAD, Missing rpf|Missing rpf|Callstack/.test(e.text)) continue;
     rows.push(e);
   }
   rows.reverse(); var out = [];

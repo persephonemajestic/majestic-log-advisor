@@ -2141,7 +2141,13 @@ R({ id: 'm-n11', kind: 'main', kw: 'worker exited without result', re: /patcher:
   title: 'Патчер остановлен вручную (норма после отмены)', cause: 'Игрок отменил запуск, лаунчер убил процесс патчера: строка про завершение без результата идёт сразу за «cancel — killing worker».', fix: [] });
 
 /* ----- client.log ----- */
-R({ id: 'c-fileload', kind: 'client', kw: 'ERR_SYS_FILELOAD', re: /ERR_SYS_FILELOAD/, sev: 'noise', warnAt: 100000, src: 'guide',
+/* «ERR_SYS_FILELOAD happened. Error message: Игровые данные повреждены…» — окно ошибки, которое увидел игрок. Это не фоновая
+   строка «Missing rpf», а настоящая ошибка; надёжного решения команда пока не знает. */
+R({ id: 'c-fileload-err', kind: 'client', kw: 'ERR_SYS_FILELOAD', re: /ERR_SYS_FILELOAD happened/, sev: 'err', src: 'guide',
+  title: 'ERR_SYS_FILELOAD: игра сообщила об ошибке загрузки данных (решение неизвестно)',
+  cause: 'Игра показала игроку окно ошибки ERR_SYS_FILELOAD («Игровые данные повреждены…»). Это не фоновая строка «Missing rpf», а настоящая ошибка. Почему она возникает и как её исправить, пока неизвестно: готового решения нет.',
+  fix: ['Не обещать игроку конкретное решение: способ исправления пока неизвестен.', 'Собрать client.log, main.log и свежий дамп из %appdata%\\majestic-launcher\\Multiplayer\\crashdumps и передать старшим.'] });
+R({ id: 'c-fileload', kind: 'client', kw: 'ERR_SYS_FILELOAD', re: /ERR_SYS_FILELOAD(?!\s+happened)/, sev: 'noise', warnAt: 100000, src: 'guide',
   title: 'ERR_SYS_FILELOAD / Missing rpf: фоновый шум (на вылет не влияет)',
   cause: 'Строки «ERR_SYS_FILELOAD, Missing rpf: …» с Callstack перехватываются хуками клиента, игра после них продолжает работу. Разработчикам это известно. Причиной вылета их считать нельзя: ищите настоящий триггер перед падением (Last loaded asset, код исключения, оверлеи, ошибки стримера).', fix: [] });
 
@@ -3012,6 +3018,7 @@ REPLY['m-srvfiles:net'] = ['Проверьте интернет-соединен
 REPLY['m-srvfiles:bad'] = ['В настройках лаунчера очистите кеш и дождитесь полной перепроверки файлов, затем повторите запуск.'];
 REPLY['m-srvfiles:space'] = ['Освободите несколько гигабайт на диске с игрой (или выберите другой диск для файлов лаунчера) и повторите запуск.'];
 REPLY['c-platform'] = REPLY['m-platform'];
+REPLY['c-fileload-err'] = ['Пришлите, пожалуйста, файлы client.log и main.log из папки %appdata%\\majestic-launcher, а также самый свежий файл из папки %appdata%\\majestic-launcher\\Multiplayer\\crashdumps. Передадим их специалистам для разбора.'];
 function replySteps(g) {
   if (REPLY[g.key]) return REPLY[g.key];
   if (g.rfix && (g.rule.id === 'c-errcode' || g.rule.id === 'm-crashdet')) { var rf = g.rfix.filter(function (x) { return !STAFF.test(x); }); if (rf.length) return rf; }
@@ -3319,7 +3326,7 @@ var STRU = { ok: 'Успех', bad: 'Сбой', warn: 'Внимание', unk: '
 var SRCRU = { guide: 'из руководства', obs: 'по наблюдению в логах', infer: 'вывод, в руководстве нет', web: 'по открытым источникам', user: 'ваше правило', team: 'правило команды' };
 var SRCTIP = { team: 'Общее правило команды из файла rules.json в репозитории проекта', user: 'Правило, которое добавили вы или коллега через «Добавить решение»', guide: 'Правило взято из документа «Руководство по диагностике ошибок и работе с логами»', obs: 'Строка встречается в успешных заходах загруженных логов, поэтому считается шумом', web: 'Случая нет в руководстве. Объяснение собрано по справкам Rockstar, форумам RAGE и cfx.re и реальным логам. Проверяйте его', infer: 'Этого случая нет в руководстве. Объяснение построено по логам и общим признакам, проверяйте его' };
 var PSTEPS_UI = [['admin', 'Администратор'], ['pirate', 'Очистка файлов'], ['backup', 'Резервная копия'], ['patch', 'Патч игры'], ['job', 'Процесс игры'], ['inject', 'Внедрение'], ['injected', 'Клиент внедрён'], ['entry', 'Запуск клиента'], ['finished', 'Готово'], ['window', 'Окно игры']];
-var SAMPLE = null, APP_VERSION = '2026-10-19.130';
+var SAMPLE = null, APP_VERSION = '2026-10-19.131';
 var ROW = 20, KBKEY = 'majestic-log-advisor.kb.v1';
 
 var $ = function (s) { return document.querySelector(s); };
@@ -3546,6 +3553,9 @@ function webUpdate(v) {
 }
 /* ---------- Версия 13: отчёты, все логи, окно загрузки, команда, слежение ---------- */
 var CHANGELOG = [
+  { v: '2026-10-19.131', items: [
+    'Строка «ERR_SYS_FILELOAD happened. Error message: Игровые данные повреждены…» теперь считается ошибкой, которую увидел игрок, а не фоновым шумом. Пояснение честно говорит, что причина и решение пока неизвестны, а ответ игроку просит логи и дамп для передачи старшим. Строки «ERR_SYS_FILELOAD, Missing rpf» по-прежнему фоновый шум.'
+  ] },
   { v: '2026-10-19.130', items: [
     'Регистрация и смена пароля: если пароли в двух полях разные, поле повтора подсвечивается красным с надписью «Пароли не совпадают», а кнопка недоступна, пока всё не будет верно. Список требований к паролю отмечается галочками по мере ввода; «Показать» раскрывает оба поля.'
   ] },
@@ -5121,7 +5131,7 @@ function chainOf(f, max) {
   for (var i = es.length - 1; i >= 0 && rows.length < 60; i--) {
     var e = es[i]; if (e.i >= d.i) continue; if (e.i < d.i - 600) break;
     if (e.sev < SEV.unk && !(e.rid >= 0 && e.sev > SEV.noise)) continue;
-    if (/ERR_SYS_FILELOAD|Missing rpf|Callstack/.test(e.text)) continue;
+    if (/ERR_SYS_FILELOAD, Missing rpf|Missing rpf|Callstack/.test(e.text)) continue;
     rows.push(e);
   }
   rows.reverse(); var out = [];
@@ -6543,7 +6553,7 @@ function aiPrompt(f, u) {
 /* ---------- ИИ-разбор по системному промту ---------- */
 /* В приложении нет своего бэкенда с полем system: ИИ вызывается через встроенный вызов Claude (sample),
    у которого системной роли нет. Поэтому системный промт идёт ведущим сообщением, а ответ принимается строго как JSON по схеме. */
-var AI_PROMPT_VERSION = '45792f8e';
+var AI_PROMPT_VERSION = '5ceca46f';
 var AI_SYSTEM = String.raw`Ты — ведущий инженер по реверс-инжинирингу, анализу краш-дампов и глубокой диагностике игрового клиента GTA 5 и мультиплеерной платформы alt:V (Majestic Multiplayer на базе alt:V). Твоя задача — проводить точный пост-мортем анализ логов клиента (client.log), логов лаунчера (main.log, launcher.log), минидампов памяти (.dmp) и системных журналов.
 
 ВАЖНО: Проект базируется на платформе alt:V. Учитывай внутреннее устройство alt:V: модуль MinHook, хуки нативного клиента, рантайм V8, движок BASS audio, синхронизацию сущностей alt:V и CEF web-вью.
@@ -6554,7 +6564,8 @@ var AI_SYSTEM = String.raw`Ты — ведущий инженер по реве�
 
 1. ERR_SYS_FILELOAD (ВАЖНОЕ ПРАВИЛО ИГНОРИРОВАНИЯ):
    - Строки вида "ERR_SYS_FILELOAD, Missing rpf: [name]:/[path].rpf" и сопутствующий им Callstack — ЛИШНИЙ ФОНОВЫЙ ШУМ. Разработчикам об этом известно, клиент из-за этих строк НЕ падает (ошибка перехватывается внутренними хуками, игра продолжает работу).
-   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО называть ERR_SYS_FILELOAD причиной краша клиента или строить вокруг этого диагноз. Полностью пропускай эти строки при поиске фатальной ошибки.
+   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО называть строки "Missing rpf" причиной краша клиента или строить вокруг них диагноз. Полностью пропускай эти строки при поиске фатальной ошибки.
+   - ИСКЛЮЧЕНИЕ: строка "ERR_SYS_FILELOAD happened. Error message: Игровые данные повреждены…" — это окно ошибки, которое увидел игрок, то есть настоящая ошибка. Назови её как ошибку, но причина и способ решения неизвестны: не придумывай решение, рекомендуй собрать client.log, main.log и свежий дамп и передать старшим.
 
 2. Движок V8 и клиентские скрипты alt:V: инициализация и исполнение клиентских бандлов (main-client.js, index.js, vendors.js). Сбои: V8 heap exhaustion, неперехваченные исключения JS-рантайма, предупреждения о блокировке главного потока ("tick was too long XX ms"), ошибки подгрузки стратегий и контроллеров.
 
@@ -6575,7 +6586,7 @@ var AI_SYSTEM = String.raw`Ты — ведущий инженер по реве�
 1. Определение сигнатуры и точки отказа: найди первый НАСТОЯЩИЙ триггер сбоя — код исключения (0xC0000005, 0x80000003 и др.), Fault Module, графический сбой (ERR_GFX_D3D_INIT) или маркеры ассетов перед падением. ЗАПРЕЩЕНО делать вывод только по строке "MINIDUMP: Temporary dump saved" или "Shutting down": анализируй строки, предшествовавшие завершению процесса. ИГНОРИРУЙ любые упоминания ERR_SYS_FILELOAD.
 2. Анализ цепочки событий: если перед крашем есть блок "Last loaded asset" / "Texture info" — укажи конкретные ассеты (.ydr / .ytd), вызвавшие сбой рендера. Сопоставь падение ассета с предшествующими предупреждениями ("Duplicate weapon item", "Store not found"). Проверь спам десинхронизации стримера alt:V ("Cannot destroy NetworkObject"). Проверь сетевые сбои (ENOTFOUND, отказ ранней авторизации early auth).
 3. Классификация: определи слой сбоя — клиентский JS-скриптинг (V8), сетевой стример alt:V, графический пайплайн/видеодрайвер, поврежденный кэш ассетов сервера или внешний конфликт оверлея/системных библиотек.
-4. Запреты: ЗАПРЕЩЕНО упоминать сторонние платформы; ЗАПРЕЩЕНО называть ERR_SYS_FILELOAD причиной сбоя; ЗАПРЕЩЕНО выдавать общие шаблонные советы («перезагрузите роутер», «переустановите Windows»), если нет прямого подтверждения из лога; ЗАПРЕЩЕНО игнорировать прямые названия проблемных файлов, пакетов и ресурсов, зафиксированных в строках сбоя.
+4. Запреты: ЗАПРЕЩЕНО упоминать сторонние платформы; ЗАПРЕЩЕНО называть строки «ERR_SYS_FILELOAD, Missing rpf» причиной сбоя; ЗАПРЕЩЕНО выдавать общие шаблонные советы («перезагрузите роутер», «переустановите Windows»), если нет прямого подтверждения из лога; ЗАПРЕЩЕНО игнорировать прямые названия проблемных файлов, пакетов и ресурсов, зафиксированных в строках сбоя.
 5. Если в данных нет настоящего триггера, так и скажи: степень уверенности LOW и что именно нужно запросить (свежий client.log сразу после вылета, .dmp, main.log). Не выдумывай причину и не подставляй ассеты, которых нет в данных.
 
 ЭМПИРИЧЕСКИЕ ДАННЫЕ ПО MAJESTIC (получены на сотнях реальных логов, опирайся на них):
@@ -6601,7 +6612,7 @@ var AI_SYSTEM = String.raw`Ты — ведущий инженер по реве�
   "confidence_note": "требуется ли дополнительно .dmp или лог лаунчера",
   "solutions": ["чёткий шаг решения: точный путь к кэшу лаунчера, конкретный мод для удаления, конкретный оверлей для отключения или сетевой параметр"]
 }`;
-var AI_NOISE_LINE = /ERR_SYS_FILELOAD|Missing rpf|^\s*--\s+0x[0-9a-f]+\s*$|Callstack:\s*$/i;
+var AI_NOISE_LINE = /ERR_SYS_FILELOAD, Missing rpf|Missing rpf|^\s*--\s+0x[0-9a-f]+\s*$|Callstack:\s*$/i;
 function aiChrono(f, n) {
   var es = f.parsed.entries, end = es.length - 1, i, found = false;
   for (i = 0; i < es.length; i++) { if (/MINIDUMP: Temporary dump saved/.test(es[i].text)) { end = i; found = true; break; } }
@@ -6624,7 +6635,7 @@ function aiInput(f) {
   try { cln = LogCleaner.clean(String(f.text || ''), { deathLines: 40 }); } catch (e) {}
   if (cln && cln.death.length) { ch.before = aiSquash(cln.death.map(function (l) { return l.slice(0, 260); }), 60); ch.trigName = cln.trigger.kind; }
   else ch.before = aiSquash(ch.before, 60);
-  L.push('ЛОГ: ' + f.label + ' (' + (sc.kind === 'client' ? 'client.log' : 'main.log лаунчера') + ', ' + f.parsed.lines.length + ' строк). Строки ERR_SYS_FILELOAD и Missing rpf из данных удалены как фоновый шум.');
+  L.push('ЛОГ: ' + f.label + ' (' + (sc.kind === 'client' ? 'client.log' : 'main.log лаунчера') + ', ' + f.parsed.lines.length + ' строк). Строки «ERR_SYS_FILELOAD, Missing rpf» из данных удалены как фоновый шум.');
   if (sc.env) L.push('Окружение: ' + JSON.stringify(sc.env).slice(0, 700));
   var mods = []; for (var i = 0; i < f.parsed.lines.length && mods.length < 10; i++) if (/discordhook|RTSSHooks|bandicam|bandihook|nvspcap|GameOverlayRenderer|graphics-hook|owclient|MSIAfterburner|reshade|dxgi\.dll|d3d11\.dll/i.test(f.parsed.lines[i]) && !/SYSTEM32|SysWOW64/i.test(f.parsed.lines[i])) mods.push(f.parsed.lines[i].trim().slice(0, 200));
   if (mods.length) L.push('\nЗАГРУЖЕННЫЕ МОДУЛИ, похожие на оверлеи и хуки:\n' + mods.join('\n'));

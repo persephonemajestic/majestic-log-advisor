@@ -409,7 +409,13 @@ R({ id: 'm-n11', kind: 'main', kw: 'worker exited without result', re: /patcher:
   title: 'Патчер остановлен вручную (норма после отмены)', cause: 'Игрок отменил запуск, лаунчер убил процесс патчера: строка про завершение без результата идёт сразу за «cancel — killing worker».', fix: [] });
 
 /* ----- client.log ----- */
-R({ id: 'c-fileload', kind: 'client', kw: 'ERR_SYS_FILELOAD', re: /ERR_SYS_FILELOAD/, sev: 'noise', warnAt: 100000, src: 'guide',
+/* «ERR_SYS_FILELOAD happened. Error message: Игровые данные повреждены…» — окно ошибки, которое увидел игрок. Это не фоновая
+   строка «Missing rpf», а настоящая ошибка; надёжного решения команда пока не знает. */
+R({ id: 'c-fileload-err', kind: 'client', kw: 'ERR_SYS_FILELOAD', re: /ERR_SYS_FILELOAD happened/, sev: 'err', src: 'guide',
+  title: 'ERR_SYS_FILELOAD: игра сообщила об ошибке загрузки данных (решение неизвестно)',
+  cause: 'Игра показала игроку окно ошибки ERR_SYS_FILELOAD («Игровые данные повреждены…»). Это не фоновая строка «Missing rpf», а настоящая ошибка. Почему она возникает и как её исправить, пока неизвестно: готового решения нет.',
+  fix: ['Не обещать игроку конкретное решение: способ исправления пока неизвестен.', 'Собрать client.log, main.log и свежий дамп из %appdata%\\majestic-launcher\\Multiplayer\\crashdumps и передать старшим.'] });
+R({ id: 'c-fileload', kind: 'client', kw: 'ERR_SYS_FILELOAD', re: /ERR_SYS_FILELOAD(?!\s+happened)/, sev: 'noise', warnAt: 100000, src: 'guide',
   title: 'ERR_SYS_FILELOAD / Missing rpf: фоновый шум (на вылет не влияет)',
   cause: 'Строки «ERR_SYS_FILELOAD, Missing rpf: …» с Callstack перехватываются хуками клиента, игра после них продолжает работу. Разработчикам это известно. Причиной вылета их считать нельзя: ищите настоящий триггер перед падением (Last loaded asset, код исключения, оверлеи, ошибки стримера).', fix: [] });
 
@@ -1280,6 +1286,7 @@ REPLY['m-srvfiles:net'] = ['Проверьте интернет-соединен
 REPLY['m-srvfiles:bad'] = ['В настройках лаунчера очистите кеш и дождитесь полной перепроверки файлов, затем повторите запуск.'];
 REPLY['m-srvfiles:space'] = ['Освободите несколько гигабайт на диске с игрой (или выберите другой диск для файлов лаунчера) и повторите запуск.'];
 REPLY['c-platform'] = REPLY['m-platform'];
+REPLY['c-fileload-err'] = ['Пришлите, пожалуйста, файлы client.log и main.log из папки %appdata%\\majestic-launcher, а также самый свежий файл из папки %appdata%\\majestic-launcher\\Multiplayer\\crashdumps. Передадим их специалистам для разбора.'];
 function replySteps(g) {
   if (REPLY[g.key]) return REPLY[g.key];
   if (g.rfix && (g.rule.id === 'c-errcode' || g.rule.id === 'm-crashdet')) { var rf = g.rfix.filter(function (x) { return !STAFF.test(x); }); if (rf.length) return rf; }

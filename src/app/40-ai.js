@@ -65,7 +65,7 @@ function aiPrompt(f, u) {
    у которого системной роли нет. Поэтому системный промт идёт ведущим сообщением, а ответ принимается строго как JSON по схеме. */
 var AI_PROMPT_VERSION = /*#AI_PROMPT_VERSION*/;
 var AI_SYSTEM = String.raw`/*#AI_PROMPT*/`;
-var AI_NOISE_LINE = /ERR_SYS_FILELOAD|Missing rpf|^\s*--\s+0x[0-9a-f]+\s*$|Callstack:\s*$/i;
+var AI_NOISE_LINE = /ERR_SYS_FILELOAD, Missing rpf|Missing rpf|^\s*--\s+0x[0-9a-f]+\s*$|Callstack:\s*$/i;
 function aiChrono(f, n) {
   var es = f.parsed.entries, end = es.length - 1, i, found = false;
   for (i = 0; i < es.length; i++) { if (/MINIDUMP: Temporary dump saved/.test(es[i].text)) { end = i; found = true; break; } }
@@ -88,7 +88,7 @@ function aiInput(f) {
   try { cln = LogCleaner.clean(String(f.text || ''), { deathLines: 40 }); } catch (e) {}
   if (cln && cln.death.length) { ch.before = aiSquash(cln.death.map(function (l) { return l.slice(0, 260); }), 60); ch.trigName = cln.trigger.kind; }
   else ch.before = aiSquash(ch.before, 60);
-  L.push('ЛОГ: ' + f.label + ' (' + (sc.kind === 'client' ? 'client.log' : 'main.log лаунчера') + ', ' + f.parsed.lines.length + ' строк). Строки ERR_SYS_FILELOAD и Missing rpf из данных удалены как фоновый шум.');
+  L.push('ЛОГ: ' + f.label + ' (' + (sc.kind === 'client' ? 'client.log' : 'main.log лаунчера') + ', ' + f.parsed.lines.length + ' строк). Строки «ERR_SYS_FILELOAD, Missing rpf» из данных удалены как фоновый шум.');
   if (sc.env) L.push('Окружение: ' + JSON.stringify(sc.env).slice(0, 700));
   var mods = []; for (var i = 0; i < f.parsed.lines.length && mods.length < 10; i++) if (/discordhook|RTSSHooks|bandicam|bandihook|nvspcap|GameOverlayRenderer|graphics-hook|owclient|MSIAfterburner|reshade|dxgi\.dll|d3d11\.dll/i.test(f.parsed.lines[i]) && !/SYSTEM32|SysWOW64/i.test(f.parsed.lines[i])) mods.push(f.parsed.lines[i].trim().slice(0, 200));
   if (mods.length) L.push('\nЗАГРУЖЕННЫЕ МОДУЛИ, похожие на оверлеи и хуки:\n' + mods.join('\n'));

@@ -305,3 +305,16 @@ console.log('OK');
   if (/не описан/.test(pt.findings.map(g => g.title).join(';')) || !/Переустановите платформу/.test(pr)) { console.error('FAIL patcher.log ERR_FAILED_TO_LAUNCH_PLATFORM:', pt.findings.map(g => g.title), pr); process.exit(1); }
   console.log('OK ответ игроку совпадает с причиной');
 })();
+
+// ERR_SYS_FILELOAD: «… happened. Error message: Игровые данные повреждены» — настоящая ошибка с неизвестным решением, а «Missing rpf» — шум
+(function () {
+  const t = '[22:55:50.100] Logger initialized\n[22:55:51.000] Majestic Multiplayer inited\n[22:55:52.000][Error][hooks] ERR_SYS_FILELOAD, Missing rpf: dlc_x:/x.rpf\n[22:55:58.209][Error][hooks] ERR_SYS_FILELOAD happened. Error message: Игровые данные повреждены. Пожалуйста, перезагрузите систему, проверьте игровые данные или переустановите игру.\n';
+  const sc = LA.scan(LA.parse(t, 'client.log')), keys = sc.findings.map((g) => g.rule.id + ':' + g.sev), err = sc.findings.find((g) => g.rule.id === 'c-fileload-err'), noise = sc.findings.find((g) => g.rule.id === 'c-fileload');
+  const bad = [];
+  if (!err || /шум/.test(err.title) || !/неизвестн/.test(err.title + err.cause)) bad.push('ошибка не распознана: ' + keys.join(','));
+  if (!noise || noise.sev !== 'noise') bad.push('Missing rpf перестал быть шумом');
+  if (err && err.entries.length !== 1) bad.push('строк ошибки ' + (err && err.entries.length));
+  const rp = LA.composeReply(sc); if (/повреждены|порча|целостност/i.test(rp)) bad.push('ответ обещает решение: ' + rp.slice(0, 200));
+  if (bad.length) { console.error('FAIL ERR_SYS_FILELOAD happened:', bad.join('; ')); process.exit(1); }
+  console.log('OK ERR_SYS_FILELOAD happened — ошибка, решение неизвестно; Missing rpf — шум');
+})();
