@@ -42,7 +42,9 @@ function webGate(state) {
     '<button class="wg-code" type="button" data-wg="copy" aria-label="Скопировать код устройства">' + code + '<span>Нажмите, чтобы скопировать</span></button>' +
     '<button class="btn primary wg-go" type="button" data-wg="check">Проверить доступ</button>' +
     '<p class="wg-h" id="wgMsg" role="status" aria-live="polite"></p>' +
-    (IOS && !navigator.standalone ? '<p class="wg-tip"><b>Совет.</b> Нажмите «Поделиться» <span class="ios-share" aria-hidden="true"></span> → «На экран „Домой“». Анализатор откроется как приложение, а код устройства не потеряется.</p>' : '') +
+    '<details class="wg-own"><summary>У меня уже есть код доступа</summary><div class="row"><input id="wgOwn" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" aria-label="Код устройства с доступом"><button class="btn" type="button" data-wg="own">Войти</button></div>' +
+    '<p>Доступ уже выдан этому телефону в Safari или в другом браузере? Скопируйте код там («Ещё» → внизу «Код устройства») и вставьте сюда — администратору писать не нужно.</p></details>' +
+    (IOS && !navigator.standalone ? '<p class="wg-tip"><b>Сначала установите.</b> Нажмите «Поделиться» <span class="ios-share" aria-hidden="true"></span> → «На экран „Домой“» и откройте анализатор уже с иконки: у приложения на экране «Домой» свой код, отдельный от Safari.</p>' : '') +
     '</div>';
 }
 function webCopy(text) { try { navigator.clipboard.writeText(text); return true; } catch (e) {} try { var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); return true; } catch (e) { return false; } }
@@ -57,8 +59,19 @@ async function webStart() {
     var b = e.target.closest && e.target.closest('[data-wg]'); if (!b) return;
     var k = b.getAttribute('data-wg'), msg = document.getElementById('wgMsg');
     if (k === 'copy') { webCopy(webDev()); if (msg) msg.textContent = 'Код скопирован. Отправьте его администратору.'; }
+    if (k === 'own') {
+      var inp = document.getElementById('wgOwn'), v = String(inp && inp.value || '').toUpperCase().replace(/[^0-9A-F]/g, '');
+      if (v.length !== 20) { if (msg) msg.textContent = 'Код состоит из 20 знаков: XXXXX-XXXXX-XXXXX-XXXXX.'; return; }
+      v = v.match(/.{5}/g).join('-'); b.disabled = true; if (msg) msg.textContent = 'Проверяю код…';
+      var ok = null; try { var rr = await fetch('/v1/check?t=' + Date.now(), { cache: 'no-store', headers: { 'X-HWID': v } }); ok = rr.status === 403 ? false : rr.ok ? (await rr.json()) : null; } catch (e2) {}
+      b.disabled = false;
+      if (ok && ok.ok) { lsSet(WEB_KEY, v); webApply({ st: 'ok', n: ok.n || '' }); }
+      else if (msg) msg.textContent = ok === null ? 'Нет связи с сервером. Проверьте интернет.' : 'У этого кода нет доступа. Проверьте код или отправьте администратору код с экрана выше.';
+      return;
+    }
     if (k === 'check') { b.disabled = true; if (msg) msg.textContent = 'Проверяю…'; var r = await webCheck(); b.disabled = false; webApply(r); if (r.st === 'deny' && document.getElementById('wgMsg')) document.getElementById('wgMsg').textContent = 'Доступа пока нет. Как только администратор добавит код, нажмите ещё раз.'; }
   });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target && e.target.id === 'wgOwn') { e.preventDefault(); var bt = document.querySelector('[data-wg="own"]'); if (bt) bt.click(); } });
   var known = lsGet(WEB_OK);
   if (!known) webGate('wait');
   var r = await webCheck(); webApply(r);

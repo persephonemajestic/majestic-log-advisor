@@ -848,6 +848,40 @@ html.mob .panel .kh { display: none !important; }
 html.mob .tlr { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 8px 10px; }
 html.mob .tlr .tf, html.mob .tlr .td { display: none; }
 html.mob .tlr.k-bad .tt { color: var(--crit); }
+.wg-own { width: 100%; text-align: left; }
+.wg-own summary { cursor: pointer; color: var(--accent); font-size: 15px; text-align: center; list-style: none; padding: 6px 0; }
+.wg-own summary::-webkit-details-marker { display: none; }
+.wg-own .row { display: flex; gap: 8px; margin-top: 8px; }
+.wg-own input { flex: 1; min-width: 0; height: 46px; padding: 0 12px; border: 1px solid var(--line2); border-radius: 12px; background: var(--surface); color: var(--ink); font: 600 16px var(--mono); text-transform: uppercase; }
+.wg-own .btn { min-height: 46px; border-radius: 12px; }
+.wg-own p { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+/* окно лога на телефоне: на весь экран, поиск и «Фильтры» сверху, ▲ ▼ снизу, объяснение строки — листом */
+html.mob[data-ms="view"][data-tab="log"] body { overflow: hidden; }
+html.mob[data-tab="log"] .main { padding-top: 8px; padding-bottom: 0; }
+html.mob[data-tab="log"] .logview { display: flex; flex-direction: column; gap: 8px; height: calc(100dvh - 52px - 60px - 8px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+html.mob[data-tab="log"] .logview > .lvh, html.mob[data-tab="log"] #th, html.mob[data-tab="log"] #pats, html.mob[data-tab="log"] #marks:empty, html.mob[data-tab="log"] #savedQ { display: none !important; }
+html.mob .mlsearch { flex-wrap: nowrap; gap: 8px; }
+html.mob .mlsearch input[type=search] { flex: 1 1 auto; min-width: 0; height: 40px; border-radius: 10px; }
+html.mob .mlsearch .mlf { flex: none; min-height: 40px; }
+html.mob .mlsearch .mlf.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+html.mob .mlfilt { display: grid; gap: 8px; padding: 10px; border: .5px solid var(--line2); border-radius: 14px; background: var(--surface); max-height: 42dvh; overflow: auto; }
+html.mob .mlfilt[hidden] { display: none; }
+html.mob .mlfilt .seg { display: flex; flex-wrap: wrap; } html.mob .mlfilt .seg button { flex: 1 1 auto; min-height: 36px; }
+html.mob .mlfilt #logCnt { font-size: 12px; color: var(--muted); }
+html.mob[data-tab="log"] .logsplit { flex: 1 1 auto; min-height: 120px; display: block; position: relative; overflow: hidden; }
+html.mob[data-tab="log"] .logmain { position: absolute; inset: 0; }
+html.mob[data-tab="log"] .scw { height: 100%; }
+html.mob[data-tab="log"] .sc { height: 100% !important; }
+html.mob[data-tab="log"] .mm { display: none; }
+html.mob .mlbar { display: grid; grid-template-columns: 56px minmax(0, 1fr) 56px; align-items: center; gap: 8px; padding-bottom: 6px; }
+html.mob .mlbar .btn { min-height: 46px; padding: 0; border-radius: 12px; display: grid; place-items: center; }
+html.mob .mlbar .btn svg { width: 24px; height: 24px; }
+html.mob #mlCnt { text-align: center; font-size: 14px; font-weight: 600; color: var(--ink2, var(--ink)); }
+html.mob[data-tab="log"] .ins { position: fixed; z-index: 28; top: auto; left: 0; right: 0; bottom: calc(118px + env(safe-area-inset-bottom, 0px)); max-height: 40dvh; overflow: auto; margin: 0; padding: 12px 14px 14px; border-radius: 18px 18px 0 0; border-bottom: 0; box-shadow: 0 -10px 30px rgba(0, 0, 0, .22); transform: translateY(calc(100% + 80px)); visibility: hidden; pointer-events: none; transition: transform .26s cubic-bezier(.2, .8, .2, 1), visibility 0s .26s; }
+html.mob[data-tab="log"] .ins.mon { transform: none; visibility: visible; pointer-events: auto; transition: transform .26s cubic-bezier(.2, .8, .2, 1); }
+html.mob .mins-h { display: flex; align-items: center; justify-content: space-between; margin: -2px 0 6px; }
+html.mob .mins-x { border: 0; background: none; color: var(--accent); font: 600 16px var(--sans); padding: 6px 2px; cursor: pointer; }
+html.mob[data-tab="log"] .ins pre { max-height: 22dvh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
 /* уведомление над вкладками */
 html.mob #toast { left: 12px; right: 12px; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); max-width: none; border-radius: 14px; text-align: center; font-size: 14px; }
 .mhint { display: none; }
@@ -3258,7 +3292,7 @@ var STRU = { ok: 'Успех', bad: 'Сбой', warn: 'Внимание', unk: '
 var SRCRU = { guide: 'из руководства', obs: 'по наблюдению в логах', infer: 'вывод, в руководстве нет', web: 'по открытым источникам', user: 'ваше правило', team: 'правило команды' };
 var SRCTIP = { team: 'Общее правило команды из файла rules.json в репозитории проекта', user: 'Правило, которое добавили вы или коллега через «Добавить решение»', guide: 'Правило взято из документа «Руководство по диагностике ошибок и работе с логами»', obs: 'Строка встречается в успешных заходах загруженных логов, поэтому считается шумом', web: 'Случая нет в руководстве. Объяснение собрано по справкам Rockstar, форумам RAGE и cfx.re и реальным логам. Проверяйте его', infer: 'Этого случая нет в руководстве. Объяснение построено по логам и общим признакам, проверяйте его' };
 var PSTEPS_UI = [['admin', 'Администратор'], ['pirate', 'Очистка файлов'], ['backup', 'Резервная копия'], ['patch', 'Патч игры'], ['job', 'Процесс игры'], ['inject', 'Внедрение'], ['injected', 'Клиент внедрён'], ['entry', 'Запуск клиента'], ['finished', 'Готово'], ['window', 'Окно игры']];
-var SAMPLE = null, APP_VERSION = '2026-10-19.127';
+var SAMPLE = null, APP_VERSION = '2026-10-19.128';
 var ROW = 20, KBKEY = 'majestic-log-advisor.kb.v1';
 
 var $ = function (s) { return document.querySelector(s); };
@@ -3337,7 +3371,9 @@ function webGate(state) {
     '<button class="wg-code" type="button" data-wg="copy" aria-label="Скопировать код устройства">' + code + '<span>Нажмите, чтобы скопировать</span></button>' +
     '<button class="btn primary wg-go" type="button" data-wg="check">Проверить доступ</button>' +
     '<p class="wg-h" id="wgMsg" role="status" aria-live="polite"></p>' +
-    (IOS && !navigator.standalone ? '<p class="wg-tip"><b>Совет.</b> Нажмите «Поделиться» <span class="ios-share" aria-hidden="true"></span> → «На экран „Домой“». Анализатор откроется как приложение, а код устройства не потеряется.</p>' : '') +
+    '<details class="wg-own"><summary>У меня уже есть код доступа</summary><div class="row"><input id="wgOwn" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" aria-label="Код устройства с доступом"><button class="btn" type="button" data-wg="own">Войти</button></div>' +
+    '<p>Доступ уже выдан этому телефону в Safari или в другом браузере? Скопируйте код там («Ещё» → внизу «Код устройства») и вставьте сюда — администратору писать не нужно.</p></details>' +
+    (IOS && !navigator.standalone ? '<p class="wg-tip"><b>Сначала установите.</b> Нажмите «Поделиться» <span class="ios-share" aria-hidden="true"></span> → «На экран „Домой“» и откройте анализатор уже с иконки: у приложения на экране «Домой» свой код, отдельный от Safari.</p>' : '') +
     '</div>';
 }
 function webCopy(text) { try { navigator.clipboard.writeText(text); return true; } catch (e) {} try { var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); return true; } catch (e) { return false; } }
@@ -3352,8 +3388,19 @@ async function webStart() {
     var b = e.target.closest && e.target.closest('[data-wg]'); if (!b) return;
     var k = b.getAttribute('data-wg'), msg = document.getElementById('wgMsg');
     if (k === 'copy') { webCopy(webDev()); if (msg) msg.textContent = 'Код скопирован. Отправьте его администратору.'; }
+    if (k === 'own') {
+      var inp = document.getElementById('wgOwn'), v = String(inp && inp.value || '').toUpperCase().replace(/[^0-9A-F]/g, '');
+      if (v.length !== 20) { if (msg) msg.textContent = 'Код состоит из 20 знаков: XXXXX-XXXXX-XXXXX-XXXXX.'; return; }
+      v = v.match(/.{5}/g).join('-'); b.disabled = true; if (msg) msg.textContent = 'Проверяю код…';
+      var ok = null; try { var rr = await fetch('/v1/check?t=' + Date.now(), { cache: 'no-store', headers: { 'X-HWID': v } }); ok = rr.status === 403 ? false : rr.ok ? (await rr.json()) : null; } catch (e2) {}
+      b.disabled = false;
+      if (ok && ok.ok) { lsSet(WEB_KEY, v); webApply({ st: 'ok', n: ok.n || '' }); }
+      else if (msg) msg.textContent = ok === null ? 'Нет связи с сервером. Проверьте интернет.' : 'У этого кода нет доступа. Проверьте код или отправьте администратору код с экрана выше.';
+      return;
+    }
     if (k === 'check') { b.disabled = true; if (msg) msg.textContent = 'Проверяю…'; var r = await webCheck(); b.disabled = false; webApply(r); if (r.st === 'deny' && document.getElementById('wgMsg')) document.getElementById('wgMsg').textContent = 'Доступа пока нет. Как только администратор добавит код, нажмите ещё раз.'; }
   });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target && e.target.id === 'wgOwn') { e.preventDefault(); var bt = document.querySelector('[data-wg="own"]'); if (bt) bt.click(); } });
   var known = lsGet(WEB_OK);
   if (!known) webGate('wait');
   var r = await webCheck(); webApply(r);
@@ -3387,6 +3434,10 @@ function webUpdate(v) {
 }
 /* ---------- Версия 13: отчёты, все логи, окно загрузки, команда, слежение ---------- */
 var CHANGELOG = [
+  { v: '2026-10-19.128', items: [
+    'Телефон: окно лога переделано. Строки лога на весь экран, вверху поиск и «Фильтры» (режим, срез, уровень, вид), внизу крупные ▲ ▼ и счётчик «Проблема 3 из 9». Переход между проблемами больше не прокручивает страницу, объяснение строки выезжает листом и не закрывает кнопки.',
+    'Телефон: вход в другом браузере или в приложении с экрана «Домой» — «У меня уже есть код доступа»: вставьте код, которому уже выдан доступ, и писать администратору не нужно. Код копируется в «Ещё» → «Скопировать код устройства».'
+  ] },
   { v: '2026-10-19.127', items: [
     'Исправлено: журнал Windows (.evtx) или дамп, добавленный без лога игрока, раньше молча ждал лог — казалось, что файл не добавился. Теперь разбор журнала сразу открывается в окне «Дамп без лога», а когда лог появится, данные привяжутся и к нему.'
   ] },
@@ -7401,6 +7452,7 @@ function mobClick(e) {
 function mobGo(g) {
   if (g.indexOf('tab:') === 0) { S.tab = g.slice(4); S.sel = -1; render(); mobScr('view'); return; }
   if (g === 'theme') { $('#btnTheme').click(); return; }
+  if (g === 'copycode') { webCopy(webDev()); status('Код устройства скопирован. В другом браузере или в приложении на экране «Домой»: «У меня уже есть код доступа» → вставить.'); return; }
   var b = document.getElementById(g); if (b) b.click();
 }
 function mSheetOpen() { var s = document.getElementById('mSheet'); return !!(s && s.classList.contains('open')); }
@@ -7415,6 +7467,7 @@ function mSheet(on) {
     '<div class="ms-h"><b>Ещё</b><button class="ms-x" type="button" data-m="sheet">Готово</button></div>' +
     (tabs.length ? '<div class="ms-g"><div class="ms-gt">Разделы</div>' + tabs.map(function (x) { var n = x.querySelector('.n'); return row('tab:' + x.getAttribute('data-tab'), x.firstChild.textContent, n ? n.textContent : ''); }).join('') + '</div>' : '') +
     '<div class="ms-g"><div class="ms-gt">Действия</div>' + row('btnDump', 'Только дамп или журнал Windows') + row('btnSet', 'Настройки') + row('theme', 'Тема оформления', theme) + '</div>' +
+    (WEB ? '<div class="ms-g"><div class="ms-gt">Доступ</div>' + row('copycode', 'Скопировать код устройства', webDev() + ' — для входа в другом браузере') + '</div>' : '') +
     '<div class="ms-g"><div class="ms-gt">Справка</div>' + row('btnHelp', 'Инструкция') + row('btnNew', 'Что нового') + (vis('btnBug') ? row('btnBug', 'Сообщить о проблеме') : '') + '</div>' +
     '<div class="ms-ver">' + ($('#ver') ? $('#ver').innerHTML : '') + '</div></div>';
   s.innerHTML = h; s.setAttribute('aria-hidden', 'false');
@@ -7430,6 +7483,7 @@ function mobSync() {
   else if (fileTab && f) { tl.textContent = f.label; var st = f.sc && f.sc.verdict ? f.sc.verdict.status : 'unk'; sb.textContent = (MSTAT[st] || '') + (S.tab !== 'diag' ? ' · ' + tabName : ''); sb.className = 'st-' + st; }
   else { tl.textContent = tabName || 'Логи'; sb.textContent = ''; sb.className = ''; }
   top.classList.toggle('in', view);
+  document.documentElement.setAttribute('data-tab', view ? S.tab : 'list');
   var cur = view ? (S.tab === 'diag' || S.tab === 'log' || S.tab === 'hist' ? S.tab : 'more') : 'list';
   document.querySelectorAll('#mTab [data-t]').forEach(function (b) { var t = b.getAttribute('data-t'); if (t === cur) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   var n = S.files.filter(function (x) { return !x.sample; }).length, mn = document.querySelector('#mTab [data-t="list"] .mn');
@@ -7446,6 +7500,47 @@ render = (function (orig) { return function () {
 readFiles = (function (orig) { return function () { if (isMob()) MS.wantN = realN(); return orig.apply(this, arguments); }; })(readFiles);
 if (MQ.addEventListener) MQ.addEventListener('change', mobApply); else if (MQ.addListener) MQ.addListener(mobApply);
 mobApply();
+
+/* ---------- Телефон: окно лога ----------
+   Строки лога на весь экран между панелями. Вверху только поиск и «Фильтры» (режим, срез, уровень, вид — в выпадающей панели),
+   внизу крупные ▲ ▼ — переход между проблемами без прокрутки страницы. Объяснение строки выезжает листом снизу. */
+function mobProblems(f) { var min = S.lvl && S.lvl >= SEV.warn ? S.lvl : SEV.warn; return f.parsed.entries.filter(function (e) { return e.sev >= min; }); }
+function mobLogCount() {
+  var f = active(), el = document.getElementById('mlCnt'); if (!f || !el) return;
+  var ps = mobProblems(f), i = -1; for (var k = 0; k < ps.length; k++) if (S.sel >= ps[k].i && S.sel <= ps[k].j) { i = k; break; }
+  el.textContent = !ps.length ? 'Проблем нет' : i >= 0 ? 'Проблема ' + (i + 1) + ' из ' + ps.length : 'Проблем: ' + ps.length;
+}
+function mobLog() {
+  var lv = document.querySelector('.logview'); if (!lv || lv.querySelector('.mlbar')) return;
+  var lts = lv.querySelectorAll(':scope > .lt'), lt1 = lts[0], lt2 = lts[1];
+  var fl = document.createElement('div'); fl.className = 'mlfilt'; fl.id = 'mlFilt'; fl.hidden = !MS.filt;
+  if (lt1) { var nav = lt1.querySelector('.lt-nav'); if (nav) nav.remove(); fl.appendChild(lt1); }
+  if (lt2) { var lvl = lt2.querySelector('#lvlSel'), vm = lt2.querySelector('.vmenu'); var row = document.createElement('div'); row.className = 'lt'; if (lvl) row.appendChild(lvl); if (vm) { vm.open = false; row.appendChild(vm); } fl.appendChild(row); var cnt = lt2.querySelector('#logCnt'); if (cnt) fl.appendChild(cnt); }
+  var fb = document.createElement('button'); fb.type = 'button'; fb.className = 'btn mlf' + (MS.filt ? ' on' : ''); fb.setAttribute('data-m', 'lfilt'); fb.setAttribute('aria-expanded', String(!!MS.filt)); fb.textContent = 'Фильтры';
+  if (lt2) { lt2.classList.add('mlsearch'); lt2.appendChild(fb); lt2.insertAdjacentElement('afterend', fl); }
+  var bar = document.createElement('div'); bar.className = 'mlbar';
+  bar.innerHTML = '<button class="btn" type="button" data-act="nav" data-dir="-1" aria-label="Предыдущая проблема">' + MI.back.replace('M15 5l-7 7 7 7', 'M5 15l7-7 7 7') + '</button><span id="mlCnt" role="status" aria-live="polite"></span><button class="btn" type="button" data-act="nav" data-dir="1" aria-label="Следующая проблема">' + MI.back.replace('M15 5l-7 7 7 7', 'M5 9l7 7 7-7') + '</button>';
+  lv.appendChild(bar); mobLogCount();
+}
+renderLogShell = (function (orig) { return function () { var r = orig.apply(this, arguments); if (isMob()) mobLog(); return r; }; })(renderLogShell);
+drawInspector = (function (orig) { return function (f) {
+  orig.apply(this, arguments); if (!isMob()) return;
+  var box = document.getElementById('ins'); if (!box) return;
+  var on = S.sel >= 0 && !box.querySelector(':scope > .hint') && !!box.textContent.trim(); box.classList.toggle('mon', on);
+  if (on && !box.querySelector('.mins-x')) box.insertAdjacentHTML('afterbegin', '<div class="mins-h"><b>Строка лога</b><button class="mins-x" type="button" data-m="insx">Закрыть</button></div>');
+  mobLogCount();
+}; })(drawInspector);
+/* переход к строке: на телефоне страница не прокручивается, строка встаёт в верхнюю треть (нижнюю закрывает лист с объяснением) */
+jump = (function (orig) { return function (line) {
+  orig.apply(this, arguments); if (!isMob()) return;
+  mobSync(); window.scrollTo(0, 0); var f = active(), sc = $('#sc'); if (!f || !sc || !f.view) return;
+  var pos = f.view.indexOf(line); if (pos < 0) return; sc.scrollTop = Math.max(0, offs(f, pos) - sc.clientHeight * 0.2); drawRows(); mobLogCount();
+}; })(jump);
+document.addEventListener('click', function (e) {
+  var t = e.target.closest && e.target.closest('[data-m="lfilt"], [data-m="insx"]'); if (!t || !isMob()) return; e.preventDefault();
+  if (t.getAttribute('data-m') === 'lfilt') { MS.filt = !MS.filt; var fl = document.getElementById('mlFilt'); if (fl) fl.hidden = !MS.filt; t.classList.toggle('on', MS.filt); t.setAttribute('aria-expanded', String(MS.filt)); }
+  else { S.sel = -1; var f = active(); if (f) { drawRows(); drawInspector(f); } }
+});
 /* ---------- События ---------- */
 document.addEventListener('click', function (ev) {
   var t = ev.target.closest('[data-act]'); if (!t) return;

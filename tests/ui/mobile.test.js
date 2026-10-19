@@ -37,6 +37,13 @@ const srv = http.createServer((q, r) => {
   ok(await wide(), 'разбор без горизонтальной прокрутки');
   await p.tap('#mTab [data-t=log]'); await p.waitForTimeout(500);
   ok(await p.isVisible('#sc') && await wide(), 'вкладка «Лог»: строки лога, без горизонтальной прокрутки');
+  ok(await p.isVisible('.mlbar') && await p.isVisible('[data-m=lfilt]') && !(await p.isVisible('#lvlSel')), 'в логе: поиск, «Фильтры» и ▲ ▼ внизу, остальное спрятано в фильтры');
+  await p.tap('.mlbar [data-dir="1"]'); await p.waitForTimeout(500);
+  ok(await p.evaluate(() => window.scrollY === 0) && /Проблема 1 из/.test(await p.textContent('#mlCnt')) && await p.evaluate(() => document.getElementById('ins').classList.contains('mon')), '▼ переходит к проблеме без прокрутки страницы, объяснение выезжает листом');
+  ok(await p.evaluate(() => { const i = document.getElementById('ins').getBoundingClientRect(), b = document.querySelector('.mlbar').getBoundingClientRect(); return i.bottom <= b.top + 1; }), 'лист с объяснением не закрывает ▲ ▼');
+  await p.tap('[data-m=insx]'); await p.waitForTimeout(400); await p.tap('[data-m=lfilt]'); await p.waitForTimeout(200);
+  ok(await p.isVisible('#lvlSel') && await p.isVisible('#mlFilt [data-act=mode]'), '«Фильтры» открывают режим, срез и уровень');
+  await p.tap('[data-m=lfilt]');
   await p.tap('#mTab [data-t=more]'); await p.waitForTimeout(450);
   ok(await p.isVisible('.ms-box') && await p.$('[data-g="tab:cmp"]') && await p.$('[data-g="btnSet"]'), 'лист «Ещё»: разделы и настройки');
   await p.tap('[data-g="tab:all"]'); await p.waitForTimeout(600);
@@ -56,6 +63,14 @@ const srv = http.createServer((q, r) => {
   await p.goto(base + '/m/?share=1'); await p.waitForTimeout(1500);
   ok(await p.evaluate(() => /shared-main\.log/.test(document.querySelector('.side').textContent) && !/share=1/.test(location.search)), 'файл, присланный через «Поделиться», появляется в списке');
   ok(await p.evaluate(async () => (await (await caches.open('mla-share')).keys()).length === 0), 'после приёма файлы из кэша удаляются');
+  /* другой браузер (или приложение на экране «Домой» на iPhone): свой код, но можно войти уже одобренным */
+  const c2 = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); const p4 = await c2.newPage(); p4.on('pageerror', (e) => errs.push(e.message));
+  await p4.goto(base + '/m/'); await p4.waitForTimeout(800);
+  ok(await p4.isVisible('#webGate') && (await p4.evaluate(() => localStorage.getItem('mla.dev'))) !== code, 'в другом браузере свой код и экран доступа');
+  await p4.click('.wg-own summary'); await p4.fill('#wgOwn', 'AAAAA-BBBBB-CCCCC-DDDDD'); await p4.click('[data-wg=own]'); await p4.waitForTimeout(500);
+  ok(await p4.isVisible('#webGate') && /нет доступа/.test(await p4.textContent('#wgMsg')), 'чужой код без доступа не пускает');
+  await p4.fill('#wgOwn', code.toLowerCase().replace(/-/g, ' ')); await p4.press('#wgOwn', 'Enter'); await p4.waitForTimeout(700);
+  ok(!(await p4.$('#webGate')) && (await p4.evaluate(() => localStorage.getItem('mla.dev'))) === code, 'одобренный код из другого браузера пускает и запоминается');
   /* узкое окно приложения для Windows (без сайта) тоже получает мобильную раскладку, но без экрана доступа */
   const p2 = await (await b.newContext({ viewport: { width: 400, height: 800 } })).newPage(); p2.on('pageerror', (e) => errs.push(e.message));
   await p2.goto(require('url').pathToFileURL(path.join(ROOT, 'index.html')).href); await p2.waitForTimeout(800);

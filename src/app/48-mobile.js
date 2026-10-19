@@ -67,6 +67,7 @@ function mobClick(e) {
 function mobGo(g) {
   if (g.indexOf('tab:') === 0) { S.tab = g.slice(4); S.sel = -1; render(); mobScr('view'); return; }
   if (g === 'theme') { $('#btnTheme').click(); return; }
+  if (g === 'copycode') { webCopy(webDev()); status('Код устройства скопирован. В другом браузере или в приложении на экране «Домой»: «У меня уже есть код доступа» → вставить.'); return; }
   var b = document.getElementById(g); if (b) b.click();
 }
 function mSheetOpen() { var s = document.getElementById('mSheet'); return !!(s && s.classList.contains('open')); }
@@ -81,6 +82,7 @@ function mSheet(on) {
     '<div class="ms-h"><b>Ещё</b><button class="ms-x" type="button" data-m="sheet">Готово</button></div>' +
     (tabs.length ? '<div class="ms-g"><div class="ms-gt">Разделы</div>' + tabs.map(function (x) { var n = x.querySelector('.n'); return row('tab:' + x.getAttribute('data-tab'), x.firstChild.textContent, n ? n.textContent : ''); }).join('') + '</div>' : '') +
     '<div class="ms-g"><div class="ms-gt">Действия</div>' + row('btnDump', 'Только дамп или журнал Windows') + row('btnSet', 'Настройки') + row('theme', 'Тема оформления', theme) + '</div>' +
+    (WEB ? '<div class="ms-g"><div class="ms-gt">Доступ</div>' + row('copycode', 'Скопировать код устройства', webDev() + ' — для входа в другом браузере') + '</div>' : '') +
     '<div class="ms-g"><div class="ms-gt">Справка</div>' + row('btnHelp', 'Инструкция') + row('btnNew', 'Что нового') + (vis('btnBug') ? row('btnBug', 'Сообщить о проблеме') : '') + '</div>' +
     '<div class="ms-ver">' + ($('#ver') ? $('#ver').innerHTML : '') + '</div></div>';
   s.innerHTML = h; s.setAttribute('aria-hidden', 'false');
@@ -96,6 +98,7 @@ function mobSync() {
   else if (fileTab && f) { tl.textContent = f.label; var st = f.sc && f.sc.verdict ? f.sc.verdict.status : 'unk'; sb.textContent = (MSTAT[st] || '') + (S.tab !== 'diag' ? ' · ' + tabName : ''); sb.className = 'st-' + st; }
   else { tl.textContent = tabName || 'Логи'; sb.textContent = ''; sb.className = ''; }
   top.classList.toggle('in', view);
+  document.documentElement.setAttribute('data-tab', view ? S.tab : 'list');
   var cur = view ? (S.tab === 'diag' || S.tab === 'log' || S.tab === 'hist' ? S.tab : 'more') : 'list';
   document.querySelectorAll('#mTab [data-t]').forEach(function (b) { var t = b.getAttribute('data-t'); if (t === cur) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   var n = S.files.filter(function (x) { return !x.sample; }).length, mn = document.querySelector('#mTab [data-t="list"] .mn');
@@ -112,3 +115,44 @@ render = (function (orig) { return function () {
 readFiles = (function (orig) { return function () { if (isMob()) MS.wantN = realN(); return orig.apply(this, arguments); }; })(readFiles);
 if (MQ.addEventListener) MQ.addEventListener('change', mobApply); else if (MQ.addListener) MQ.addListener(mobApply);
 mobApply();
+
+/* ---------- Телефон: окно лога ----------
+   Строки лога на весь экран между панелями. Вверху только поиск и «Фильтры» (режим, срез, уровень, вид — в выпадающей панели),
+   внизу крупные ▲ ▼ — переход между проблемами без прокрутки страницы. Объяснение строки выезжает листом снизу. */
+function mobProblems(f) { var min = S.lvl && S.lvl >= SEV.warn ? S.lvl : SEV.warn; return f.parsed.entries.filter(function (e) { return e.sev >= min; }); }
+function mobLogCount() {
+  var f = active(), el = document.getElementById('mlCnt'); if (!f || !el) return;
+  var ps = mobProblems(f), i = -1; for (var k = 0; k < ps.length; k++) if (S.sel >= ps[k].i && S.sel <= ps[k].j) { i = k; break; }
+  el.textContent = !ps.length ? 'Проблем нет' : i >= 0 ? 'Проблема ' + (i + 1) + ' из ' + ps.length : 'Проблем: ' + ps.length;
+}
+function mobLog() {
+  var lv = document.querySelector('.logview'); if (!lv || lv.querySelector('.mlbar')) return;
+  var lts = lv.querySelectorAll(':scope > .lt'), lt1 = lts[0], lt2 = lts[1];
+  var fl = document.createElement('div'); fl.className = 'mlfilt'; fl.id = 'mlFilt'; fl.hidden = !MS.filt;
+  if (lt1) { var nav = lt1.querySelector('.lt-nav'); if (nav) nav.remove(); fl.appendChild(lt1); }
+  if (lt2) { var lvl = lt2.querySelector('#lvlSel'), vm = lt2.querySelector('.vmenu'); var row = document.createElement('div'); row.className = 'lt'; if (lvl) row.appendChild(lvl); if (vm) { vm.open = false; row.appendChild(vm); } fl.appendChild(row); var cnt = lt2.querySelector('#logCnt'); if (cnt) fl.appendChild(cnt); }
+  var fb = document.createElement('button'); fb.type = 'button'; fb.className = 'btn mlf' + (MS.filt ? ' on' : ''); fb.setAttribute('data-m', 'lfilt'); fb.setAttribute('aria-expanded', String(!!MS.filt)); fb.textContent = 'Фильтры';
+  if (lt2) { lt2.classList.add('mlsearch'); lt2.appendChild(fb); lt2.insertAdjacentElement('afterend', fl); }
+  var bar = document.createElement('div'); bar.className = 'mlbar';
+  bar.innerHTML = '<button class="btn" type="button" data-act="nav" data-dir="-1" aria-label="Предыдущая проблема">' + MI.back.replace('M15 5l-7 7 7 7', 'M5 15l7-7 7 7') + '</button><span id="mlCnt" role="status" aria-live="polite"></span><button class="btn" type="button" data-act="nav" data-dir="1" aria-label="Следующая проблема">' + MI.back.replace('M15 5l-7 7 7 7', 'M5 9l7 7 7-7') + '</button>';
+  lv.appendChild(bar); mobLogCount();
+}
+renderLogShell = (function (orig) { return function () { var r = orig.apply(this, arguments); if (isMob()) mobLog(); return r; }; })(renderLogShell);
+drawInspector = (function (orig) { return function (f) {
+  orig.apply(this, arguments); if (!isMob()) return;
+  var box = document.getElementById('ins'); if (!box) return;
+  var on = S.sel >= 0 && !box.querySelector(':scope > .hint') && !!box.textContent.trim(); box.classList.toggle('mon', on);
+  if (on && !box.querySelector('.mins-x')) box.insertAdjacentHTML('afterbegin', '<div class="mins-h"><b>Строка лога</b><button class="mins-x" type="button" data-m="insx">Закрыть</button></div>');
+  mobLogCount();
+}; })(drawInspector);
+/* переход к строке: на телефоне страница не прокручивается, строка встаёт в верхнюю треть (нижнюю закрывает лист с объяснением) */
+jump = (function (orig) { return function (line) {
+  orig.apply(this, arguments); if (!isMob()) return;
+  mobSync(); window.scrollTo(0, 0); var f = active(), sc = $('#sc'); if (!f || !sc || !f.view) return;
+  var pos = f.view.indexOf(line); if (pos < 0) return; sc.scrollTop = Math.max(0, offs(f, pos) - sc.clientHeight * 0.2); drawRows(); mobLogCount();
+}; })(jump);
+document.addEventListener('click', function (e) {
+  var t = e.target.closest && e.target.closest('[data-m="lfilt"], [data-m="insx"]'); if (!t || !isMob()) return; e.preventDefault();
+  if (t.getAttribute('data-m') === 'lfilt') { MS.filt = !MS.filt; var fl = document.getElementById('mlFilt'); if (fl) fl.hidden = !MS.filt; t.classList.toggle('on', MS.filt); t.setAttribute('aria-expanded', String(MS.filt)); }
+  else { S.sel = -1; var f = active(); if (f) { drawRows(); drawInspector(f); } }
+});
