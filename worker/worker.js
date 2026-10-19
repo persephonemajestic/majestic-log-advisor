@@ -4,14 +4,111 @@ const NOSTORE = { 'cache-control': 'no-store' };
 const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json; charset=utf-8', ...NOSTORE } });
 const deny = () => json({ ok: false }, 403);
 
+/* Кто обращается: аккаунт (заголовок X-Session — сеанс после входа по логину и паролю) или, по-старому, код компьютера (X-HWID).
+   Вход по кодам можно выключить в админке («legacy» = 0). */
 async function who(req, env) {
-  const h = (req.headers.get('X-HWID') || '').toUpperCase();
-  if (!HW.test(h)) return null;
-  const raw = await env.ACCESS.get('h:' + h);
+  const tok = String(req.headers.get('X-Session') || '').trim(), hwRaw = (req.headers.get('X-HWID') || '').toUpperCase();
+  if (/^[0-9a-f]{64}$/.test(tok)) {
+    const ses = await sessionOf(env, tok);
+    if (ses && ses.user && ses.user.st === 'ok') return { h: 'U:' + ses.user.k, n: ses.user.login, acc: ses.user.login, hw: HW.test(hwRaw) ? hwRaw : '' };
+  }
+  if (!HW.test(hwRaw) || (await env.ACCESS.get('legacy')) === '0') return null;
+  const raw = await env.ACCESS.get('h:' + hwRaw);
   if (!raw) return null;
   let rec = {}; try { rec = JSON.parse(raw); } catch (e) {}
-  if (!rec.seen || Date.now() - rec.seen > 6 * 3600 * 1000) { rec.seen = Date.now(); try { await env.ACCESS.put('h:' + h, JSON.stringify(rec)); await touchAv(env); } catch (e) {} }
-  return { h, n: rec.n || '' };
+  if (!rec.seen || Date.now() - rec.seen > 6 * 3600 * 1000) { rec.seen = Date.now(); try { await env.ACCESS.put('h:' + hwRaw, JSON.stringify(rec)); await touchAv(env); } catch (e) {} }
+  return { h: hwRaw, n: rec.n || '', hw: hwRaw };
+}
+
+/* ---------- Аккаунты: логин и пароль, доступ выдаёт администратор ----------
+   u:<логин в нижнем регистре> — { login, k, st: pending|ok|off, salt, ph, it, must, at, seen, ss: [сеансы] }
+   s:<sha256 токена> — { k, at, seen, dev } (сам токен на сервере не хранится). Пароль — PBKDF2-SHA256 с солью. */
+const LOGIN_RE = /^[A-Za-z0-9_.-]{3,24}$/, SES_TTL = 400 * 86400, PW_IT = 20000;
+const COMMON_PW = ['password', 'passw', 'pass', 'qwerty', 'qwertyuiop', 'qwert', 'asdfgh', 'asdf', 'zxcvbn', 'zxcv', 'qazwsx', 'qaz', 'wsx', 'abc', 'abcd', 'abcde', 'abcdef', 'abcdefg', 'admin', 'administrator', 'root', 'user', 'login', 'test', 'guest', 'welcome', 'letmein', 'iloveyou', 'love', 'monkey', 'dragon', 'master', 'football', 'majestic', 'support', 'secret', 'парол', 'пароль', 'йцукен', 'йцукенг', 'фыва', 'фывапр', 'привет', 'qq', 'aa', 'ab', 'q', 'a', 'qw', 'qwe', 'qwer'];
+/* слабые пароли не принимаются: 8+ символов, буквы и цифры, не похож на логин и на популярные варианты */
+function pwProblem(pw, login) {
+  pw = String(pw || '');
+  if (pw.length < 8) return 'Пароль слишком короткий: нужно не меньше 8 символов.';
+  if (pw.length > 128) return 'Пароль слишком длинный.';
+  const letters = pw.replace(/[^A-Za-zА-Яа-яЁё]/g, ''), digits = pw.replace(/\D/g, '');
+  if (letters.length < 2 || !digits.length) return 'В пароле должны быть буквы и хотя бы одна цифра.';
+  if (new Set(pw.toLowerCase()).size < 5) return 'В пароле слишком много повторов — используйте больше разных символов.';
+  const low = pw.toLowerCase(), lg = String(login || '').toLowerCase();
+  if (lg.length >= 3 && low.indexOf(lg) >= 0) return 'Пароль не должен содержать логин.';
+  if (COMMON_PW.indexOf(letters.toLowerCase()) >= 0) return 'Это слишком популярный пароль, его легко подобрать. Придумайте другой.';
+  if (/1q2w|q1w2|1qaz|zaq1|qazwsx|1234qwer|qwer1234|asdf1234/.test(low)) return 'Это слишком популярный пароль, его легко подобрать. Придумайте другой.';
+  return '';
+}
+const hex = (b) => Array.from(new Uint8Array(b)).map((x) => x.toString(16).padStart(2, '0')).join('');
+async function sha256hex(t) { return hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t))); }
+async function pwHash(pw, saltHex, it) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
+  const salt = new Uint8Array(saltHex.match(/../g).map((x) => parseInt(x, 16)));
+  return hex(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: it }, key, 256));
+}
+function rnd(n) { const a = new Uint8Array(n); crypto.getRandomValues(a); return a; }
+async function setPw(u, pw) { u.salt = hex(rnd(16)); u.it = PW_IT; u.ph = await pwHash(pw, u.salt, u.it); }
+async function userGet(env, k) { const raw = await env.ACCESS.get('u:' + k); if (!raw) return null; try { return JSON.parse(raw); } catch (e) { return null; } }
+async function userPut(env, u) { await env.ACCESS.put('u:' + u.k, JSON.stringify(u)); }
+async function sessionNew(env, u, dev) {
+  const tok = hex(rnd(32)), sh = await sha256hex(tok);
+  await env.ACCESS.put('s:' + sh, JSON.stringify({ k: u.k, at: Date.now(), seen: Date.now(), dev: String(dev || '').slice(0, 40) }), { expirationTtl: SES_TTL });
+  u.ss = (u.ss || []).concat([sh]); while (u.ss.length > 20) { const old = u.ss.shift(); try { await env.ACCESS.delete('s:' + old); } catch (e) {} }
+  await userPut(env, u); return tok;
+}
+async function sessionOf(env, tok) {
+  const sh = await sha256hex(tok), raw = await env.ACCESS.get('s:' + sh); if (!raw) return null;
+  let s = {}; try { s = JSON.parse(raw); } catch (e) { return null; }
+  const user = await userGet(env, s.k); if (!user || (user.ss || []).indexOf(sh) < 0) return null;
+  if (Date.now() - (s.seen || 0) > 6 * 3600 * 1000) { s.seen = Date.now(); try { await env.ACCESS.put('s:' + sh, JSON.stringify(s), { expirationTtl: SES_TTL }); user.seen = Date.now(); await userPut(env, user); await touchAv(env); } catch (e) {} }
+  return { sh, s, user };
+}
+async function sessionsEnd(env, u, keep) { for (const sh of u.ss || []) if (sh !== keep) { try { await env.ACCESS.delete('s:' + sh); } catch (e) {} } u.ss = keep ? [keep] : []; }
+/* перебор паролей: не больше 8 ошибок на логин и 40 на адрес за 15 минут; регистраций — 5 в час с адреса */
+async function rlHit(env, k, ttl) { let n = 0; try { n = parseInt(await env.ACCESS.get(k), 10) || 0; } catch (e) {} await env.ACCESS.put(k, String(n + 1), { expirationTtl: ttl }); return n + 1; }
+async function rlGet(env, k) { try { return parseInt(await env.ACCESS.get(k), 10) || 0; } catch (e) { return 0; } }
+const ipOf = (req) => String(req.headers.get('CF-Connecting-IP') || 'x').slice(0, 64);
+const userView = (u) => ({ login: u.login, st: u.st, must: !!u.must });
+async function authApi(p, req, env) {
+  let b = {}; if (req.method === 'POST') { try { b = await req.json(); } catch (e) {} }
+  if (p === '/v1/auth/register' && req.method === 'POST') {
+    const login = String(b.login || '').trim(), pw = String(b.pass || '');
+    if (!LOGIN_RE.test(login)) return json({ ok: false, error: 'Логин: от 3 до 24 символов, латинские буквы, цифры, точка, дефис или _.' });
+    const bad = pwProblem(pw, login); if (bad) return json({ ok: false, error: bad });
+    if ((await rlGet(env, 'rg:' + ipOf(req))) >= 5) return json({ ok: false, error: 'Слишком много регистраций с этого адреса. Попробуйте через час.' });
+    const k = login.toLowerCase(); if (await userGet(env, k)) return json({ ok: false, error: 'Такой логин уже занят. Придумайте другой или войдите.' });
+    await rlHit(env, 'rg:' + ipOf(req), 3600);
+    const u = { login, k, st: 'pending', at: Date.now(), seen: Date.now(), ss: [] }; await setPw(u, pw);
+    const tok = await sessionNew(env, u, b.dev); await touchAv(env);
+    return json({ ok: true, token: tok, user: userView(u) });
+  }
+  if (p === '/v1/auth/login' && req.method === 'POST') {
+    const login = String(b.login || '').trim(), k = login.toLowerCase(), pw = String(b.pass || ''), ip = ipOf(req);
+    if ((await rlGet(env, 'rl:l:' + k)) >= 8 || (await rlGet(env, 'rl:i:' + ip)) >= 40) return json({ ok: false, error: 'Слишком много неудачных попыток. Подождите 15 минут.' });
+    const u = LOGIN_RE.test(login) ? await userGet(env, k) : null;
+    const ok = u && same(await pwHash(pw, u.salt, u.it || PW_IT), u.ph);
+    if (!ok) { await rlHit(env, 'rl:l:' + k, 900); await rlHit(env, 'rl:i:' + ip, 900); return json({ ok: false, error: 'Неверный логин или пароль.' }); }
+    const tok = await sessionNew(env, u, b.dev); return json({ ok: true, token: tok, user: userView(u) });
+  }
+  /* дальше — только с сеансом */
+  const tok = String(req.headers.get('X-Session') || '').trim(), ses = /^[0-9a-f]{64}$/.test(tok) ? await sessionOf(env, tok) : null;
+  if (p === '/v1/auth/me') {
+    let legacy = false; const hw = (req.headers.get('X-HWID') || '').toUpperCase();
+    if (HW.test(hw) && (await env.ACCESS.get('legacy')) !== '0' && (await env.ACCESS.get('h:' + hw))) legacy = true;
+    return json({ ok: true, user: ses ? userView(ses.user) : null, legacy });
+  }
+  if (!ses) return json({ ok: false, error: 'Войдите в аккаунт.', auth: false });
+  if (p === '/v1/auth/logout' && req.method === 'POST') { const u = ses.user; u.ss = (u.ss || []).filter((x) => x !== ses.sh); await userPut(env, u); await env.ACCESS.delete('s:' + ses.sh); return json({ ok: true }); }
+  if (p === '/v1/auth/pass' && req.method === 'POST') {
+    const u = ses.user, ip = ipOf(req);
+    if ((await rlGet(env, 'rl:l:' + u.k)) >= 8) return json({ ok: false, error: 'Слишком много неудачных попыток. Подождите 15 минут.' });
+    if (!same(await pwHash(String(b.old || ''), u.salt, u.it || PW_IT), u.ph)) { await rlHit(env, 'rl:l:' + u.k, 900); await rlHit(env, 'rl:i:' + ip, 900); return json({ ok: false, error: 'Текущий пароль введён неверно.' }); }
+    const bad = pwProblem(b.pass, u.login); if (bad) return json({ ok: false, error: bad });
+    if (String(b.pass) === String(b.old)) return json({ ok: false, error: 'Новый пароль совпадает с текущим.' });
+    await setPw(u, String(b.pass)); u.must = false; await sessionsEnd(env, u, ses.sh); await userPut(env, u);
+    return json({ ok: true, user: userView(u) });
+  }
+  return json({ ok: false, error: 'Неизвестный запрос' }, 404);
 }
 function same(a, b) { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
 function isAdmin(req, env) { const t = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, '').trim(), p = String(env.ADMIN_PASS || '').trim(); return p.length > 0 && t.length > 0 && same(t, p); }
@@ -90,6 +187,7 @@ export default {
       await env.ACCESS.put(dk, String(dn + 1), { expirationTtl: 3 * 86400 });
       return json({ ok: true });
     }
+    if (p.startsWith('/v1/auth/')) return authApi(p, req, env);
     if (p === '/v1/check') { const u = await who(req, env); return u ? json({ ok: true, n: u.n }) : deny(); }
     if (p === '/v1/rules') {
       if (!(await who(req, env))) return deny();
@@ -240,7 +338,7 @@ export default {
     }
     if (p === '/v1/backup/get') {
       const u = await who(req, env); if (!u) return deny();
-      const raw = await env.ACCESS.get('b:' + u.h); if (!raw) return json({ ok: true, none: true });
+      let raw = await env.ACCESS.get('b:' + u.h); if (!raw && u.hw && u.hw !== u.h) raw = await env.ACCESS.get('b:' + u.hw); if (!raw) return json({ ok: true, none: true });
       let r = {}; try { r = JSON.parse(raw); } catch (e) {} return json({ ok: true, at: r.at || 0, kb: r.kb || '' });
     }
     if (p === '/v1/report' && req.method === 'POST') {
@@ -361,6 +459,25 @@ export default {
       if (b.action === 'samplesInfo') { let n = 0, cursor; do { const l = await env.ACCESS.list({ prefix: 'smp:', cursor }); n += l.keys.length; cursor = l.list_complete ? null : l.cursor; } while (cursor); let x = null; try { x = JSON.parse(await env.ACCESS.get('smpx')); } catch (e) {} return json({ ok: true, n, last: x, repo: env.GH_SAMPLES_REPO || '', ready: !!(env.GH_TOKEN && env.GH_SAMPLES_REPO) }); }
       if (b.action === 'ping') return json({ ok: true, v: (await env.ACCESS.get('av')) || '0' });
       if (b.action === 'newsDel') { const list = (await getNews(env)).filter((x) => x.id !== b.id); await env.ACCESS.put('news', JSON.stringify(list)); await touchAv(env); return json({ ok: true }); }
+      /* аккаунты: список, выдать или забрать доступ, сбросить пароль (случайный временный), завершить сеансы, удалить */
+      if (b.action === 'users') {
+        const out = []; let cursor;
+        do { const l = await env.ACCESS.list({ prefix: 'u:', cursor }); for (const k of l.keys) { const u = await userGet(env, k.name.slice(2)); if (u) out.push({ login: u.login, st: u.st, at: u.at || 0, seen: u.seen || 0, must: !!u.must, ses: (u.ss || []).length }); } cursor = l.list_complete ? null : l.cursor; } while (cursor);
+        out.sort((a, c) => (a.st === 'pending' ? 0 : 1) - (c.st === 'pending' ? 0 : 1) || (c.seen || 0) - (a.seen || 0));
+        return json({ ok: true, list: out, legacy: (await env.ACCESS.get('legacy')) !== '0' });
+      }
+      if (b.action === 'legacySet') { await env.ACCESS.put('legacy', b.on ? '1' : '0'); await touchAv(env); return json({ ok: true, legacy: !!b.on }); }
+      if (/^user(Set|Reset|Kick|Del)$/.test(b.action || '')) {
+        const u = await userGet(env, String(b.login || '').trim().toLowerCase()); if (!u) return json({ ok: false, error: 'Пользователь не найден' }, 404);
+        if (b.action === 'userSet') { if (['ok', 'off', 'pending'].indexOf(b.st) < 0) return json({ ok: false }, 400); u.st = b.st; await userPut(env, u); await touchAv(env); return json({ ok: true }); }
+        if (b.action === 'userReset') {
+          const AB = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789', r = rnd(12); let pw = ''; for (let i = 0; i < 12; i++) pw += AB[r[i] % AB.length];
+          if (!/\d/.test(pw)) pw = pw.slice(0, 11) + '7'; if (!/[a-z]/i.test(pw)) pw = 'k' + pw.slice(1);
+          await setPw(u, pw); u.must = true; await sessionsEnd(env, u, null); await userPut(env, u); return json({ ok: true, pass: pw });
+        }
+        if (b.action === 'userKick') { await sessionsEnd(env, u, null); await userPut(env, u); return json({ ok: true }); }
+        if (b.action === 'userDel') { await sessionsEnd(env, u, null); await env.ACCESS.delete('u:' + u.k); await touchAv(env); return json({ ok: true }); }
+      }
       const h = String(b.h || '').trim().toUpperCase();
       if (!HW.test(h)) return json({ ok: false, error: 'Код должен быть вида XXXXX-XXXXX-XXXXX-XXXXX' }, 400);
       if (b.action === 'add') { const old = await env.ACCESS.get('h:' + h); let r = {}; try { r = old ? JSON.parse(old) : {}; } catch (e) {} await env.ACCESS.put('h:' + h, JSON.stringify({ n: String(b.n || '').slice(0, 80), added: r.added || Date.now(), seen: r.seen || 0 })); await touchAv(env); return json({ ok: true }); }
@@ -378,7 +495,8 @@ textarea{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--
 .row{display:flex;gap:8px;flex-wrap:wrap}.row input{flex:1 1 180px}table{border-collapse:collapse;width:100%;font-size:14px}td,th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left}code{font:600 13px Consolas,monospace}.m{color:var(--mut);font-size:13px}.w{overflow-x:auto}</style></head><body><main>
 <h1>Доступ к анализатору логов</h1>
 <div class="card" id="login"><div class="row"><input type="password" id="pw" placeholder="Пароль администратора" autocomplete="current-password"><button class="p" id="go">Войти</button></div><div class="m" id="msg"></div></div>
-<div id="app" hidden><div class="card"><b>Добавить компьютер или телефон</b><div class="m">Код компьютера показан в приложении для Windows. Код телефона — на сайте <code>/m/</code> этого сервера при первом открытии: человек присылает его вам. В имени удобно указать «телефон».</div><div class="row"><input id="h" placeholder="Код: XXXXX-XXXXX-XXXXX-XXXXX"><input id="n" placeholder="Имя (необязательно)"><button class="p" id="add">Выдать доступ</button></div><div class="m" id="msg2"></div></div>
+<div id="app" hidden><div class="card" id="usersCard"><b>Пользователи <span class="m" id="ucnt"></span></b><div class="m">Человек сам регистрируется в приложении (кнопка «Регистрация» на экране входа) и появляется здесь со статусом «Ожидает». Нажмите «Выдать доступ». «Сбросить пароль» создаёт случайный пароль: передайте его человеку, после входа он сменит его в личном кабинете.</div><div class="w"><table><thead><tr><th>Логин</th><th>Статус</th><th>Последний вход</th><th></th></tr></thead><tbody id="ul"></tbody></table></div><div class="m" id="umsg"></div><label class="m" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="legacy"> Пускать и по старым кодам компьютеров и телефонов (список ниже)</label></div>
+<div class="card"><b>Добавить компьютер или телефон</b><div class="m">Код компьютера показан в приложении для Windows. Код телефона — на сайте <code>/m/</code> этого сервера при первом открытии: человек присылает его вам. В имени удобно указать «телефон».</div><div class="row"><input id="h" placeholder="Код: XXXXX-XXXXX-XXXXX-XXXXX"><input id="n" placeholder="Имя (необязательно)"><button class="p" id="add">Выдать доступ</button></div><div class="m" id="msg2"></div></div>
 <div class="card"><b>Объявление для команды</b><div class="m">Появится у всех пользователей при следующем запуске приложения.</div><div class="row"><textarea id="nt" rows="3" placeholder="Например: Добавлено правило про ошибку 0x80070005, обновите приложение"></textarea><button class="p" id="nadd">Отправить</button></div><div class="m" id="msg3"></div><div class="w"><table><tbody id="nl"></tbody></table></div></div>
 <div class="card"><b>Правила команды</b><div class="m">Правила появляются у всех в приложении без обновления. Новое правило применяется к строкам лога, где есть указанный текст.</div><div class="row"><select id="rk"><option value="main">main.log</option><option value="client">client.log</option></select><select id="rs"><option value="err">Ошибка</option><option value="warn">Предупреждение</option><option value="crit">Критично</option><option value="info">Информация</option></select><input id="rp" placeholder="Что искать в строке лога"><input id="rt" placeholder="Название проблемы"></div><div class="row"><textarea id="rc" rows="2" placeholder="Причина проблемы"></textarea><textarea id="rf" rows="3" placeholder="Шаги решения, каждый с новой строки"></textarea></div><div class="row"><button class="p" id="radd">Добавить правило</button></div><div class="m" id="msg4"></div><div class="w"><table><tbody id="rl"></tbody></table></div></div>
 <div class="m" id="live"></div>
@@ -395,9 +513,18 @@ const SIG={};const same=(k,v)=>{const x=JSON.stringify(v);if(SIG[k]===x)return t
 async function load(){const r=await api({action:'list'});if(!r.ok){$('#msg').textContent=r.error||'Ошибка';$('#login').hidden=false;$('#app').hidden=true;return}
 $('#login').hidden=true;$('#app').hidden=false;if(same('l',r.list))return;$('#cnt').textContent='('+r.list.length+')';
 $('#tb').innerHTML=r.list.map(x=>'<tr><td><code>'+esc(x.h)+'</code></td><td>'+esc(x.n)+'</td><td class="m">'+fmt(x.seen)+'</td><td><button class="d" data-h="'+esc(x.h)+'">Отозвать</button></td></tr>').join('')||'<tr><td colspan="4" class="m">Список пуст</td></tr>'}
-$('#go').onclick=()=>{PW=$('#pw').value;try{sessionStorage.setItem('pw',PW)}catch(e){}load().then(()=>poll(true));loadNews();loadRules();loadReports();loadStats();loadSmp();loadTpl()};$('#pw').onkeydown=e=>{if(e.key==='Enter')$('#go').click()};
+$('#go').onclick=()=>{PW=$('#pw').value;try{sessionStorage.setItem('pw',PW)}catch(e){}load().then(()=>poll(true));loadUsers();loadNews();loadRules();loadReports();loadStats();loadSmp();loadTpl()};$('#pw').onkeydown=e=>{if(e.key==='Enter')$('#go').click()};
 $('#add').onclick=async()=>{const r=await api({action:'add',h:$('#h').value,n:$('#n').value});$('#msg2').textContent=r.ok?'Доступ выдан.':(r.error||'Ошибка');if(r.ok){$('#h').value='';$('#n').value='';load()}};
 $('#tb').onclick=async e=>{const h=e.target.getAttribute&&e.target.getAttribute('data-h');if(!h)return;if(e.target.dataset.sure!=='1'){e.target.dataset.sure='1';e.target.textContent='Точно отозвать?';return}await api({action:'del',h});load()};
+const UST={pending:'Ожидает',ok:'Доступ выдан',off:'Доступ закрыт'};
+async function loadUsers(){const r=await api({action:'users'});if(!r.ok)return;$('#legacy').checked=!!r.legacy;if(same('u',r.list))return;const np=r.list.filter(x=>x.st==='pending').length;$('#ucnt').textContent='('+r.list.length+(np?', ждут: '+np:'')+')';
+$('#ul').innerHTML=r.list.map(x=>'<tr><td><b>'+esc(x.login)+'</b>'+(x.must?'<div class="m">временный пароль</div>':'')+'</td><td'+(x.st==='pending'?' style="color:var(--acc);font-weight:600"':x.st==='off'?' style="color:var(--bad)"':'')+'>'+UST[x.st]+'</td><td class="m">'+fmt(x.seen)+(x.ses?'<div>сеансов: '+x.ses+'</div>':'')+'</td><td><div style="display:flex;flex-wrap:wrap;gap:6px">'+(x.st!=='ok'?'<button class="p" data-u="'+esc(x.login)+'" data-a="ok">Выдать доступ</button> ':'<button data-u="'+esc(x.login)+'" data-a="off">Забрать доступ</button> ')+'<button data-u="'+esc(x.login)+'" data-a="reset">Сбросить пароль</button> <button data-u="'+esc(x.login)+'" data-a="kick" title="Выйти на всех устройствах">Завершить сеансы</button> <button class="d" data-u="'+esc(x.login)+'" data-a="del">Удалить</button></div></td></tr>').join('')||'<tr><td colspan="4" class="m">Пока никто не зарегистрировался</td></tr>'}
+$('#ul').onclick=async e=>{const b=e.target.closest&&e.target.closest('button[data-u]');if(!b)return;const u=b.dataset.u,a=b.dataset.a;
+if((a==='del'||a==='reset'||a==='kick')&&b.dataset.sure!=='1'){b.dataset.sure='1';b.textContent=a==='del'?'Точно удалить?':a==='reset'?'Точно сбросить?':'Точно завершить?';return}
+let r;if(a==='ok'||a==='off')r=await api({action:'userSet',login:u,st:a});else if(a==='reset')r=await api({action:'userReset',login:u});else if(a==='kick')r=await api({action:'userKick',login:u});else r=await api({action:'userDel',login:u});
+$('#umsg').innerHTML=!r.ok?esc(r.error||'Ошибка'):a==='reset'?'Новый пароль для <b>'+esc(u)+'</b>: <code style="user-select:all;font-size:16px">'+esc(r.pass)+'</code> <button id="ucp">Скопировать</button><br>Передайте его человеку. После входа приложение предложит сменить пароль на свой.':a==='ok'?'Доступ выдан: '+esc(u)+'.':a==='off'?'Доступ закрыт: '+esc(u)+'.':a==='kick'?'Сеансы завершены: '+esc(u)+' войдёт заново.':'Удалён: '+esc(u)+'.';
+if(r.pass){$('#ucp').onclick=()=>{navigator.clipboard.writeText(r.pass);$('#ucp').textContent='Скопировано'}}SIG.u='';loadUsers()};
+$('#legacy').onchange=async()=>{const on=$('#legacy').checked;if(!on&&!confirm('Выключить вход по кодам? Пустит только по аккаунтам.')){$('#legacy').checked=true;return}await api({action:'legacySet',on});$('#umsg').textContent=on?'Вход по кодам включён.':'Вход по кодам выключен: только аккаунты.'};
 async function loadNews(){const r=await api({action:'newsList'});if(!r.ok||same('n',r.list))return;$('#nl').innerHTML=r.list.map(x=>'<tr><td class="m">'+fmt(x.at)+'</td><td>'+esc(x.text)+'</td><td><button class="d" data-n="'+esc(x.id)+'">Удалить</button></td></tr>').join('')||'<tr><td class="m">Объявлений нет</td></tr>'}
 $('#nadd').onclick=async()=>{const r=await api({action:'newsAdd',text:$('#nt').value});$('#msg3').textContent=r.ok?'Отправлено.':(r.error||'Ошибка');if(r.ok){$('#nt').value='';loadNews()}};
 $('#nl').onclick=async e=>{const n=e.target.getAttribute&&e.target.getAttribute('data-n');if(!n)return;await api({action:'newsDel',id:n});loadNews()};
@@ -422,7 +549,7 @@ async function loadReports(){const r=await api({action:'reportList'});if(!r.ok||
 $('#rpl').onclick=async e=>{const t=e.target,s=t.getAttribute&&t.getAttribute('data-s'),d=t.getAttribute&&t.getAttribute('data-rd');if(s){const r=await api({action:'reportShot',id:s});const box=t.parentNode.nextSibling;box.innerHTML=r.shot?'<img src="'+r.shot+'" style="max-width:100%;border-radius:8px;margin-top:6px">':'<span class="m">Нет картинки</span>'}if(d){await api({action:'reportDel',id:d});loadReports()}};
 let AV=null,BUSY=false;
 function stamp(){const d=new Date(),p=n=>(n<10?'0':'')+n;$('#live').textContent='Обновляется само. Проверено в '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())}
-async function poll(force){if(BUSY||!PW||$('#app').hidden||(document.hidden&&!force))return;BUSY=true;try{const r=await api({action:'ping'});if(r.ok){if(force||r.v!==AV){AV=r.v;await Promise.all([load(),loadNews(),loadReports(),loadStats()])}stamp()}}catch(e){$('#live').textContent='Нет связи, пробую снова…'}BUSY=false}
+async function poll(force){if(BUSY||!PW||$('#app').hidden||(document.hidden&&!force))return;BUSY=true;try{const r=await api({action:'ping'});if(r.ok){if(force||r.v!==AV){AV=r.v;await Promise.all([load(),loadUsers(),loadNews(),loadReports(),loadStats()])}stamp()}}catch(e){$('#live').textContent='Нет связи, пробую снова…'}BUSY=false}
 setInterval(()=>poll(false),15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll(true)});
-if(PW){load().then(()=>poll(true));loadNews();loadRules();loadReports();loadStats();loadSmp();loadTpl()}
+if(PW){load().then(()=>poll(true));loadUsers();loadNews();loadRules();loadReports();loadStats();loadSmp();loadTpl()}
 </script></main></body></html>`;

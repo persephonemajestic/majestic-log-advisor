@@ -848,6 +848,22 @@ html.mob .panel .kh { display: none !important; }
 html.mob .tlr { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 8px 10px; }
 html.mob .tlr .tf, html.mob .tlr .td { display: none; }
 html.mob .tlr.k-bad .tt { color: var(--crit); }
+.wg-mk { width: 64px; height: 64px; }
+.wg-tabs { display: grid; grid-template-columns: 1fr 1fr; width: 100%; padding: 3px; border-radius: 12px; background: var(--raise); border: .5px solid var(--line2); }
+.wg-tabs button { min-height: 40px; border: 0; border-radius: 9px; background: none; color: var(--muted); font: 600 15px var(--sans); cursor: pointer; }
+.wg-tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 4px rgba(0, 0, 0, .12); }
+.wg-f { display: grid; gap: 12px; width: 100%; text-align: left; }
+.wg-f label { display: grid; gap: 5px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.wg-f input { width: 100%; box-sizing: border-box; height: 46px; padding: 0 12px; border: 1px solid var(--line2); border-radius: 12px; background: var(--surface); color: var(--ink); font: 400 16px var(--sans); }
+.wg-f input:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+.wg-pw { position: relative; display: block; }
+.wg-pw input { padding-right: 92px; }
+.wg-eye { position: absolute; right: 4px; top: 4px; bottom: 4px; padding: 0 12px; border: 0; border-radius: 9px; background: none; color: var(--accent); font: 600 14px var(--sans); cursor: pointer; }
+.wg-rules { margin: -2px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.wg-rules li::before { content: '○'; display: inline-block; width: 18px; color: var(--muted); }
+.wg-rules li.ok { color: var(--ok); } .wg-rules li.ok::before { content: '✓'; color: var(--ok); font-weight: 700; }
+.wg-alt { width: 100%; min-height: 44px; }
+.acc-box .wg-f { max-width: 420px; }
 .wg-own { width: 100%; text-align: left; }
 .wg-own summary { cursor: pointer; color: var(--accent); font-size: 15px; text-align: center; list-style: none; padding: 6px 0; }
 .wg-own summary::-webkit-details-marker { display: none; }
@@ -940,6 +956,7 @@ html.gated body > *:not(#webGate):not(#toast) { visibility: hidden; }
         <button class="btn sm ghost mi" id="btnHelp" type="button" title="Как пользоваться: логи, дамп, журнал Windows, папки, ИИ">Инструкция</button>
         <button class="btn sm ghost mi" id="btnNew" type="button">Что нового</button>
         <button class="btn sm ghost mi" id="btnSet" type="button" title="Горячие клавиши и обновления">Настройки</button>
+        <button class="btn sm ghost mi" id="btnAcc" type="button" title="Логин, смена пароля, выход" hidden>Аккаунт</button>
         <button class="btn sm ghost mi" id="btnUrl" type="button" hidden>По ссылке</button>
         <button class="btn sm ghost mi" id="btnWatch" type="button" hidden>Автозагрузка</button>
         <button class="btn sm ghost mi" id="btnLogs" type="button" hidden>Логи с этого ПК</button>

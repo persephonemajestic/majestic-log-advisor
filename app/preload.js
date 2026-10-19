@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('nativeApp', {
   updateFromFile: () => ipcRenderer.invoke('update-from-file'),
   updateReset: () => ipcRenderer.invoke('update-reset'),
   gatedFetch: (p, o) => ipcRenderer.invoke('gated-fetch', p, o),
+  authSet: (t, l) => ipcRenderer.invoke('auth-set', t, l),
+  authGet: () => ipcRenderer.invoke('auth-get'),
   shellInfo: () => ipcRenderer.invoke('shell-info'),
   watchInfo: () => ipcRenderer.invoke('watch-info'),
   watchSet: (m) => ipcRenderer.invoke('watch-set', m),

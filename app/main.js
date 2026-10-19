@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, clipboard, Menu, shell, net, native
 const fs = require('fs');
 const path = require('path');
 
-const SHELL_VERSION = '2026-10-13.22';
+const SHELL_VERSION = '2026-10-19.23';
 const APPDIR = global.APP_DIR || __dirname;
 const bundled = () => path.join(APPDIR, 'index.html');
 const overrideFile = () => path.join(app.getPath('userData'), 'index-override.html');
@@ -20,7 +20,10 @@ try { getHwid = require(path.join(APPDIR, 'hwid.js')); } catch (e) {
     return h.match(/.{5}/g).join('-');
   };
 }
-const gatedHeaders = () => ({ 'X-HWID': getHwid() });
+/* сеанс аккаунта (после входа по логину и паролю) хранится в папке программы и уходит серверу заголовком X-Session */
+const sesFile = () => path.join(app.getPath('userData'), 'session.json');
+const readSes = () => { try { const j = JSON.parse(fs.readFileSync(sesFile(), 'utf8')); return /^[0-9a-f]{64}$/.test(j.token || '') ? j : null; } catch (e) { return null; } };
+const gatedHeaders = () => { const h = { 'X-HWID': getHwid() }, s = readSes(); if (s) h['X-Session'] = s.token; return h; };
 const DEFAULT_URL = WORKER + '/v1/app';
 const readCfg = () => { let c = {}; try { c = JSON.parse(fs.readFileSync(cfgFile(), 'utf8')); } catch (e) {} if (!c.url || /^https:\/\/(github\.com|raw\.githubusercontent\.com)\//i.test(c.url)) c.url = DEFAULT_URL; return c; };
 const writeCfg = (c) => { try { fs.mkdirSync(path.dirname(cfgFile()), { recursive: true }); fs.writeFileSync(cfgFile(), JSON.stringify(c)); } catch (e) {} };
@@ -93,7 +96,8 @@ function createWindow() {
   win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent('<body style="margin:0;background:' + tc.bg + ';color:' + tc.fg + ';font:15px system-ui,Segoe UI,sans-serif;display:grid;place-items:center;height:100vh">Загрузка…</body>'));
   setTimeout(() => { try { if (!win.isDestroyed() && !win.isVisible()) win.show(); } catch (e) {} }, 3000);
   refreshIcon(win);
-  checkAccess().then((r) => { if (r.ok) guardedLoad(win); else win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(lockPage(r))); });
+  /* доступ проверяет само приложение: без доступа оно показывает окно входа и регистрации */
+  checkAccess().then(() => guardedLoad(win));
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:')) { e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); } });
 }
@@ -236,6 +240,10 @@ function lockPage(r) {
   return '<!doctype html><html lang="ru"><meta charset="utf-8"><title>Доступ</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#E9E6DC;color:#1F1E1D;font:15px/1.6 Segoe UI,system-ui,sans-serif}main{max-width:480px;padding:32px;background:#F4F2EC;border:1px solid rgba(31,30,29,.14);border-radius:12px;display:grid;gap:14px}h1{margin:0;font-size:20px}code{display:block;padding:12px;background:#E4E0D5;border-radius:8px;font:600 17px Consolas,monospace;letter-spacing:.04em}button{justify-self:start;padding:8px 16px;border:0;border-radius:8px;background:#2B4FBF;color:#fff;font:inherit;cursor:pointer}p{margin:0;color:#62605A}</style><main><h1>Анализатор логов Majestic</h1><p>' + e(r.why) + '</p><p>Ваш код компьютера. Отправьте его администратору, чтобы получить доступ:</p><code id="c">' + e(r.hwid) + '</code><button onclick="window.nativeApp.copy(document.getElementById(\'c\').textContent);this.textContent=\'Скопировано\'">Скопировать код</button></main></html>';
 }
 ipcMain.handle('shell-info', async () => ({ version: SHELL_VERSION, hwid: getHwid() }));
+ipcMain.handle('auth-set', async (e, token, login) => {
+  try { if (/^[0-9a-f]{64}$/.test(String(token || ''))) fs.writeFileSync(sesFile(), JSON.stringify({ token: String(token), login: String(login || '').slice(0, 40), at: Date.now() }), { mode: 0o600 }); else fs.rmSync(sesFile(), { force: true }); return true; } catch (err) { return false; }
+});
+ipcMain.handle('auth-get', async () => { const s = readSes(); return { has: !!s, login: s ? s.login : '' }; });
 app.whenReady().then(createWindow);
 app.on('window-all-closed', () => app.quit());
 

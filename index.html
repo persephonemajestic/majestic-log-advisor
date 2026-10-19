@@ -848,6 +848,22 @@ html.mob .panel .kh { display: none !important; }
 html.mob .tlr { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 8px 10px; }
 html.mob .tlr .tf, html.mob .tlr .td { display: none; }
 html.mob .tlr.k-bad .tt { color: var(--crit); }
+.wg-mk { width: 64px; height: 64px; }
+.wg-tabs { display: grid; grid-template-columns: 1fr 1fr; width: 100%; padding: 3px; border-radius: 12px; background: var(--raise); border: .5px solid var(--line2); }
+.wg-tabs button { min-height: 40px; border: 0; border-radius: 9px; background: none; color: var(--muted); font: 600 15px var(--sans); cursor: pointer; }
+.wg-tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 4px rgba(0, 0, 0, .12); }
+.wg-f { display: grid; gap: 12px; width: 100%; text-align: left; }
+.wg-f label { display: grid; gap: 5px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.wg-f input { width: 100%; box-sizing: border-box; height: 46px; padding: 0 12px; border: 1px solid var(--line2); border-radius: 12px; background: var(--surface); color: var(--ink); font: 400 16px var(--sans); }
+.wg-f input:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+.wg-pw { position: relative; display: block; }
+.wg-pw input { padding-right: 92px; }
+.wg-eye { position: absolute; right: 4px; top: 4px; bottom: 4px; padding: 0 12px; border: 0; border-radius: 9px; background: none; color: var(--accent); font: 600 14px var(--sans); cursor: pointer; }
+.wg-rules { margin: -2px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.wg-rules li::before { content: '○'; display: inline-block; width: 18px; color: var(--muted); }
+.wg-rules li.ok { color: var(--ok); } .wg-rules li.ok::before { content: '✓'; color: var(--ok); font-weight: 700; }
+.wg-alt { width: 100%; min-height: 44px; }
+.acc-box .wg-f { max-width: 420px; }
 .wg-own { width: 100%; text-align: left; }
 .wg-own summary { cursor: pointer; color: var(--accent); font-size: 15px; text-align: center; list-style: none; padding: 6px 0; }
 .wg-own summary::-webkit-details-marker { display: none; }
@@ -940,6 +956,7 @@ html.gated body > *:not(#webGate):not(#toast) { visibility: hidden; }
         <button class="btn sm ghost mi" id="btnHelp" type="button" title="Как пользоваться: логи, дамп, журнал Windows, папки, ИИ">Инструкция</button>
         <button class="btn sm ghost mi" id="btnNew" type="button">Что нового</button>
         <button class="btn sm ghost mi" id="btnSet" type="button" title="Горячие клавиши и обновления">Настройки</button>
+        <button class="btn sm ghost mi" id="btnAcc" type="button" title="Логин, смена пароля, выход" hidden>Аккаунт</button>
         <button class="btn sm ghost mi" id="btnUrl" type="button" hidden>По ссылке</button>
         <button class="btn sm ghost mi" id="btnWatch" type="button" hidden>Автозагрузка</button>
         <button class="btn sm ghost mi" id="btnLogs" type="button" hidden>Логи с этого ПК</button>
@@ -3292,7 +3309,7 @@ var STRU = { ok: 'Успех', bad: 'Сбой', warn: 'Внимание', unk: '
 var SRCRU = { guide: 'из руководства', obs: 'по наблюдению в логах', infer: 'вывод, в руководстве нет', web: 'по открытым источникам', user: 'ваше правило', team: 'правило команды' };
 var SRCTIP = { team: 'Общее правило команды из файла rules.json в репозитории проекта', user: 'Правило, которое добавили вы или коллега через «Добавить решение»', guide: 'Правило взято из документа «Руководство по диагностике ошибок и работе с логами»', obs: 'Строка встречается в успешных заходах загруженных логов, поэтому считается шумом', web: 'Случая нет в руководстве. Объяснение собрано по справкам Rockstar, форумам RAGE и cfx.re и реальным логам. Проверяйте его', infer: 'Этого случая нет в руководстве. Объяснение построено по логам и общим признакам, проверяйте его' };
 var PSTEPS_UI = [['admin', 'Администратор'], ['pirate', 'Очистка файлов'], ['backup', 'Резервная копия'], ['patch', 'Патч игры'], ['job', 'Процесс игры'], ['inject', 'Внедрение'], ['injected', 'Клиент внедрён'], ['entry', 'Запуск клиента'], ['finished', 'Готово'], ['window', 'Окно игры']];
-var SAMPLE = null, APP_VERSION = '2026-10-19.128';
+var SAMPLE = null, APP_VERSION = '2026-10-19.129';
 var ROW = 20, KBKEY = 'majestic-log-advisor.kb.v1';
 
 var $ = function (s) { return document.querySelector(s); };
@@ -3346,71 +3363,140 @@ function webDev() {
 async function webFetch(p, opts) {
   p = String(p || ''); if (!/^\/v1\/[a-z0-9\/._-]+$/i.test(p)) return null; opts = opts || {};
   var q = opts.query && typeof opts.query === 'object' ? '&' + Object.keys(opts.query).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(String(opts.query[k]).slice(0, 200)); }).join('&') : '';
-  var init = { cache: 'no-store', headers: { 'X-HWID': webDev() } };
+  var init = { cache: 'no-store', headers: { 'X-HWID': webDev() } }, st = lsGet('mla.sess'); if (st) init.headers['X-Session'] = st;
   if (opts.body != null) { init.method = 'POST'; init.body = JSON.stringify(opts.body); if (init.body.length > 4500000) return null; init.headers['content-type'] = 'application/json'; }
   try { var r = await fetch(p + '?t=' + Date.now() + q, init); return r.ok ? await r.text() : null; } catch (e) { return null; }
 }
 /* запрос к серверу команды из приложения для Windows или с телефона */
 async function gfetch(p, opts) { if (window.nativeApp && window.nativeApp.gatedFetch) return window.nativeApp.gatedFetch(p, opts); if (WEB) return webFetch(p, opts); return null; }
 
-/* ---------- Экран доступа ---------- */
-async function webCheck() {
-  try { var r = await fetch('/v1/check?t=' + Date.now(), { cache: 'no-store', headers: { 'X-HWID': webDev() } }); if (r.status === 403) return { st: 'deny' }; var j = await r.json(); return j && j.ok ? { st: 'ok', n: j.n || '' } : { st: 'deny' }; } catch (e) { return { st: 'net' }; }
+/* ---------- Вход: аккаунт (логин и пароль) ----------
+   Сайт для телефона и приложение для Windows (новая оболочка) показывают одно и то же окно входа. Человек сам регистрируется,
+   администратор выдаёт доступ в админке. Сеанс запоминается на устройстве (до выхода кнопкой «Выйти»). Старый вход по коду
+   компьютера или телефона продолжает работать, пока администратор его не выключит. */
+var ACC = WEB || !!(window.nativeApp && window.nativeApp.authSet), SES_KEY = 'mla.sess', ACC_OK = 'mla.accok';
+var ACCS = { user: null, legacy: false, poll: 0, mode: 'login', closable: false };
+async function accReq(path, body) {
+  if (WEB) {
+    try { var h = { 'X-HWID': webDev() }, t = lsGet(SES_KEY); if (t) h['X-Session'] = t; if (body) h['content-type'] = 'application/json'; var r = await fetch(path + '?t=' + Date.now(), { method: body ? 'POST' : 'GET', cache: 'no-store', headers: h, body: body ? JSON.stringify(body) : undefined }); return await r.json(); } catch (e) { return null; }
+  }
+  try { var tx = await gfetch(path, body ? { body: body } : {}); return tx ? JSON.parse(tx) : null; } catch (e) { return null; }
 }
-function webGate(state) {
+async function accSave(tok, login) { if (WEB) { lsSet(SES_KEY, tok || null); return; } try { await window.nativeApp.authSet(tok || '', login || ''); } catch (e) {} }
+/* те же правила, что на сервере: 8+ символов, буквы и цифры, не повторы, не логин, не популярный пароль */
+var PW_COMMON = ['password', 'passw', 'pass', 'qwerty', 'qwertyuiop', 'qwert', 'asdfgh', 'asdf', 'zxcvbn', 'zxcv', 'qazwsx', 'qaz', 'wsx', 'abc', 'abcd', 'abcde', 'abcdef', 'abcdefg', 'admin', 'administrator', 'root', 'user', 'login', 'test', 'guest', 'welcome', 'letmein', 'iloveyou', 'love', 'monkey', 'dragon', 'master', 'football', 'majestic', 'support', 'secret', 'парол', 'пароль', 'йцукен', 'йцукенг', 'фыва', 'фывапр', 'привет', 'qq', 'aa', 'ab', 'q', 'a', 'qw', 'qwe', 'qwer'];
+function pwRules(pw, login) {
+  pw = String(pw || ''); var letters = pw.replace(/[^A-Za-zА-Яа-яЁё]/g, ''), low = pw.toLowerCase(), lg = String(login || '').toLowerCase();
+  var common = PW_COMMON.indexOf(letters.toLowerCase()) >= 0 || /1q2w|q1w2|1qaz|zaq1|qazwsx|1234qwer|qwer1234|asdf1234/.test(low);
+  return { len: pw.length >= 8 && pw.length <= 128, mix: letters.length >= 2 && /\d/.test(pw), vary: pw.length > 0 && new Set(low.split('')).size >= 5 && !common && !(lg.length >= 3 && low.indexOf(lg) >= 0) };
+}
+function pwIssue(pw, login) { var r = pwRules(pw, login); return !r.len ? 'Пароль: не меньше 8 символов.' : !r.mix ? 'В пароле нужны буквы и хотя бы одна цифра.' : !r.vary ? 'Пароль слишком простой: без повторов, без логина и не из популярных (qwerty123, 12345678…).' : ''; }
+var MARK = '<svg class="wg-mk" viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="8" fill="var(--ink)"/><path d="M6 20h6l3.5-9 5 16 3.5-10 2 3H30" fill="none" stroke="var(--bg)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function pwRulesHtml(id) { return '<ul class="wg-rules" id="' + id + '"><li data-r="len">Не меньше 8 символов</li><li data-r="mix">Буквы и цифры</li><li data-r="vary">Не простой: без повторов, без логина, не qwerty123 и не 12345678</li></ul>'; }
+function pwRulesDraw(id, pw, login) { var ul = document.getElementById(id); if (!ul) return; var r = pwRules(pw, login); ul.querySelectorAll('li').forEach(function (li) { li.classList.toggle('ok', !!r[li.getAttribute('data-r')] && !!pw); }); }
+function accGate(state, msg) {
   var g = document.getElementById('webGate');
   if (state === 'ok') { if (g) g.remove(); document.documentElement.classList.remove('gated'); return; }
   document.documentElement.classList.add('gated');
-  if (!g) { g = document.createElement('div'); g.id = 'webGate'; g.setAttribute('role', 'dialog'); g.setAttribute('aria-label', 'Доступ к анализатору'); document.body.appendChild(g); }
-  var code = webDev();
-  g.innerHTML = '<div class="wg-box">' +
-    '<img class="wg-ic" src="/m/icon-180.png" alt="" width="72" height="72">' +
-    '<h2>Анализатор логов Majestic</h2>' +
-    (state === 'net' ? '<p class="wg-t">Нет связи с сервером команды. Проверьте интернет и попробуйте ещё раз.</p>' :
-      '<p class="wg-t">Чтобы пользоваться анализатором, отправьте этот код администратору. Он добавит телефон в список доступа — так же, как компьютер.</p>') +
-    '<button class="wg-code" type="button" data-wg="copy" aria-label="Скопировать код устройства">' + code + '<span>Нажмите, чтобы скопировать</span></button>' +
-    '<button class="btn primary wg-go" type="button" data-wg="check">Проверить доступ</button>' +
-    '<p class="wg-h" id="wgMsg" role="status" aria-live="polite"></p>' +
-    '<details class="wg-own"><summary>У меня уже есть код доступа</summary><div class="row"><input id="wgOwn" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" aria-label="Код устройства с доступом"><button class="btn" type="button" data-wg="own">Войти</button></div>' +
-    '<p>Доступ уже выдан этому телефону в Safari или в другом браузере? Скопируйте код там («Ещё» → внизу «Код устройства») и вставьте сюда — администратору писать не нужно.</p></details>' +
-    (IOS && !navigator.standalone ? '<p class="wg-tip"><b>Сначала установите.</b> Нажмите «Поделиться» <span class="ios-share" aria-hidden="true"></span> → «На экран „Домой“» и откройте анализатор уже с иконки: у приложения на экране «Домой» свой код, отдельный от Safari.</p>' : '') +
-    '</div>';
+  if (!g) { g = document.createElement('div'); g.id = 'webGate'; g.setAttribute('role', 'dialog'); g.setAttribute('aria-label', 'Вход в анализатор'); document.body.appendChild(g); }
+  var u = ACCS.user, reg = ACCS.mode === 'register', h = '<div class="wg-box">' + (WEB ? '<img class="wg-ic" src="/m/icon-180.png" alt="" width="72" height="72">' : MARK) + '<h2>Анализатор логов Majestic</h2>';
+  if (state === 'wait') h += '<p class="wg-t">Проверяю вход…</p>';
+  else if (state === 'net') h += '<p class="wg-t">Нет связи с сервером команды. Проверьте интернет.</p><button class="btn primary wg-go" type="button" data-wg="retry">Повторить</button>';
+  else if (state === 'pending' || state === 'off') h += '<p class="wg-t">' + (state === 'pending' ? 'Аккаунт <b>' + esc(u.login) + '</b> создан и ждёт подтверждения. Когда администратор выдаст доступ, анализатор откроется сам.' : 'Доступ для <b>' + esc(u.login) + '</b> закрыт администратором.') + '</p>' +
+    (state === 'pending' ? '<button class="btn primary wg-go" type="button" data-wg="retry">Проверить сейчас</button>' : '') + '<button class="btn ghost wg-alt" type="button" data-wg="logout">Выйти из аккаунта</button>';
+  else {
+    h += '<div class="wg-tabs" role="tablist"><button type="button" role="tab" data-wg="tab" data-m="login" aria-selected="' + !reg + '">Вход</button><button type="button" role="tab" data-wg="tab" data-m="register" aria-selected="' + reg + '">Регистрация</button></div>' +
+      '<form class="wg-f" id="wgForm" novalidate><label>Логин<input id="wgL" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="24" required></label>' +
+      '<label>Пароль<span class="wg-pw"><input id="wgP" type="password" autocomplete="' + (reg ? 'new-password' : 'current-password') + '" maxlength="128" required><button type="button" class="wg-eye" data-wg="eye" aria-label="Показать пароль">Показать</button></span></label>' +
+      (reg ? '<label>Повторите пароль<input id="wgP2" type="password" autocomplete="new-password" maxlength="128" required></label>' + pwRulesHtml('wgRules') : '') +
+      '<button class="btn primary wg-go" type="submit">' + (reg ? 'Зарегистрироваться' : 'Войти') + '</button></form>' +
+      (reg ? '<p class="wg-tip">Логин — латинские буквы и цифры, от 3 символов. После регистрации администратор выдаст доступ, и анализатор откроется сам. Один аккаунт — на компьютере и на телефоне.</p>' : '<p class="wg-tip">Забыли пароль? Напишите администратору: он сбросит пароль, а новый вы поменяете в личном кабинете.</p>') +
+      (ACCS.closable ? '<button class="btn ghost wg-alt" type="button" data-wg="close">Позже</button>' : '');
+  }
+  h += '<p class="wg-h" id="wgMsg" role="status" aria-live="polite">' + esc(msg || '') + '</p>' +
+    (WEB && IOS && !navigator.standalone && state !== 'wait' ? '<p class="wg-tip"><b>Совет.</b> Нажмите «Поделиться» <span class="ios-share" aria-hidden="true"></span> → «На экран „Домой“» — анализатор откроется как приложение.</p>' : '') + '</div>';
+  g.innerHTML = h;
+  var li = document.getElementById('wgL'); if (li && !('ontouchstart' in window)) li.focus();
 }
 function webCopy(text) { try { navigator.clipboard.writeText(text); return true; } catch (e) {} try { var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); return true; } catch (e) { return false; } }
+function accOk(user, legacy) {
+  var was = !!lsGet(ACC_OK); ACCS.user = user; ACCS.legacy = !!legacy; ACCS.closable = false;
+  lsSet(ACC_OK, '1'); if (WEB) lsSet(WEB_OK, '1'); accGate('ok');
+  if (!was) { status('Доступ открыт' + (user ? ': ' + user.login : '') + '. Добавьте лог кнопкой «+».'); try { loadTeam(false); checkNews(); fetchShared(); pulse(); tplFetch(); } catch (e) {} }
+  if (user && user.must) setTimeout(function () { openAccount('Вы вошли с временным паролем от администратора. Задайте свой пароль.'); }, 300);
+  try { if (typeof mobSync === 'function') mobSync(); } catch (e) {}
+}
+async function accCheck(quiet) {
+  var me = await accReq('/v1/auth/me');
+  if (!me) { if (lsGet(ACC_OK)) return accOk(ACCS.user, ACCS.legacy); return accGate('net'); }
+  if (me.user && me.user.st === 'ok') return accOk(me.user, false);
+  if (me.user) { ACCS.user = me.user; lsSet(ACC_OK, null); if (WEB) lsSet(WEB_OK, null); return accGate(me.user.st === 'off' ? 'off' : 'pending'); }
+  if (me.legacy) return accOk(null, true);
+  lsSet(ACC_OK, null); if (WEB) lsSet(WEB_OK, null); ACCS.user = null; if (!quiet || !document.getElementById('wgForm')) accGate('login');
+}
+async function accSubmit() {
+  var l = ($('#wgL').value || '').trim(), pw = $('#wgP').value || '', reg = ACCS.mode === 'register', msg = $('#wgMsg'), btn = document.querySelector('#wgForm [type=submit]');
+  if (!/^[A-Za-z0-9_.-]{3,24}$/.test(l)) { msg.textContent = 'Логин: от 3 до 24 символов — латинские буквы, цифры, точка, дефис или _.'; return; }
+  if (reg) { var bad = pwIssue(pw, l); if (bad) { msg.textContent = bad; return; } if (pw !== ($('#wgP2').value || '')) { msg.textContent = 'Пароли не совпадают.'; return; } }
+  else if (!pw) { msg.textContent = 'Введите пароль.'; return; }
+  btn.disabled = true; msg.textContent = reg ? 'Создаю аккаунт…' : 'Вхожу…';
+  var dev = WEB ? (IOS ? 'iPhone' : /Android/.test(navigator.userAgent) ? 'Android' : 'браузер') : 'Windows';
+  var r = await accReq(reg ? '/v1/auth/register' : '/v1/auth/login', { login: l, pass: pw, dev: dev });
+  btn.disabled = false;
+  if (!r) { msg.textContent = 'Нет связи с сервером. Проверьте интернет.'; return; }
+  if (!r.ok) { msg.textContent = r.error || 'Не получилось.'; return; }
+  await accSave(r.token, r.user.login);
+  if (r.user.st === 'ok') accOk(r.user, false); else { ACCS.user = r.user; accGate(r.user.st === 'off' ? 'off' : 'pending'); }
+}
+async function accLogout() {
+  await accReq('/v1/auth/logout', {}); await accSave('', ''); lsSet(ACC_OK, null); if (WEB) lsSet(WEB_OK, null); ACCS.user = null; $('#panelHost').innerHTML = '';
+  status('Вы вышли из аккаунта.'); await accCheck();
+}
+/* личный кабинет: логин, смена пароля, выход */
+function openAccount(note) {
+  var u = ACCS.user, h = '<div class="panel" data-act="closePanel"><div class="box acc-box" role="dialog" aria-label="Аккаунт" data-act="noop"><b>Аккаунт</b>';
+  if (note) h += '<div class="alertbox"><b>' + esc(note) + '</b></div>';
+  if (u) h += '<p style="margin:0">Вы вошли как <b>' + esc(u.login) + '</b>. Этот аккаунт работает и на компьютере, и на телефоне.</p>' +
+    '<h4 style="margin:6px 0 0">Сменить пароль</h4><form id="accPw" class="wg-f" novalidate><label>Текущий пароль<input id="apOld" type="password" autocomplete="current-password"></label><label>Новый пароль<input id="apNew" type="password" autocomplete="new-password"></label><label>Повторите новый пароль<input id="apNew2" type="password" autocomplete="new-password"></label>' + pwRulesHtml('apRules') + '<button class="btn primary" type="submit">Сменить пароль</button><p class="hint" id="apMsg" role="status" aria-live="polite" style="margin:0"></p></form>' +
+    '<div class="row-actions"><button class="btn" type="button" data-wg="logoutAsk">Выйти из аккаунта</button><button class="btn ghost" type="button" data-act="closePanel">Закрыть</button></div>';
+  else h += '<p style="margin:0">Сейчас вы заходите по коду этого ' + (WEB ? 'телефона' : 'компьютера') + '. Войдите в аккаунт или зарегистрируйтесь — тогда один и тот же доступ будет и на компьютере, и на телефоне, и вход не будет слетать.</p>' +
+    '<div class="row-actions"><button class="btn primary" type="button" data-wg="opengate">Войти или зарегистрироваться</button><button class="btn ghost" type="button" data-act="closePanel">Закрыть</button></div>';
+  $('#panelHost').innerHTML = h + '</div></div>';
+}
+async function accPassSubmit() {
+  var m = $('#apMsg'), o = $('#apOld').value || '', n = $('#apNew').value || '', bad = pwIssue(n, ACCS.user && ACCS.user.login);
+  if (!o) { m.textContent = 'Введите текущий пароль.'; return; } if (bad) { m.textContent = bad; return; } if (n !== ($('#apNew2').value || '')) { m.textContent = 'Новые пароли не совпадают.'; return; }
+  m.textContent = 'Сохраняю…'; var r = await accReq('/v1/auth/pass', { old: o, pass: n });
+  if (!r) { m.textContent = 'Нет связи с сервером.'; return; } if (!r.ok) { m.textContent = r.error || 'Не получилось.'; return; }
+  ACCS.user = r.user; $('#panelHost').innerHTML = ''; status('Пароль изменён. На других устройствах войдите с новым паролем.');
+}
 async function webStart() {
-  if (!WEB) return;
-  document.documentElement.classList.add('web');
-  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
-  try { if ('serviceWorker' in navigator) navigator.serviceWorker.register('/m/sw.js', { scope: '/m/' }).catch(function () {}); } catch (e) {}
-  /* iPhone не даёт выбрать .log, если поле выбора ограничено типами файлов — снимаем ограничение */
-  if (IOS) document.querySelectorAll('input[type=file]').forEach(function (x) { x.removeAttribute('accept'); });
+  if (WEB) {
+    document.documentElement.classList.add('web');
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+    try { if ('serviceWorker' in navigator) navigator.serviceWorker.register('/m/sw.js', { scope: '/m/' }).catch(function () {}); } catch (e) {}
+    /* iPhone не даёт выбрать .log, если поле выбора ограничено типами файлов — снимаем ограничение */
+    if (IOS) document.querySelectorAll('input[type=file]').forEach(function (x) { x.removeAttribute('accept'); });
+  }
+  if (!ACC) return;
+  document.documentElement.classList.add('acc');
   document.addEventListener('click', async function (e) {
     var b = e.target.closest && e.target.closest('[data-wg]'); if (!b) return;
-    var k = b.getAttribute('data-wg'), msg = document.getElementById('wgMsg');
-    if (k === 'copy') { webCopy(webDev()); if (msg) msg.textContent = 'Код скопирован. Отправьте его администратору.'; }
-    if (k === 'own') {
-      var inp = document.getElementById('wgOwn'), v = String(inp && inp.value || '').toUpperCase().replace(/[^0-9A-F]/g, '');
-      if (v.length !== 20) { if (msg) msg.textContent = 'Код состоит из 20 знаков: XXXXX-XXXXX-XXXXX-XXXXX.'; return; }
-      v = v.match(/.{5}/g).join('-'); b.disabled = true; if (msg) msg.textContent = 'Проверяю код…';
-      var ok = null; try { var rr = await fetch('/v1/check?t=' + Date.now(), { cache: 'no-store', headers: { 'X-HWID': v } }); ok = rr.status === 403 ? false : rr.ok ? (await rr.json()) : null; } catch (e2) {}
-      b.disabled = false;
-      if (ok && ok.ok) { lsSet(WEB_KEY, v); webApply({ st: 'ok', n: ok.n || '' }); }
-      else if (msg) msg.textContent = ok === null ? 'Нет связи с сервером. Проверьте интернет.' : 'У этого кода нет доступа. Проверьте код или отправьте администратору код с экрана выше.';
-      return;
-    }
-    if (k === 'check') { b.disabled = true; if (msg) msg.textContent = 'Проверяю…'; var r = await webCheck(); b.disabled = false; webApply(r); if (r.st === 'deny' && document.getElementById('wgMsg')) document.getElementById('wgMsg').textContent = 'Доступа пока нет. Как только администратор добавит код, нажмите ещё раз.'; }
+    var k = b.getAttribute('data-wg');
+    if (k === 'tab') { ACCS.mode = b.getAttribute('data-m'); var keep = $('#wgL') ? $('#wgL').value : ''; accGate('login'); if ($('#wgL')) $('#wgL').value = keep; }
+    else if (k === 'eye') { var pi = $('#wgP'); if (pi) { var sh = pi.type === 'password'; pi.type = sh ? 'text' : 'password'; b.textContent = sh ? 'Скрыть' : 'Показать'; } }
+    else if (k === 'retry') { b.disabled = true; await accCheck(); }
+    else if (k === 'logout') accLogout();
+    else if (k === 'logoutAsk') { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Точно выйти?'; return; } accLogout(); }
+    else if (k === 'close') { ACCS.closable = false; accGate('ok'); }
+    else if (k === 'opengate') { $('#panelHost').innerHTML = ''; ACCS.closable = true; ACCS.mode = 'login'; accGate('login'); }
   });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target && e.target.id === 'wgOwn') { e.preventDefault(); var bt = document.querySelector('[data-wg="own"]'); if (bt) bt.click(); } });
-  var known = lsGet(WEB_OK);
-  if (!known) webGate('wait');
-  var r = await webCheck(); webApply(r);
-  /* пока экран доступа открыт — тихо проверяем раз в 15 секунд */
-  setInterval(function () { if (document.getElementById('webGate') && !document.hidden) webCheck().then(function (x) { if (x.st === 'ok') webApply(x); }); }, 15000);
-}
-function webApply(r) {
-  if (r.st === 'ok') { var was = !!lsGet(WEB_OK); lsSet(WEB_OK, r.n || '1'); webGate('ok'); if (!was) { status('Доступ открыт' + (r.n ? ': ' + r.n : '') + '. Добавьте лог кнопкой «+».'); try { loadTeam(false); checkNews(); fetchShared(); pulse(); tplFetch(); } catch (e) {} } }
-  else if (r.st === 'deny') { lsSet(WEB_OK, null); webGate('deny'); }
-  else if (!lsGet(WEB_OK)) webGate('net');
+  document.addEventListener('submit', function (e) { if (e.target.id === 'wgForm') { e.preventDefault(); accSubmit(); } else if (e.target.id === 'accPw') { e.preventDefault(); accPassSubmit(); } });
+  document.addEventListener('input', function (e) { var id = e.target.id; if (id === 'wgP' || id === 'wgL') pwRulesDraw('wgRules', $('#wgP') && $('#wgP').value, $('#wgL') && $('#wgL').value); if (id === 'apNew') pwRulesDraw('apRules', e.target.value, ACCS.user && ACCS.user.login); });
+  if (!lsGet(ACC_OK)) accGate('wait');
+  await accCheck();
+  /* пока окно входа открыто в ожидании подтверждения — тихо проверяем раз в 15 секунд */
+  setInterval(function () { var g = document.getElementById('webGate'); if (g && !document.hidden && !g.querySelector('#wgForm')) accCheck(true); }, 15000);
 }
 /* файлы, которыми поделились из Discord или «Файлов» на Android (share target), лежат в кэше service worker */
 async function webShared() {
@@ -3434,6 +3520,12 @@ function webUpdate(v) {
 }
 /* ---------- Версия 13: отчёты, все логи, окно загрузки, команда, слежение ---------- */
 var CHANGELOG = [
+  { v: '2026-10-19.129', items: [
+    'Вход по аккаунту: «Регистрация» — логин и пароль, доступ выдаёт администратор. Один аккаунт — на компьютере и на телефоне, вход запоминается и не слетает при выходе из приложения.',
+    'Слабые пароли не принимаются: от 8 символов, буквы и цифры, без повторов, без логина и не из популярных (qwerty123, 12345678…).',
+    '«Ещё» → «Аккаунт»: смена пароля и выход. Забыли пароль — администратор сбросит его, новый вы поменяете здесь. После смены пароля другие устройства выходят из аккаунта.',
+    'Компьютеры и телефоны со старым кодом доступа продолжают работать; войти в аккаунт можно в «Ещё» → «Аккаунт».'
+  ] },
   { v: '2026-10-19.128', items: [
     'Телефон: окно лога переделано. Строки лога на весь экран, вверху поиск и «Фильтры» (режим, срез, уровень, вид), внизу крупные ▲ ▼ и счётчик «Проблема 3 из 9». Переход между проблемами больше не прокручивает страницу, объяснение строки выезжает листом и не закрывает кнопки.',
     'Телефон: вход в другом браузере или в приложении с экрана «Домой» — «У меня уже есть код доступа»: вставьте код, которому уже выдан доступ, и писать администратору не нужно. Код копируется в «Ещё» → «Скопировать код устройства».'
@@ -7452,7 +7544,6 @@ function mobClick(e) {
 function mobGo(g) {
   if (g.indexOf('tab:') === 0) { S.tab = g.slice(4); S.sel = -1; render(); mobScr('view'); return; }
   if (g === 'theme') { $('#btnTheme').click(); return; }
-  if (g === 'copycode') { webCopy(webDev()); status('Код устройства скопирован. В другом браузере или в приложении на экране «Домой»: «У меня уже есть код доступа» → вставить.'); return; }
   var b = document.getElementById(g); if (b) b.click();
 }
 function mSheetOpen() { var s = document.getElementById('mSheet'); return !!(s && s.classList.contains('open')); }
@@ -7467,7 +7558,7 @@ function mSheet(on) {
     '<div class="ms-h"><b>Ещё</b><button class="ms-x" type="button" data-m="sheet">Готово</button></div>' +
     (tabs.length ? '<div class="ms-g"><div class="ms-gt">Разделы</div>' + tabs.map(function (x) { var n = x.querySelector('.n'); return row('tab:' + x.getAttribute('data-tab'), x.firstChild.textContent, n ? n.textContent : ''); }).join('') + '</div>' : '') +
     '<div class="ms-g"><div class="ms-gt">Действия</div>' + row('btnDump', 'Только дамп или журнал Windows') + row('btnSet', 'Настройки') + row('theme', 'Тема оформления', theme) + '</div>' +
-    (WEB ? '<div class="ms-g"><div class="ms-gt">Доступ</div>' + row('copycode', 'Скопировать код устройства', webDev() + ' — для входа в другом браузере') + '</div>' : '') +
+    (ACC ? '<div class="ms-g"><div class="ms-gt">Аккаунт</div>' + row('btnAcc', ACCS.user ? ACCS.user.login : 'Войти в аккаунт', ACCS.user ? 'смена пароля, выход' : 'один доступ на компьютере и телефоне') + '</div>' : '') +
     '<div class="ms-g"><div class="ms-gt">Справка</div>' + row('btnHelp', 'Инструкция') + row('btnNew', 'Что нового') + (vis('btnBug') ? row('btnBug', 'Сообщить о проблеме') : '') + '</div>' +
     '<div class="ms-ver">' + ($('#ver') ? $('#ver').innerHTML : '') + '</div></div>';
   s.innerHTML = h; s.setAttribute('aria-hidden', 'false');
@@ -7770,7 +7861,7 @@ function openHelp() {
     sec('Дамп краша и журнал Windows', ['Под диагнозом есть строка «Дамп краша и журнал Windows». Добавьте туда <code>.dmp</code>, <code>.evtx</code> или zip краш-отчёта.', 'Дамп показывает модуль, где упал клиент, и код исключения. Журнал показывает синие экраны, сбои драйвера видеокарты, диска и памяти в те же минуты.', 'Если лога нет, нажмите «Только дамп» в меню «Ещё».', 'Кнопка «Разобрать с ИИ» отправляет короткую сводку (несколько строк), а не весь файл.']) +
     sec('Discord (плагин MajesticLogImport)', ['У логов и скриншотов игрока в тикете — кнопка «Разбор»: окно с причиной, как чинить, ключевыми строками и готовым ответом игроку. Ответ можно поправить и вставить в чат одной кнопкой.', '<b>Ctrl+Shift+L</b> в открытой ветке тикета — разбор последнего лога игрока без поиска файла.', 'Значки рядом с логами («МОД», «Сеть игрока», «старый»…) — итог разбора ещё до клика. Окно предупредит, если лог старый или не хватает client.log, и подставит вежливую просьбу.', 'Скриншоты: чёрные полосы по краям находятся сразу, текст ошибки на экране читает ИИ и сверяет с правилами анализатора.', '«Передать дальше» вставляет в чат сводку для старших: причина, что уже предложено, ключевые строки.', 'Шаблоны команды: окно предлагает подходящий шаблон по тексту игрока, скриншоту и логу; кнопка «Анализировать» под описанием проблемы от бота (или Ctrl+Shift+L). Отмечайте «Подходит / Не подходит» и добавляйте «+ фразу» — так подбор становится точнее у всей команды. В окне: Enter — вставить выбранный шаблон, Alt+1…3 — по номеру, ↑↓ — выбор.', 'В текстах шаблонов можно писать {ник}, {статик}, {сервер}, {файл}, {моды}, {код} — подставятся сами.']) +
     sec('Папки (дела)', ['Бросьте лог на другой лог: оба окажутся в новой папке. Бросьте лог на плитку папки: он добавится в неё.', 'У дела есть статус, итог и таймер ожидания игрока. Логи с одним номером тикета собираются в папку сами.']) +
-    sec('На телефоне', ['Сайт <code>' + (WEB ? location.origin : 'https://majestic-log-advisor.requesteadm.workers.dev') + '/m/</code> открывается в Safari или Chrome. Код устройства отправьте администратору, как код компьютера.', 'iPhone: «Поделиться» → «На экран „Домой“» — анализатор откроется как приложение. Лог из Discord: открыть файл → «Поделиться» → «Сохранить в Файлы», затем «+» в анализаторе. На Android можно сразу «Поделиться» → «Логи Majestic».', 'Внизу вкладки: «Логи» — список, «Диагноз», «Лог», «История», «Ещё» — остальные разделы и настройки. «‹ Логи» вверху возвращает к списку.']) +
+    sec('На телефоне', ['Сайт <code>' + (WEB ? location.origin : 'https://majestic-log-advisor.requesteadm.workers.dev') + '/m/</code> открывается в Safari или Chrome. Войдите тем же логином и паролем, что и на компьютере.', 'iPhone: «Поделиться» → «На экран „Домой“» — анализатор откроется как приложение. Лог из Discord: открыть файл → «Поделиться» → «Сохранить в Файлы», затем «+» в анализаторе. На Android можно сразу «Поделиться» → «Логи Majestic».', 'Внизу вкладки: «Логи» — список, «Диагноз», «Лог», «История», «Ещё» — остальные разделы и настройки. «‹ Логи» вверху возвращает к списку.']) +
     (WEB ? '' : sec('Горячие клавиши', ['? показывает все клавиши, Ctrl+K открывает список команд, / — поиск по логу, 1–9 — вкладки. Свои клавиши назначаются в «Настройках».'])) +
     '<div><h4 style="margin:6px 0 4px">Что попросить у игрока</h4><p class="hint" style="margin:0 0 6px">Готовое сообщение.</p><textarea readonly style="height:150px" id="askTxt">' + esc(PLAYER_ASK) + '</textarea></div>' +
     '<div class="row-actions"><button class="btn sm primary" data-act="helpAsk">Копировать сообщение</button><button class="btn sm ghost" data-act="closePanel">Закрыть</button></div></div></div>';
@@ -7924,7 +8015,6 @@ var SAMPLE_CLIENT = String.raw`[18:58:35.840] Logger initialized
 S.mask = false; /* в интерфейсе ничего не прячем: маска мешала шаблонам (DNS и т.п.); на сервер логи по-прежнему уходят обезличенными */
 var subEl = document.querySelector('#ver'); if (subEl) subEl.textContent = 'версия ' + APP_VERSION;
 if (window.nativeApp && window.nativeApp.shellInfo) window.nativeApp.shellInfo().then(function (i) { if (!i || !i.hwid || !subEl) return; subEl.insertAdjacentHTML('beforeend', '<div style="margin-top:10px;font-family:var(--sans)">Код компьютера<br><code id="hwidCode" style="user-select:all">' + esc(i.hwid) + '</code> <button class="btn sm ghost" id="hwidCopy" type="button">Копировать</button></div>'); var hb = document.getElementById('hwidCopy'); if (hb) hb.addEventListener('click', function () { try { window.nativeApp.copy(i.hwid); status('Код компьютера скопирован.'); } catch (e) {} }); }).catch(function () {});
-if (WEB && subEl) subEl.insertAdjacentHTML('beforeend', '<div style="margin-top:10px;font-family:var(--sans)">Код устройства<br><code id="hwidCode" style="user-select:all">' + webDev() + '</code></div>');
 S.kb.settings.launches = (S.kb.settings.launches || 0) + 1; saveKB();
 (async function startFiles() {
   var restored = false;
@@ -7936,7 +8026,8 @@ try { applySide(); } catch (e) {}
 render();
 checkAlerts();
 loadTeam(false);
-if (WEB) { webStart(); webShared(); }
+if (WEB || ACC) webStart(); if (WEB) webShared();
+if (ACC) { var ab = document.getElementById('btnAcc'); if (ab) { ab.hidden = false; ab.addEventListener('click', function () { openAccount(); }); } }
 if (samplePromptDue()) { var spTry = 0, spT = setInterval(function () { spTry++; if (S.files.some(function (f) { return f.sample; }) || spTry > 8) { clearInterval(spT); if (samplePromptDue() && S.files.some(function (f) { return f.sample; })) popup('sample', 3, function () { if (samplePromptDue()) showSamplePrompt(); }); } }, 1500); }
 if (srvOn()) { setTimeout(checkNews, 1500); setInterval(checkNews, 30 * 60 * 1000); setTimeout(fetchMass, 6000); setInterval(fetchMass, 30 * 60 * 1000); }
 if (window.nativeApp && window.nativeApp.findLogs && !S.kb.settings.firstRun) { S.kb.settings.firstRun = 1; saveKB(); setTimeout(async function () { var fr = null; try { fr = await window.nativeApp.findLogs(); } catch (e) {} if (fr && fr.files && fr.files.length && !S.files.some(function (x) { return !x.sample; })) popup('logs', 5, function () { if (!S.files.some(function (x) { return !x.sample; })) openLogsPanel(); }); }, 4500); }

@@ -67,7 +67,6 @@ function mobClick(e) {
 function mobGo(g) {
   if (g.indexOf('tab:') === 0) { S.tab = g.slice(4); S.sel = -1; render(); mobScr('view'); return; }
   if (g === 'theme') { $('#btnTheme').click(); return; }
-  if (g === 'copycode') { webCopy(webDev()); status('Код устройства скопирован. В другом браузере или в приложении на экране «Домой»: «У меня уже есть код доступа» → вставить.'); return; }
   var b = document.getElementById(g); if (b) b.click();
 }
 function mSheetOpen() { var s = document.getElementById('mSheet'); return !!(s && s.classList.contains('open')); }
@@ -82,7 +81,7 @@ function mSheet(on) {
     '<div class="ms-h"><b>Ещё</b><button class="ms-x" type="button" data-m="sheet">Готово</button></div>' +
     (tabs.length ? '<div class="ms-g"><div class="ms-gt">Разделы</div>' + tabs.map(function (x) { var n = x.querySelector('.n'); return row('tab:' + x.getAttribute('data-tab'), x.firstChild.textContent, n ? n.textContent : ''); }).join('') + '</div>' : '') +
     '<div class="ms-g"><div class="ms-gt">Действия</div>' + row('btnDump', 'Только дамп или журнал Windows') + row('btnSet', 'Настройки') + row('theme', 'Тема оформления', theme) + '</div>' +
-    (WEB ? '<div class="ms-g"><div class="ms-gt">Доступ</div>' + row('copycode', 'Скопировать код устройства', webDev() + ' — для входа в другом браузере') + '</div>' : '') +
+    (ACC ? '<div class="ms-g"><div class="ms-gt">Аккаунт</div>' + row('btnAcc', ACCS.user ? ACCS.user.login : 'Войти в аккаунт', ACCS.user ? 'смена пароля, выход' : 'один доступ на компьютере и телефоне') + '</div>' : '') +
     '<div class="ms-g"><div class="ms-gt">Справка</div>' + row('btnHelp', 'Инструкция') + row('btnNew', 'Что нового') + (vis('btnBug') ? row('btnBug', 'Сообщить о проблеме') : '') + '</div>' +
     '<div class="ms-ver">' + ($('#ver') ? $('#ver').innerHTML : '') + '</div></div>';
   s.innerHTML = h; s.setAttribute('aria-hidden', 'false');
