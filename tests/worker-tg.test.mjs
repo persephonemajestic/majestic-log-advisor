@@ -27,6 +27,7 @@ ok(!kv.get('tg:code'), 'после 10 неверных кодов код при�
 kv.delete('tg:bad'); r = await admin({ action: 'tgLink' });
 await msg('/start ' + r.code); ok(kv.get('tg:chat') === '777' && /привязан/.test(last('sendMessage').body.text) && !kv.get('tg:code'), 'верный код привязывает чат (код одноразовый)');
 ok((await admin({ action: 'tgInfo' })).bound === true, 'в админке видно «привязан»');
+ok(JSON.stringify(last('sendMessage').body.reply_markup || {}).includes('Ждут доступа'), 'после привязки внизу появляются кнопки меню');
 sent.length = 0; await call('/v1/auth/register', { login: 'Ivan_Petrov', pass: 'Kot4ik-Murzik9', dev: 'iPhone' });
 let m = last('sendMessage'); ok(m && /Новая регистрация/.test(m.body.text) && m.body.chat_id === '777' && m.body.reply_markup.inline_keyboard[0][0].callback_data === 'u:ok:Ivan_Petrov', 'регистрация приходит с кнопками «Выдать доступ / Отклонить»');
 await cb('u:ok:Ivan_Petrov', 555); ok(JSON.parse(kv.get('u:ivan_petrov')).st === 'pending', 'кнопка из чужого чата не работает');
@@ -51,7 +52,14 @@ ok(/Фраза для шаблона/.test(m.body.text), 'фраза для ша
 await cb('h:ok:' + hid); ok(JSON.parse(kv.get('tplh'))['Majestic RP']['Проблемы с донатом'].say.includes('не пришли коины после оплаты') && !JSON.parse(kv.get('tplpend')).length, 'кнопка «Добавить» добавляет фразу к шаблону');
 sent.length = 0; await msg('/stats'); ok(/Логов разобрано: <b>22<\/b>/.test(last('sendMessage').body.text) && /Не найден модуль патчера/.test(last('sendMessage').body.text), '/stats — сводка с частыми проблемами');
 await msg('/news Обновите приложение'); ok(JSON.parse(kv.get('news'))[0].text === 'Обновите приложение', '/news публикует объявление');
-sent.length = 0; await msg('что-то'); ok(/Команды/.test(last('sendMessage').body.text), 'непонятное сообщение — список команд');
+sent.length = 0; await msg('📊 Сводка'); ok(/Сводка за/.test(last('sendMessage').body.text), 'кнопка «Сводка»');
+sent.length = 0; await msg('👥 Пользователи'); ok(sent.some((x) => /Ivan_Petrov/.test(x.body.text || '')), 'кнопка «Пользователи»');
+sent.length = 0; await msg('📢 Объявление'); ok(/Напишите текст объявления/.test(last('sendMessage').body.text) && kv.get('tg:await') === 'news', 'кнопка «Объявление» просит текст');
+await msg('Сегодня вечером обновление'); const nl = JSON.parse(kv.get('news')); m = last('sendMessage');
+ok(nl[0].text === 'Сегодня вечером обновление' && !kv.get('tg:await') && /n:del:/.test(JSON.stringify(m.body.reply_markup)), 'следующее сообщение публикуется как объявление, есть кнопка «Удалить»');
+await cb('n:del:' + nl[0].id); ok(!JSON.parse(kv.get('news')).some((x) => x.text === 'Сегодня вечером обновление'), 'кнопка удаляет объявление');
+await msg('📢 Объявление'); await cb('n:cancel'); sent.length = 0; await msg('просто текст'); ok(!JSON.parse(kv.get('news')).some((x) => x.text === 'просто текст') && /Кнопки внизу/.test(last('sendMessage').body.text), '«Отмена»: текст не публикуется, бот показывает подсказку и меню');
+sent.length = 0; await msg('что-то'); ok(/Кнопки внизу/.test(last('sendMessage').body.text) && JSON.stringify(last('sendMessage').body.reply_markup).includes('Сводка'), 'непонятное сообщение — подсказка и кнопки меню');
 sent.length = 0; const sc = { waits: [], waitUntil(p) { this.waits.push(p); } }; await W.scheduled({ cron: '0 15 * * *' }, env, sc); await Promise.all(sc.waits);
 ok(/Сводка за/.test((last('sendMessage') || { body: {} }).body.text || ''), 'вечерняя сводка по расписанию');
 await admin({ action: 'tgUnlink' }); sent.length = 0; await call('/v1/report', { text: 'после отвязки' }, HW); ok(!sent.length, 'после отвязки бот молчит');

@@ -183,7 +183,10 @@ async function tgApi(env, method, payload, form) {
 }
 async function tgChat(env) { if (!env.TG_TOKEN) return ''; try { return (await env.ACCESS.get('tg:chat')) || ''; } catch (e) { return ''; } }
 const kb = (rows) => ({ inline_keyboard: rows.map((r) => r.map((b) => ({ text: b[0], callback_data: b[1] }))) });
-async function tgSay(env, text, rows, chatId) { const chat = chatId || (await tgChat(env)); if (!chat) return null; return tgApi(env, 'sendMessage', Object.assign({ chat_id: chat, text: String(text).slice(0, 4000), parse_mode: 'HTML', disable_web_page_preview: true }, rows ? { reply_markup: kb(rows) } : {})); }
+/* постоянные кнопки внизу чата — вместо команд */
+const TG_MENU = { keyboard: [[{ text: '⏳ Ждут доступа' }, { text: '👥 Пользователи' }], [{ text: '📊 Сводка' }, { text: '🐞 Баг-репорты' }], [{ text: '📢 Объявление' }, { text: '❓ Помощь' }]], resize_keyboard: true, is_persistent: true };
+const TG_BTN = { '⏳ Ждут доступа': 'pending', '👥 Пользователи': 'users', '📊 Сводка': 'stats', '🐞 Баг-репорты': 'reports', '📢 Объявление': 'news', '❓ Помощь': 'help' };
+async function tgSay(env, text, rows, chatId, menu) { const chat = chatId || (await tgChat(env)); if (!chat) return null; return tgApi(env, 'sendMessage', Object.assign({ chat_id: chat, text: String(text).slice(0, 4000), parse_mode: 'HTML', disable_web_page_preview: true }, rows ? { reply_markup: kb(rows) } : menu ? { reply_markup: TG_MENU } : {})); }
 function bg(ctx, pr) { const p2 = Promise.resolve(pr).catch(() => null); if (ctx && ctx.waitUntil) ctx.waitUntil(p2); return p2; }
 const tgSecret = async (env) => (await sha256hex('tg-hook:' + (env.TG_TOKEN || ''))).slice(0, 48);
 const ST_RU = { pending: '⏳ ждёт', ok: '✅ доступ', off: '⛔ закрыт' };
@@ -225,12 +228,16 @@ async function tgHook(req, env, ctx) {
     const code = (/^(?:\/start\s+)?(\d{6})$/.exec(text) || [])[1];
     if (code && msg.chat.type === 'private') {
       const want = await env.ACCESS.get('tg:code');
-      if (want && same(code, want)) { await env.ACCESS.put('tg:chat', cid); await env.ACCESS.delete('tg:code'); await tgSay(env, '✅ Бот привязан. Сюда будут приходить регистрации, баг-репорты, массовые проблемы и сводка за день.\n\n' + TG_HELP, null, cid); }
+      if (want && same(code, want)) { await env.ACCESS.put('tg:chat', cid); await env.ACCESS.delete('tg:code'); await tgSay(env, '✅ Бот привязан. Сюда будут приходить регистрации, баг-репорты, массовые проблемы и сводка за день.\n\n' + TG_HELP, null, cid, true); }
       else { if ((await rlHit(env, 'tg:bad', 900)) >= 10) await env.ACCESS.delete('tg:code'); await tgSay(env, 'Код не подошёл или устарел. Получите новый в админке: «Telegram-бот» → «Привязать».', null, cid); }
       return json({ ok: true });
     }
     if (!chat || cid !== chat) { if (/^\/start/.test(text)) await tgSay(env, 'Это закрытый бот. Чтобы привязать его, отправьте код из админки.', null, cid); return json({ ok: true }); }
-    const cmd = (/^\/(\w+)(?:@\w+)?\s*([\s\S]*)$/.exec(text) || []);
+    let cmd = (/^\/(\w+)(?:@\w+)?\s*([\s\S]*)$/.exec(text) || []);
+    if (TG_BTN[text]) cmd = [text, TG_BTN[text], ''];
+    /* кнопка «Объявление»: следующее сообщение — текст объявления */
+    if (cmd[1] !== 'news' && !cmd[1] && text && (await env.ACCESS.get('tg:await')) === 'news') { await env.ACCESS.delete('tg:await'); cmd = [text, 'news', text]; }
+    else if (cmd[1] && cmd[1] !== 'news') await env.ACCESS.delete('tg:await');
     if (cmd[1] === 'users' || cmd[1] === 'pending') {
       const us = (await usersAll(env)).filter((u) => cmd[1] === 'users' || u.st === 'pending').sort((a, c) => (a.st === 'pending' ? 0 : 1) - (c.st === 'pending' ? 0 : 1) || (c.seen || 0) - (a.seen || 0));
       if (!us.length) await tgSay(env, cmd[1] === 'pending' ? 'Никто не ждёт доступа.' : 'Пользователей пока нет.');
@@ -241,16 +248,22 @@ async function tgHook(req, env, ctx) {
       const out = []; let cursor; do { const l = await env.ACCESS.list({ prefix: 'rp:', cursor }); for (const k of l.keys) { const r = await kvJson(env, k.name, null); if (r) out.push(r); } cursor = l.list_complete ? null : l.cursor; } while (cursor);
       out.sort((a, c) => c.at - a.at); if (!out.length) await tgSay(env, 'Баг-репортов нет.'); for (const r of out.slice(0, 5)) await tgNotifyReport(env, r);
     } else if (cmd[1] === 'news') {
-      const t = String(cmd[2] || '').trim().slice(0, 1500); if (!t) await tgSay(env, 'Напишите текст после команды: <code>/news Обновите приложение</code>');
-      else { const list = await getNews(env); list.unshift({ id: Date.now().toString(36), at: Date.now(), text: t }); await env.ACCESS.put('news', JSON.stringify(list.slice(0, 30))); await touchAv(env); await tgSay(env, '📢 Объявление опубликовано, команда увидит его в приложении.'); }
-    } else await tgSay(env, TG_HELP);
+      const t = String(cmd[2] || '').trim().slice(0, 1500);
+      if (!t) { await env.ACCESS.put('tg:await', 'news', { expirationTtl: 600 }); await tgSay(env, '📢 Напишите текст объявления одним сообщением — команда увидит его в приложении.', [[['✖ Отмена', 'n:cancel']]]); }
+      else { const id = Date.now().toString(36), list = await getNews(env); list.unshift({ id, at: Date.now(), text: t }); await env.ACCESS.put('news', JSON.stringify(list.slice(0, 30))); await touchAv(env); await tgSay(env, '📢 Объявление опубликовано, команда увидит его в приложении:\n\n' + tgEsc(t), [[['🗑 Удалить объявление', 'n:del:' + id]]]); }
+    } else await tgSay(env, TG_HELP, null, null, true);
     return json({ ok: true });
   }
   if (cq && cq.message) {
     const cid = String(cq.message.chat.id), data = String(cq.data || ''), ans = (t) => tgApi(env, 'answerCallbackQuery', { callback_query_id: cq.id, text: t || '' });
     if (!chat || cid !== chat) { await ans('Нет доступа'); return json({ ok: true }); }
     const edit = (t, rows) => tgApi(env, 'editMessageText', Object.assign({ chat_id: cid, message_id: cq.message.message_id, text: t, parse_mode: 'HTML' }, rows ? { reply_markup: kb(rows) } : {}));
-    const mu = /^u:(ok|off|rst|kick):(.+)$/.exec(data), mh = /^h:(ok|no):(.+)$/.exec(data), mr = /^r:del:(.+)$/.exec(data);
+    const mu = /^u:(ok|off|rst|kick):(.+)$/.exec(data), mh = /^h:(ok|no):(.+)$/.exec(data), mr = /^r:del:(.+)$/.exec(data), mn = /^n:(cancel|del)(?::(.+))?$/.exec(data);
+    if (mn) {
+      if (mn[1] === 'cancel') { await env.ACCESS.delete('tg:await'); await ans('Отменено'); await edit('Объявление отменено.'); }
+      else { const list = (await getNews(env)).filter((x) => x.id !== mn[2]); await env.ACCESS.put('news', JSON.stringify(list)); await touchAv(env); await ans('Объявление удалено'); await edit('🗑 Объявление удалено.'); }
+      return json({ ok: true });
+    }
     if (mu) {
       const u = await userGet(env, mu[2].toLowerCase()); if (!u) { await ans('Пользователь не найден'); return json({ ok: true }); }
       if (mu[1] === 'ok' || mu[1] === 'off') { u.st = mu[1]; await userPut(env, u); await touchAv(env); await ans(mu[1] === 'ok' ? 'Доступ выдан' : 'Доступ закрыт'); await edit('<b>' + tgEsc(u.login) + '</b> — ' + ST_RU[u.st], userRows(u)); }
@@ -267,7 +280,7 @@ async function tgHook(req, env, ctx) {
   }
   return json({ ok: true });
 }
-const TG_HELP = '<b>Команды</b>\n/pending — кто ждёт доступа\n/users — все пользователи с кнопками\n/stats — сводка за сегодня\n/reports — последние баг-репорты\n/news <i>текст</i> — объявление команде\n\nРегистрации, баг-репорты, массовые проблемы и вечерняя сводка приходят сами.';
+const TG_HELP = '<b>Кнопки внизу</b>\n⏳ Ждут доступа — новые пользователи с кнопками «Выдать доступ»\n👥 Пользователи — все, с кнопками доступа, сброса пароля и сеансов\n📊 Сводка — логи, частые проблемы, ИИ за сегодня\n🐞 Баг-репорты — последние отчёты со скриншотами\n📢 Объявление — бот попросит текст и опубликует его команде\n\nРегистрации, баг-репорты, массовые проблемы и сводка в 20:00 приходят сами.';
 function genPass() { const AB = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789', r = rnd(12); let pw = ''; for (let i = 0; i < 12; i++) pw += AB[r[i] % AB.length]; if (!/\d/.test(pw)) pw = pw.slice(0, 11) + '7'; if (!/[a-z]/i.test(pw)) pw = 'k' + pw.slice(1); return pw; }
 
 export default {
