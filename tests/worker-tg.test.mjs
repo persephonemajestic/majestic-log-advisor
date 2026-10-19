@@ -31,7 +31,7 @@ ok(JSON.stringify(last('sendMessage').body.reply_markup || {}).includes('Жду�
 sent.length = 0; await call('/v1/auth/register', { login: 'Ivan_Petrov', pass: 'Kot4ik-Murzik9', dev: 'iPhone' });
 let m = last('sendMessage'); ok(m && /Новая регистрация/.test(m.body.text) && m.body.chat_id === '777' && m.body.reply_markup.inline_keyboard[0][0].callback_data === 'u:ok:Ivan_Petrov', 'регистрация приходит с кнопками «Выдать доступ / Отклонить»');
 await cb('u:ok:Ivan_Petrov', 555); ok(JSON.parse(kv.get('u:ivan_petrov')).st === 'pending', 'кнопка из чужого чата не работает');
-await cb('u:ok:Ivan_Petrov'); ok(JSON.parse(kv.get('u:ivan_petrov')).st === 'ok' && last('answerCallbackQuery').body.text === 'Доступ выдан' && JSON.stringify(last('editMessageText').body.reply_markup).includes('✅ Доступ выдан'), 'кнопка «Выдать доступ» выдаёт доступ и меняется на «✅ Доступ выдан»');
+await cb('u:ok:Ivan_Petrov'); ok(JSON.parse(kv.get('u:ivan_petrov')).st === 'ok' && last('answerCallbackQuery').body.text === 'Доступ выдан' && JSON.stringify(last('editMessageText').body.reply_markup).includes('⛔ Забрать доступ') && /Доступ выдан в/.test(last('editMessageText').body.text), 'кнопка «Выдать доступ» выдаёт доступ, на её месте — «Забрать доступ»');
 sent.length = 0; await cb('u:rst:Ivan_Petrov'); const pw = (/<code>([^<]+)<\/code>/.exec(last('sendMessage').body.text) || [])[1];
 ok(pw && pw.length === 12 && (await call('/v1/auth/login', { login: 'Ivan_Petrov', pass: pw })).j.ok, 'сброс пароля из бота присылает рабочий временный пароль');
 const kbOf = (x) => JSON.stringify(x.body.reply_markup || {});
@@ -39,7 +39,9 @@ let ed = last('editMessageText'); ok(ed && kbOf(ed).includes('✓ Пароль �
 sent.length = 0; await hook({ callback_query: { id: 'q2', data: 'u:kick:Ivan_Petrov', message: { chat: { id: 777 }, message_id: 5, reply_markup: ed.body.reply_markup } } });
 ed = last('editMessageText'); ok(kbOf(ed).includes('✓ Сеансы завершены') && kbOf(ed).includes('✓ Пароль сброшен'), '«Завершить сеансы» → «✓ Сеансы завершены», прошлая отметка сохраняется');
 await hook({ callback_query: { id: 'q3', data: 'x:Ivan_Petrov', message: { chat: { id: 777 }, message_id: 5 } } }); ok(last('answerCallbackQuery').body.text === 'Уже сделано', 'нажатие на итоговую кнопку — «Уже сделано»');
-await cb('u:off:Ivan_Petrov'); ok(JSON.parse(kv.get('u:ivan_petrov')).st === 'off' && kbOf(last('editMessageText')).includes('⛔ Доступ закрыт'), 'кнопка «Забрать доступ» → «⛔ Доступ закрыт»');
+await cb('u:off:Ivan_Petrov'); ok(JSON.parse(kv.get('u:ivan_petrov')).st === 'off' && kbOf(last('editMessageText')).includes('✅ Открыть доступ') && /Доступ закрыт в/.test(last('editMessageText').body.text), '«Забрать доступ»: в тексте «Доступ закрыт», появляется «✅ Открыть доступ»');
+await cb('u:ok:Ivan_Petrov'); ok(JSON.parse(kv.get('u:ivan_petrov')).st === 'ok' && kbOf(last('editMessageText')).includes('⛔ Забрать доступ'), '«Открыть доступ» возвращает доступ');
+await cb('u:off:Ivan_Petrov');
 sent.length = 0; await msg('/users'); ok(sent.some((x) => /Ivan_Petrov/.test(x.body.text) && x.body.reply_markup), '/users — список с кнопками');
 sent.length = 0; await msg('/pending'); ok(/Никто не ждёт/.test(last('sendMessage').body.text), '/pending');
 kv.set('h:AAAAA-BBBBB-CCCCC-DDDDD', JSON.stringify({ n: 'Саппорт ПК' })); const HW = { 'X-HWID': 'AAAAA-BBBBB-CCCCC-DDDDD' };

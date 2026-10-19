@@ -194,7 +194,8 @@ const ST_RU = { pending: '⏳ ждёт', ok: '✅ доступ', off: '⛔ за�
 const DONE_TXT = { ok: '✅ Доступ выдан', off: '⛔ Доступ закрыт', rst: '✓ Пароль сброшен', kick: '✓ Сеансы завершены' };
 function userRows(u, done) {
   const L = u.login, d = done || {};
-  const acc = d.ok ? [DONE_TXT.ok, 'x:' + L] : d.off ? [DONE_TXT.off, 'x:' + L] : u.st === 'ok' ? ['⛔ Забрать доступ', 'u:off:' + L] : ['✅ Выдать доступ', 'u:ok:' + L];
+  /* доступ — переключатель: после «Забрать» сразу кнопка «Открыть доступ» и наоборот; итог пишется в тексте карточки */
+  const acc = u.st === 'ok' ? ['⛔ Забрать доступ', 'u:off:' + L] : [u.st === 'off' ? '✅ Открыть доступ' : '✅ Выдать доступ', 'u:ok:' + L];
   return [[acc, d.rst ? [DONE_TXT.rst, 'x:' + L] : ['🔑 Сбросить пароль', 'u:rst:' + L]], [d.kick ? [DONE_TXT.kick, 'x:' + L] : ['⏏ Завершить сеансы', 'u:kick:' + L]]];
 }
 function userCard(u, last) { return '<b>' + tgEsc(u.login) + '</b> — ' + ST_RU[u.st] + (u.must ? ' · временный пароль' : '') + '\nПоследний вход: ' + (u.seen ? new Date(u.seen).toLocaleString('ru-RU', { timeZone: 'Asia/Yekaterinburg' }) : '—') + (last ? '\n\n' + last : ''); }
