@@ -216,7 +216,7 @@ R({ id: 'm-crashdet', kind: 'main', kw: 'crash detected', re: /crashService: cra
     if (/^ERR_GEN_ZLIB/.test(c)) return { key: c, title: 'Краш игры: ' + c + ' (повреждены данные)', cause: 'Ошибка вызова zlib: данные игры повреждены. Смотрите client.log: Error on asset reading покажет, чей файл.', fix: ['GTA V: проверить целостность файлов. Majestic: очистить кеш и перепроверить файлы.'], tpl: [TPL_RES] };
     if (c === 'ERR_GFX_D3D_INIT') return { key: c, title: 'Краш игры: ERR_GFX_D3D_INIT (графика)', cause: 'Отвалилась графика: моды, драйвер видеокарты, DirectX.', fix: ['Обновить драйвер видеокарты, убрать графические моды, сбросить settings.xml, проверить файлы игры.'], tpl: ['Ошибка при инициализации (ERR_GFX_D3D_INIT)', TPL_MODS] };
     var di = errInfo(c); if (di) return { key: c, src: 'web', title: 'Краш игры: ' + c + ' (' + di.t + ')', cause: di.cause + ' Лаунчер зафиксировал краш с этим кодом и включил самовосстановление ресурсов (needResourceCheck). Подробности: client.log той же попытки.', fix: di.fix };
-    return { key: c, title: 'Краш игры: ' + c + ' (в руководстве не описан)', cause: 'Лаунчер зафиксировал краш с кодом ' + c + '. В руководстве такого кода нет. Если в client.log рядом сообщение «Игровые данные повреждены», по смыслу это порча данных (как ZLIB / FILELOAD), иначе искать код по тексту Error message.', fix: ['Открыть client.log той же попытки: Error message, MINIDUMP, Last loaded asset.', 'Базовая диагностика: проверить целостность файлов GTA V, очистить кеш Majestic, убрать моды, обновить драйвер.', 'Не помогло: передать client.log, main.log и дамп из %appdata%\\majestic-launcher\\Multiplayer\\crashdumps.'] };
+    return { key: c, title: 'Краш игры: ' + c + ' (в руководстве не описан)', cause: 'Лаунчер зафиксировал краш с кодом ' + c + '. В руководстве такого кода нет. Причину ищите по тексту Error message рядом с кодом в client.log.', fix: ['Открыть client.log той же попытки: Error message, MINIDUMP, Last loaded asset.', 'Базовая диагностика: проверить целостность файлов GTA V, очистить кеш Majestic, убрать моды, обновить драйвер.', 'Не помогло: передать client.log, main.log и дамп из %appdata%\\majestic-launcher\\Multiplayer\\crashdumps.'] };
   },
   cause: 'crashService увидел падение игры и включил самовосстановление (needResourceCheck): при следующем запуске лаунчер перепроверит ресурсы. Код в internalError такой же, как в client.log.',
   fix: ['Открыть client.log той же попытки и искать этот код ERR_… по разбору client.log.'] });
@@ -542,7 +542,6 @@ R({ id: 'c-errcode', kind: 'client', kw: 'ERR_', re: /\b(ERR_(?!CONNECTION_|SSL_
   refine: function (m, t) {
     var di = errInfo(m[1]); if (di) return { key: m[1], src: 'web', title: m[1] + ': ' + di.t, cause: di.cause, fix: di.fix };
     var o = { key: m[1], title: 'Код ' + m[1] + ': в руководстве не описан' };
-    if (/повреждены|corrupt/i.test(t)) { o.cause = 'В тексте ошибки сказано «Игровые данные повреждены». По смыслу это порча данных, как у ZLIB / FILELOAD. Кода в руководстве нет.'; o.fix = ['Проверить целостность файлов GTA V, очистить кеш Majestic и перепроверить файлы.', 'Убрать моды. Если вылет повторяется: передать client.log и дамп.']; }
     return o;
   },
   cause: 'В client.log ищется именно код ERR_…, расшифровка идёт следом после Error message:. Для этого кода готового разбора нет.',
