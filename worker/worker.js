@@ -190,7 +190,16 @@ async function tgSay(env, text, rows, chatId, menu) { const chat = chatId || (aw
 function bg(ctx, pr) { const p2 = Promise.resolve(pr).catch(() => null); if (ctx && ctx.waitUntil) ctx.waitUntil(p2); return p2; }
 const tgSecret = async (env) => (await sha256hex('tg-hook:' + (env.TG_TOKEN || ''))).slice(0, 48);
 const ST_RU = { pending: '⏳ ждёт', ok: '✅ доступ', off: '⛔ закрыт' };
-function userRows(u) { const L = u.login; return [[u.st === 'ok' ? ['⛔ Забрать доступ', 'u:off:' + L] : ['✅ Выдать доступ', 'u:ok:' + L], ['🔑 Сбросить пароль', 'u:rst:' + L]], [['⏏ Завершить сеансы', 'u:kick:' + L]]]; }
+/* кнопки пользователя; сделанное действие меняет свою кнопку на итог (done — набор: ok|off, rst, kick) */
+const DONE_TXT = { ok: '✅ Доступ выдан', off: '⛔ Доступ закрыт', rst: '✓ Пароль сброшен', kick: '✓ Сеансы завершены' };
+function userRows(u, done) {
+  const L = u.login, d = done || {};
+  const acc = d.ok ? [DONE_TXT.ok, 'x:' + L] : d.off ? [DONE_TXT.off, 'x:' + L] : u.st === 'ok' ? ['⛔ Забрать доступ', 'u:off:' + L] : ['✅ Выдать доступ', 'u:ok:' + L];
+  return [[acc, d.rst ? [DONE_TXT.rst, 'x:' + L] : ['🔑 Сбросить пароль', 'u:rst:' + L]], [d.kick ? [DONE_TXT.kick, 'x:' + L] : ['⏏ Завершить сеансы', 'u:kick:' + L]]];
+}
+function userCard(u, last) { return '<b>' + tgEsc(u.login) + '</b> — ' + ST_RU[u.st] + (u.must ? ' · временный пароль' : '') + '\nПоследний вход: ' + (u.seen ? new Date(u.seen).toLocaleString('ru-RU', { timeZone: 'Asia/Yekaterinburg' }) : '—') + (last ? '\n\n' + last : ''); }
+/* какие действия уже отмечены на кнопках этого сообщения */
+function doneFrom(markup) { const d = {}; for (const row of (markup && markup.inline_keyboard) || []) for (const b of row) for (const k of Object.keys(DONE_TXT)) if (b.text === DONE_TXT[k]) d[k] = 1; return d; }
 async function usersAll(env) { const out = []; let cursor; do { const l = await env.ACCESS.list({ prefix: 'u:', cursor }); for (const k of l.keys) { const u = await userGet(env, k.name.slice(2)); if (u) out.push(u); } cursor = l.list_complete ? null : l.cursor; } while (cursor); return out; }
 async function tgSummary(env, title) {
   const day = new Date().toISOString().slice(0, 10), d = await kvJson(env, 'd:' + day, null), ai = await kvJson(env, 'aiu:' + day, {}), tm = await kvJson(env, 'tplm:' + day, {});
@@ -241,7 +250,7 @@ async function tgHook(req, env, ctx) {
     if (cmd[1] === 'users' || cmd[1] === 'pending') {
       const us = (await usersAll(env)).filter((u) => cmd[1] === 'users' || u.st === 'pending').sort((a, c) => (a.st === 'pending' ? 0 : 1) - (c.st === 'pending' ? 0 : 1) || (c.seen || 0) - (a.seen || 0));
       if (!us.length) await tgSay(env, cmd[1] === 'pending' ? 'Никто не ждёт доступа.' : 'Пользователей пока нет.');
-      for (const u of us.slice(0, 25)) await tgSay(env, '<b>' + tgEsc(u.login) + '</b> — ' + ST_RU[u.st] + (u.must ? ' · временный пароль' : '') + '\nПоследний вход: ' + (u.seen ? new Date(u.seen).toLocaleString('ru-RU', { timeZone: 'Asia/Yekaterinburg' }) : '—'), userRows(u));
+      for (const u of us.slice(0, 25)) await tgSay(env, userCard(u), userRows(u));
       if (us.length > 25) await tgSay(env, 'Показаны 25 из ' + us.length + '. Остальные — в админке.');
     } else if (cmd[1] === 'stats') await tgSay(env, await tgSummary(env, 'Сводка'));
     else if (cmd[1] === 'reports') {
@@ -264,11 +273,16 @@ async function tgHook(req, env, ctx) {
       else { const list = (await getNews(env)).filter((x) => x.id !== mn[2]); await env.ACCESS.put('news', JSON.stringify(list)); await touchAv(env); await ans('Объявление удалено'); await edit('🗑 Объявление удалено.'); }
       return json({ ok: true });
     }
+    if (/^x:/.test(data)) { await ans('Уже сделано'); return json({ ok: true }); }
     if (mu) {
       const u = await userGet(env, mu[2].toLowerCase()); if (!u) { await ans('Пользователь не найден'); return json({ ok: true }); }
-      if (mu[1] === 'ok' || mu[1] === 'off') { u.st = mu[1]; await userPut(env, u); await touchAv(env); await ans(mu[1] === 'ok' ? 'Доступ выдан' : 'Доступ закрыт'); await edit('<b>' + tgEsc(u.login) + '</b> — ' + ST_RU[u.st], userRows(u)); }
-      else if (mu[1] === 'kick') { await sessionsEnd(env, u, null); await userPut(env, u); await ans('Сеансы завершены'); }
-      else { const pw = genPass(); await setPw(u, pw); u.must = true; await sessionsEnd(env, u, null); await userPut(env, u); await ans('Пароль сброшен'); await tgSay(env, '🔑 Новый пароль для <b>' + tgEsc(u.login) + '</b>:\n<code>' + tgEsc(pw) + '</code>\nПередайте его человеку — после входа приложение предложит задать свой.'); }
+      const done = doneFrom(cq.message.reply_markup), at = new Date().toLocaleTimeString('ru-RU', { timeZone: 'Asia/Yekaterinburg', hour: '2-digit', minute: '2-digit' });
+      if (mu[1] === 'ok' || mu[1] === 'off') { u.st = mu[1]; await userPut(env, u); await touchAv(env); delete done.ok; delete done.off; }
+      else if (mu[1] === 'kick') { await sessionsEnd(env, u, null); await userPut(env, u); }
+      else { const pw = genPass(); await setPw(u, pw); u.must = true; await sessionsEnd(env, u, null); await userPut(env, u); await tgSay(env, '🔑 Новый пароль для <b>' + tgEsc(u.login) + '</b>:\n<code>' + tgEsc(pw) + '</code>\nПередайте его человеку — после входа приложение предложит задать свой.'); }
+      done[mu[1]] = 1;
+      const what = { ok: 'Доступ выдан', off: 'Доступ закрыт', rst: 'Пароль сброшен', kick: 'Сеансы завершены' }[mu[1]], tail = { rst: ' — новый пароль в сообщении ниже', kick: ' — войдёт заново на всех устройствах' }[mu[1]] || '';
+      await ans(what); await edit(userCard(u, '✔ ' + what + ' в ' + at + tail), userRows(u, done));
     } else if (mh) {
       let pend = await kvJson(env, 'tplpend', []); const it = pend.find((x) => x.id === mh[2]); pend = pend.filter((x) => x.id !== mh[2]);
       if (it && mh[1] === 'ok') { const hints = await kvJson(env, 'tplh', {}); hints[it.set] = hints[it.set] || {}; const h = hints[it.set][it.t] = hints[it.set][it.t] || { say: [], when: '' }; if (it.say && h.say.indexOf(it.say) < 0) h.say = h.say.concat([it.say]).slice(-HINT_MAX); if (it.when) h.when = it.when; await env.ACCESS.put('tplh', JSON.stringify(hints)); }
