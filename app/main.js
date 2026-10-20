@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, clipboard, Menu, shell, net, native
 const fs = require('fs');
 const path = require('path');
 
-const SHELL_VERSION = '2026-10-19.23';
+const SHELL_VERSION = '2026-10-20.1';
 const APPDIR = global.APP_DIR || __dirname;
 const bundled = () => path.join(APPDIR, 'index.html');
 const overrideFile = () => path.join(app.getPath('userData'), 'index-override.html');
@@ -301,7 +301,7 @@ async function extHandle(req, res) {
   const p = (req.url || '').split('?')[0];
   if (p === '/v1/ping') return send(200, { ok: true, app: 'majestic-log-advisor', v: SHELL_VERSION });
   if (p === '/v1/upload' && req.method === 'POST') return extUpload(req, res, send);
-  if (p === '/v1/pair' && req.method === 'POST') return extPair(req, send);
+  if (p === '/v1/pair' && (req.method === 'POST' || req.method === 'GET')) return extPair(req, send);
   if (p === '/v1/quick' && req.method === 'POST') return extQuick(req, send);
   if (p !== '/v1/import' || req.method !== 'POST') return send(404, { ok: false });
   if (!extSame(req.headers['x-mla-token'], extToken())) return send(401, { ok: false, error: 'token' });
@@ -342,18 +342,34 @@ async function extUpload(req, res, send) {
 }
 /* Подключение плагина без ввода ключа: плагин просит, приложение спрашивает пользователя, по «Разрешить» отдаёт ключ.
    Ключ получает только тот, кому разрешили в окне приложения; одна просьба за раз, ждём ответа до 2 минут. */
-const extPairs = new Map(); let extPairSeq = 0;
+const extPairs = new Map(), extPairDone = new Map(); let extPairSeq = 0;
+/* Новые плагины спрашивают ответ раз в секунду (poll): BetterDiscord обрывает запрос через 8 секунд, а пользователю нужно время дойти до окна.
+   Старые плагины ждут ответа в одном запросе — им по-прежнему отвечаем по «Разрешить». */
+function extPairAsk(who) {
+  const id = ++extPairSeq;
+  const done = new Promise((resolve) => {
+    const tm = setTimeout(() => { extPairs.delete(id); resolve(false); }, 120000);
+    extPairs.set(id, (ok) => { clearTimeout(tm); extPairs.delete(id); resolve(!!ok); });
+  });
+  done.then((ok) => { extPairDone.set(id, { ok, at: Date.now() }); for (const [k, v] of extPairDone) if (Date.now() - v.at > 60000) extPairDone.delete(k); });
+  try { mainWin.webContents.send('ext-pair', { id, client: who }); if (mainWin.isMinimized()) mainWin.restore(); mainWin.show(); mainWin.focus(); mainWin.flashFrame(true); } catch (e) {}
+  return { id, done };
+}
 async function extPair(req, send) {
+  if (req.method === 'GET') {
+    const id = +((req.url || '').split('id=')[1] || '').replace(/\D.*$/, '');
+    if (extPairs.has(id)) return send(200, { ok: true, wait: true, id });
+    const d = extPairDone.get(id); if (!d) return send(404, { ok: false, error: 'gone' });
+    extPairDone.delete(id);
+    return d.ok ? send(200, { ok: true, token: extToken() }) : send(403, { ok: false, error: 'denied' });
+  }
   let raw = ''; for await (const ch of req) { raw += ch; if (raw.length > 4096) return send(413, { ok: false }); }
   let b = {}; try { b = JSON.parse(raw || '{}'); } catch (e) {}
   if (!mainWin || mainWin.isDestroyed()) return send(503, { ok: false, error: 'window' });
-  if (extPairs.size) return send(409, { ok: false, error: 'busy' });
-  const id = ++extPairSeq, who = String(b.client || 'Discord').replace(/[^\w .()-]/g, '').slice(0, 40);
-  const answer = await new Promise((resolve) => {
-    const tm = setTimeout(() => { extPairs.delete(id); resolve(false); }, 120000);
-    extPairs.set(id, (ok) => { clearTimeout(tm); extPairs.delete(id); resolve(!!ok); });
-    try { mainWin.webContents.send('ext-pair', { id, client: who }); if (mainWin.isMinimized()) mainWin.restore(); mainWin.show(); mainWin.focus(); mainWin.flashFrame(true); } catch (e) {}
-  });
+  if (extPairs.size) { if (!b.poll) return send(409, { ok: false, error: 'busy' }); const [old] = extPairs.keys(); return send(202, { ok: true, wait: true, id: old }); }
+  const who = String(b.client || 'Discord').replace(/[^\w .()-]/g, '').slice(0, 40), ask = extPairAsk(who);
+  if (b.poll) return send(202, { ok: true, wait: true, id: ask.id });
+  const answer = await ask.done; extPairDone.delete(ask.id);
   return answer ? send(200, { ok: true, token: extToken() }) : send(403, { ok: false, error: 'denied' });
 }
 /* Быстрый разбор для плагина: файл (лог, zip или скриншот) разбирается в окне приложения, но в список логов не добавляется.

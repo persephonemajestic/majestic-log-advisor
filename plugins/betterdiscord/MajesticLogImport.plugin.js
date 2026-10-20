@@ -1,6 +1,6 @@
 /**
  * @name MajesticLogImport
- * @version 1.7.9
+ * @version 1.8.0
  * @description «Разбор» логов и скриншотов прямо в тикете: причина, как чинить и готовый ответ игроку одной кнопкой. «В анализатор» отправляет файл в Majestic Log Advisor. Ctrl+Shift+L — разбор последнего лога тикета.
  * @author persephonemajestic
  * @source https://github.com/persephonemajestic/majestic-log-advisor/tree/main/plugins/betterdiscord
@@ -14,7 +14,7 @@
    «Разбор» (логи, zip, скриншоты): файл разбирается в приложении, но не добавляется в список; ответ — окно поверх Discord.
    Значки на логах: плагин сам разбирает логи игрока в открытой ветке и подписывает итог рядом с файлом (можно выключить). */
 const FILE_RE = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i;
-const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.7.9";
+const QKEY = "queue", MAX_AGE = 20 * 3600 * 1000, VERSION = "1.8.0";
 const LOG_RE = /\.(log|txt|zip)$/i, IMG_RE = /\.(png|jpe?g|webp)$/i, CDN_RE = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\//;
 
 /* MLA-QUICKUI-START — общий код окна «Разбор» для Vencord и BetterDiscord (в BetterDiscord вставляется скриптом plugins/sync-quickui.py) */
@@ -443,7 +443,7 @@ module.exports = class MajesticLogImport {
         const ch = this.store("ChannelStore")?.getChannel(channelId);
         const meta = { name, url: key, ticket: ch?.name || "", guild: ch?.guild_id || "", set: set || "", msgAt: this.msgAt(channelId, messageId), siblings: this.attachments(channelId).map((x) => x.name), mode: mode || "full", noai: !!noai, player: messageId ? this.player(channelId, messageId).player : null, text: mode === "full" ? this.ticketText(channelId, 1500) : "" };
         /* как и при отправке файла: если запрос через BetterDiscord не прошёл, пробуем обычный запрос страницы (приложение разрешает его для discord.com) */
-        const req = { method: "POST", headers: { "content-type": "application/octet-stream", "x-mla-token": c.token, "x-mla-meta": btoa(unescape(encodeURIComponent(JSON.stringify(meta)))) }, body: buf };
+        const req = { method: "POST", timeout: 100000, headers: { "content-type": "application/octet-stream", "x-mla-token": c.token, "x-mla-meta": btoa(unescape(encodeURIComponent(JSON.stringify(meta)))) }, body: buf };
         let r; try { r = await this.fetch(base + "/v1/quick", req); } catch (e) { try { r = await fetch(base + "/v1/quick", req); } catch (e2) { const er = new Error("down"); er.status = 0; throw er; } }
         let j = {}; try { j = await r.json(); } catch (e) {}
         if (!r.ok || !j.ok) { const e = new Error(j.error || ""); e.status = r.status; throw e; }
@@ -591,18 +591,52 @@ module.exports = class MajesticLogImport {
     }
     /* Вставить ключ из буфера обмена одной кнопкой: работает, даже если поле ввода в окне настроек недоступно */
     /* Подключение без ввода ключа: просим приложение, пользователь жмёт «Разрешить» в окне анализатора, ключ сохраняется сам */
+    /* Подключение: приложение спрашивает «Разрешить?», плагин раз в секунду узнаёт ответ.
+       Одним долгим запросом нельзя — BetterDiscord обрывает запросы через 8 секунд. */
     async pair(after) {
         if (this.pairing) return false; this.pairing = true;
-        const c = this.cfg();
+        const c = this.cfg(), base = "http://127.0.0.1:" + (c.port || 47615) + "/v1/pair";
+        const done = (t) => { this.setKey(t); this.toast("Плагин подключён к анализатору", "success"); if (after) after(t); return true; };
         this.toast("Подтвердите подключение в окне Majestic Log Advisor (кнопка «Разрешить»)", "info");
         try {
-            const r = await this.fetch("http://127.0.0.1:" + (c.port || 47615) + "/v1/pair", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ client: "BetterDiscord" }) });
+            const r = await this.fetch(base, { method: "POST", timeout: 125000, headers: { "content-type": "application/json" }, body: JSON.stringify({ client: "BetterDiscord", poll: true }) });
             let j = {}; try { j = await r.json(); } catch (e) {}
-            if (r.ok && j.ok && /^[0-9a-f]{32}$/i.test(j.token || "")) { this.setCfg(Object.assign(this.cfg(), { token: j.token })); this.toast("Плагин подключён к анализатору", "success"); if (after) after(j.token); return true; }
-            this.toast(j.error === "denied" ? "Подключение отклонено в анализаторе" : r.status === 404 ? "Обновите Majestic Log Advisor: эта версия не умеет подключаться сама — вставьте ключ вручную" : "Анализатор не ответил на подключение", "error");
+            if (r.ok && j.ok && /^[0-9a-f]{32}$/i.test(j.token || "")) return done(j.token);
+            if (r.status === 202 && j.wait && j.id) {
+                const end = Date.now() + 125000;
+                while (Date.now() < end) {
+                    await new Promise((f) => setTimeout(f, 1000));
+                    let q, k = {}; try { q = await this.fetch(base + "?id=" + j.id, { timeout: 5000 }); k = await q.json(); } catch (e) { continue; }
+                    if (q.ok && k.ok && /^[0-9a-f]{32}$/i.test(k.token || "")) return done(k.token);
+                    if (q.ok && k.wait) continue;
+                    this.toast(k.error === "denied" ? "Подключение отклонено в анализаторе" : "Запрос устарел: нажмите «Подключить» ещё раз", "error"); return false;
+                }
+                this.toast("В окне анализатора никто не нажал «Разрешить» за 2 минуты — нажмите «Подключить» ещё раз", "error"); return false;
+            }
+            this.toast(j.error === "denied" ? "Подключение отклонено в анализаторе" : j.error === "busy" ? "В окне анализатора уже ждёт запрос — нажмите там «Разрешить»" : r.status === 404 ? "Обновите Majestic Log Advisor: эта версия не умеет подключаться сама — вставьте ключ вручную" : "Анализатор не ответил на подключение (" + r.status + ")", "error");
         } catch (e) { this.toast("Анализатор не запущен: откройте Majestic Log Advisor и нажмите «Подключить» ещё раз", "error"); }
         finally { this.pairing = false; }
         return false;
+    }
+    /* ключ: сохраняем и сразу показываем в поле настроек, если оно открыто */
+    setKey(t) {
+        this.setCfg(Object.assign(this.cfg(), { token: String(t || "").trim() }));
+        try { if (this.keyEl && this.keyEl.isConnected) this.keyEl.value = this.cfg().token; } catch (e) {}
+    }
+    /* Своё поле для ключа: поле настроек BetterDiscord у части пользователей не принимает клик и ввод.
+       Клавиши и клики не уходят дальше в Discord, вставка Ctrl+V и правая кнопка работают как обычно. */
+    keyField() {
+        const st = "box-sizing:border-box;flex:1;min-width:0;height:38px;padding:0 10px;border-radius:6px;border:1px solid #4e5058;background:#1e1f22;color:#f2f3f5;font:14px monospace;outline:none;pointer-events:auto;user-select:text;-webkit-user-select:text;-webkit-app-region:no-drag";
+        const w = document.createElement("div"); w.style.cssText = "display:flex;gap:8px;align-items:center;width:100%";
+        const k = document.createElement("input"); k.type = "text"; k.className = "mla-key"; k.placeholder = "Вставьте ключ сюда (32 символа)"; k.spellcheck = false; k.autocomplete = "off"; k.style.cssText = st; k.value = this.cfg().token || "";
+        const x = document.createElement("button"); x.type = "button"; x.className = "mla-btn mla-clear"; x.textContent = "Очистить"; x.style.cssText = "margin:0;padding:6px 12px;font-size:13px";
+        const save = () => { const v = k.value.trim(); this.setCfg(Object.assign(this.cfg(), { token: v })); k.style.borderColor = !v || /^[0-9a-f]{32}$/i.test(v) ? "#4e5058" : "#da373c"; };
+        ["input", "change", "paste"].forEach((ev) => k.addEventListener(ev, () => setTimeout(save, 0)));
+        ["mousedown", "mouseup", "click", "pointerdown", "keydown", "keyup", "keypress", "focusin"].forEach((ev) => k.addEventListener(ev, (e) => e.stopPropagation()));
+        k.addEventListener("mousedown", () => setTimeout(() => { try { k.focus(); } catch (e) {} }, 0));
+        x.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); k.value = ""; save(); k.focus(); this.toast("Ключ удалён из плагина", "info"); });
+        w.append(k, x); this.keyEl = k;
+        return w;
     }
     async pasteKey(after) {
         let s = "";
@@ -610,7 +644,7 @@ module.exports = class MajesticLogImport {
         if (!s) { try { s = await navigator.clipboard.readText(); } catch (e) {} }
         s = String(s || "").trim();
         if (!/^[0-9a-f]{32}$/i.test(s)) return this.toast("В буфере нет ключа: в приложении нажмите «Настройки» → «Плагин Discord» → «Скопировать ключ»", "error");
-        this.setCfg(Object.assign(this.cfg(), { token: s })); this.toast("Ключ вставлен", "success"); if (after) after(s);
+        this.setKey(s); this.toast("Ключ вставлен", "success"); if (after) after(s);
         this.checkLink();
     }
 
@@ -621,7 +655,7 @@ module.exports = class MajesticLogImport {
             try {
                 return BdApi.UI.buildSettingsPanel({
                     settings: [
-                        { type: "text", id: "token", name: "Ключ из Majestic Log Advisor", note: "В приложении: «Настройки» → «Плагин Discord» → «Скопировать ключ», затем вставьте сюда (Ctrl+V) или нажмите кнопку ниже.", value: c.token, placeholder: "Вставьте ключ сюда" },
+                        { type: "custom", id: "token", inline: false, name: "Ключ из Majestic Log Advisor", note: "В приложении: «Настройки» → «Плагин Discord» → «Скопировать ключ», затем вставьте сюда (Ctrl+V) или нажмите «Подключить» / «Вставить ключ из буфера» ниже.", children: BdApi.React.createElement("div", { style: { width: "100%" }, ref: (el) => { if (el && !el.firstChild) el.appendChild(this.keyField()); } }) },
                         { type: "number", id: "port", name: "Порт", note: "Обычно 47615", value: c.port || 47615 },
                         { type: "button", id: "pair", name: "Подключить к анализатору", note: "Самый простой способ: в окне Majestic Log Advisor появится запрос, нажмите «Разрешить» — ключ сохранится сам", children: "Подключить", onClick: () => this.pair() },
                         { type: "button", id: "paste", name: "Вставить ключ из буфера", note: "Берёт скопированный в приложении ключ и сразу проверяет связь", children: "Вставить ключ из буфера", onClick: () => this.pasteKey() },
@@ -629,7 +663,7 @@ module.exports = class MajesticLogImport {
                         { type: "switch", id: "badges", name: "Значки на логах в тикетах", note: "Плагин сам разбирает логи игрока в открытой ветке и подписывает итог рядом с файлом: «МОД», «Сеть игрока», «Успех», «старый»… Нужен запущенный анализатор.", value: c.badges !== false },
                         { type: "button", id: "hotkey", name: "Горячая клавиша: " + MLA_HOTKEY, note: "В открытой ветке тикета — разбор последнего лога игрока (если логов нет — скриншота, если нет и его — подбор шаблона по тексту игрока)", children: "Попробовать", onClick: () => this.hotkey() }
                     ],
-                    onChange: (cat, id, value) => { const n = this.cfg(); if (id === "token") n.token = String(value || "").trim(); else if (id === "port") n.port = parseInt(value, 10) || 47615; else if (id === "badges") n.badges = !!value; this.setCfg(n); }
+                    onChange: (cat, id, value) => { const n = this.cfg(); if (id === "token") return; else if (id === "port") n.port = parseInt(value, 10) || 47615; else if (id === "badges") n.badges = !!value; this.setCfg(n); }
                 });
             } catch (e) {}
         }

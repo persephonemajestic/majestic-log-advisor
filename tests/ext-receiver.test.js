@@ -52,6 +52,18 @@ setTimeout(async () => {
   ons['ext-pair-answer'](null, ev2.d.id, false); const a2 = await w2;
   ok(a2.s === 403 && !a2.j.token, '«Отклонить» ключ не отдаёт');
   ok((await req({ path: '/v1/pair', body: {}, headers: { origin: 'https://evil.example' } })).s === 403, 'чужой сайт подключиться не может');
+  /* новый плагин: просьба сразу получает номер, ответ узнаёт короткими запросами (BetterDiscord рвёт запросы через 8 секунд) */
+  const pp = await req({ path: '/v1/pair', body: { client: 'BetterDiscord', poll: true } });
+  ok(pp.s === 202 && pp.j.wait && pp.j.id, 'просьба с poll отвечает сразу номером');
+  const st = (id) => req({ path: '/v1/pair?id=' + id, method: 'GET' });
+  ok((await st(pp.j.id)).j.wait === true, 'пока не нажали — ждём');
+  ok((await req({ path: '/v1/pair', body: { client: 'BetterDiscord', poll: true } })).j.id === pp.j.id, 'повторное «Подключить» ждёт тот же запрос');
+  ons['ext-pair-answer'](null, pp.j.id, true); await new Promise((r) => setTimeout(r, 20));
+  const pa = await st(pp.j.id);
+  ok(pa.s === 200 && pa.j.token === (await handlers['ext-info']()).token, 'после «Разрешить» короткий запрос получает ключ');
+  ok((await st(pp.j.id)).s === 404, 'ключ выдаётся один раз');
+  const pq = await req({ path: '/v1/pair', body: { poll: true } }); ons['ext-pair-answer'](null, pq.j.id, false); await new Promise((r) => setTimeout(r, 20));
+  ok((await st(pq.j.id)).s === 403, '«Отклонить» — короткий запрос получает отказ');
   /* быстрый разбор: файл уходит в окно приложения, ответ — сводка; в список логов (ext-import) ничего не попадает */
   const T3 = (await handlers['ext-info']()).token;
   const qk = (tok, meta, data) => new Promise((res) => { const r = http.request({ host: '127.0.0.1', port: api.port, method: 'POST', path: '/v1/quick', headers: { 'content-type': 'application/octet-stream', 'x-mla-token': tok, 'x-mla-meta': Buffer.from(JSON.stringify(meta)).toString('base64') } }, (x) => { let b = ''; x.on('data', (c) => b += c); x.on('end', () => res({ s: x.statusCode, j: b ? JSON.parse(b) : {} })); }); r.write(data); r.end(); });
