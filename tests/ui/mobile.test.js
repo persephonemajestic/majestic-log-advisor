@@ -118,6 +118,26 @@ const srv = http.createServer(async (q, r) => {
   kv.set('h:AAAAA-BBBBB-CCCCC-DDDDD', JSON.stringify({ n: 'старый телефон' })); await p5.addInitScript(() => localStorage.setItem('mla.dev', 'AAAAA-BBBBB-CCCCC-DDDDD'));
   await p5.goto(base + '/m/'); await p5.waitForTimeout(900);
   ok(!(await p5.$('#webGate')), 'телефон со старым одобренным кодом заходит без аккаунта');
+  /* iPhone: лог из Discord «Поделиться» → «Скопировать» вставляется текстом, без скачивания файла */
+  const cl = fs.readFileSync(clientLog('pc_client.log', { crash: true }), 'utf8'), ml = fs.readFileSync(mainLog('pc_main.log', { attempts: ['fail'] }), 'utf8');
+  await p5.tap('[data-m=tab][data-t=list]'); await p5.waitForTimeout(300);
+  ok(await p5.isVisible('#mPaste'), 'на экране «Логи» есть кнопка «Вставить лог из Discord»');
+  
+  await p5.evaluate((t) => { Object.defineProperty(navigator, 'clipboard', { value: { readText: async () => t }, configurable: true }); }, cl);
+  await p5.tap('#mPaste'); await p5.waitForTimeout(1500);
+  ok(await p5.evaluate(() => document.documentElement.getAttribute('data-ms') === 'view'), 'вставленный текст лога сразу открывается в разборе');
+  ok(await p5.evaluate(() => /client\.log/.test(document.querySelector('.side').textContent)), 'вставленный лог определился как client.log');
+  await p5.tap('[data-m=tab][data-t=list]'); await p5.waitForTimeout(300);
+  await p5.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { value: { readText: async () => { throw new Error('no'); } }, configurable: true }); });
+  await p5.tap('#mPaste'); await p5.waitForTimeout(300);
+  ok(await p5.isVisible('#pBox #pBoxT'), 'если браузер не дал буфер — окно, куда вставить долгим нажатием');
+  await p5.fill('#pBoxT', ml); await p5.tap('[data-m=pbox]'); await p5.waitForTimeout(1500);
+  ok(!(await p5.$('#pBox')) && await p5.evaluate(() => /main\.log/.test(document.querySelector('.side').textContent)), 'вставка через окно разбирает main.log');
+  await p5.tap('[data-m=tab][data-t=list]'); await p5.waitForTimeout(300);
+  await p5.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { value: { readText: async () => 'привет, как дела' }, configurable: true }); });
+  await p5.tap('#mPaste'); await p5.waitForTimeout(400);
+  ok(/не похоже на лог/.test(await p5.textContent('#status')), 'обычный текст в буфере — понятная подсказка, а не пустой разбор');
+  ok(await p5.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'без горизонтальной прокрутки с кнопкой вставки');
   /* узкое окно приложения для Windows (без сайта) тоже получает мобильную раскладку, но без экрана доступа */
   const p2 = await (await b.newContext({ viewport: { width: 400, height: 800 } })).newPage(); p2.on('pageerror', (e) => errs.push(e.message));
   await p2.goto(require('url').pathToFileURL(path.join(ROOT, 'index.html')).href); await p2.waitForTimeout(800);

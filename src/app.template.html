@@ -825,6 +825,10 @@ html.mob .fi .rm, html.mob .fi .ej, html.mob .fi .pinb { opacity: .55; min-width
 html.mob .drop { margin: 12px 0 0; padding: 18px 14px; border-radius: 14px; border-style: solid; background: var(--accent-soft); border-color: var(--accent-line, var(--accent)); color: var(--muted); font-size: 13px; text-align: center; }
 html.mob .drop b { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--accent); font-size: 17px; margin-bottom: 4px; }
 html.mob .drop b svg { width: 22px; height: 22px; }
+.mpaste { display: none; }
+html.mob .mpaste { display: block; width: 100%; margin: 10px 0 0; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); color: var(--muted); font: inherit; font-size: 12.5px; text-align: center; cursor: pointer; }
+html.mob .mpaste b { display: block; color: var(--ink); font-size: 16px; margin-bottom: 3px; }
+html.mob .mpaste:active { background: var(--accent-soft); }
 /* разбор */
 html.mob .main { display: block; padding: 12px max(12px, env(safe-area-inset-left, 0px)) 28px max(12px, env(safe-area-inset-right, 0px)); max-width: none; }
 html.mob #view > * + * { margin-top: 12px; }

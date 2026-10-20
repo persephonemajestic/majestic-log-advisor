@@ -98,3 +98,21 @@ function walkEntries(ents) {
   return Promise.all(ents.map(one)).then(function () { return files; });
 }
 
+
+/* Лог, вставленный текстом (скопирован из Discord или из файла): тип по содержимому, имя main.log / client.log */
+function pasteKind(tx) {
+  var t = String(tx || ''), ls = t.slice(0, 200000).split(/\r?\n/), br = 0;
+  for (var i = 0; i < ls.length && i < 400; i++) if (/^\[\d/.test(ls[i])) br++;
+  if (evLike(t)) return 'event';
+  return br >= 3 ? LA.detectKind(ls, '') : '';
+}
+async function pasteLogText(tx, src) {
+  tx = String(tx || '').replace(/^\uFEFF/, '');
+  if (!tx.trim()) { status('Буфер пуст: сначала скопируйте лог.'); return false; }
+  var k = pasteKind(tx);
+  if (!k) { status('Это не похоже на лог игры: в Discord нажмите на файл лога → «Поделиться» → «Скопировать» и вставьте ещё раз.'); return false; }
+  if (k === 'event') { await ingestSys([], [{ name: 'event.txt', text: tx }]); return true; }
+  var nm = k + '.log', f = new File([tx], nm, { type: 'text/plain' });
+  status('Вставлен ' + nm + (src ? ' (' + src + ')' : '') + ', разбираю…'); await readFiles([f]);
+  return true;
+}

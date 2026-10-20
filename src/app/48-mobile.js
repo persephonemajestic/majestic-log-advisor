@@ -39,6 +39,8 @@ function mobApply() {
   /* iPhone в Safari: одна подсказка, как поставить на экран «Домой» (иначе Safari может со временем стереть код устройства) */
   if (WEB && IOS && !navigator.standalone && !lsGet('mla.a2hs') && !document.getElementById('mHint')) { var sd = document.querySelector('.side'), sq = document.querySelector('.side-q'); if (sd && sq) { var hn = document.createElement('div'); hn.id = 'mHint'; hn.className = 'mhint'; hn.innerHTML = '<div><b>Установите как приложение</b>Нажмите «Поделиться» <span class="ios-share" aria-hidden="true"></span> внизу Safari → «На экран „Домой“».</div><button type="button" data-m="a2hs" aria-label="Скрыть подсказку">×</button>'; sq.insertAdjacentElement('afterend', hn); } }
   var d = document.getElementById('drop'); if (d && !d.getAttribute('data-m')) { d.setAttribute('data-m', '1'); d.innerHTML = '<b>' + MI.add + 'Выбрать файлы</b>main.log, client.log, zip, дамп или журнал Windows'; }
+  /* iPhone: в Discord «Поделиться» → «Скопировать» кладёт в буфер весь текст лога — вставляем его сразу, без скачивания файла */
+  if (d && !document.getElementById('mPaste')) { var pb = document.createElement('button'); pb.id = 'mPaste'; pb.type = 'button'; pb.className = 'mpaste'; pb.setAttribute('data-m', 'paste'); pb.innerHTML = '<b>Вставить лог из Discord</b><span>В Discord нажмите на файл → «Поделиться» → «Скопировать», затем сюда</span>'; d.insertAdjacentElement('afterend', pb); }
 }
 function mobScr(scr, fromPop) {
   var was = MS.scr; MS.scr = scr; document.documentElement.setAttribute('data-ms', scr);
@@ -53,6 +55,9 @@ function mobClick(e) {
   var k = t.getAttribute('data-m');
   if (k === 'back') { e.preventDefault(); mobScr('list'); }
   else if (k === 'add') { e.preventDefault(); $('#fileIn').click(); }
+  else if (k === 'paste') { e.preventDefault(); pasteFromClipboard(); }
+  else if (k === 'pbox') { e.preventDefault(); var ta = document.getElementById('pBoxT'); var v = ta ? ta.value : ''; pasteBox(false); pasteLogText(v); }
+  else if (k === 'pboxx') { e.preventDefault(); pasteBox(false); }
   else if (k === 'tab') {
     e.preventDefault(); var tab = t.getAttribute('data-t');
     if (tab === 'more') return mSheet(true);
@@ -155,3 +160,18 @@ document.addEventListener('click', function (e) {
   if (t.getAttribute('data-m') === 'lfilt') { MS.filt = !MS.filt; var fl = document.getElementById('mlFilt'); if (fl) fl.hidden = !MS.filt; t.classList.toggle('on', MS.filt); t.setAttribute('aria-expanded', String(MS.filt)); }
   else { S.sel = -1; var f = active(); if (f) { drawRows(); drawInspector(f); } }
 });
+
+/* ---- Вставка лога текстом (буфер обмена) ---- */
+function pasteFromClipboard() {
+  var cb = navigator.clipboard;
+  if (!cb || !cb.readText) return pasteBox(true);
+  cb.readText().then(function (tx) { if (String(tx || '').trim()) pasteLogText(tx); else pasteBox(true, 'Буфер пуст: сначала в Discord нажмите на файл → «Поделиться» → «Скопировать».'); }, function () { pasteBox(true); });
+}
+/* запасной путь, если браузер не дал прочитать буфер: поле, куда вставляют долгим нажатием */
+function pasteBox(on, msg) {
+  var b = document.getElementById('pBox');
+  if (!on) { if (b) b.remove(); return; }
+  if (!b) { b = document.createElement('div'); b.id = 'pBox'; b.className = 'panel'; document.body.appendChild(b); }
+  b.innerHTML = '<div class="box" role="dialog" aria-label="Вставить лог"><b>Вставить лог</b><p class="hint" style="margin:0">' + esc(msg || 'Нажмите и удерживайте поле ниже → «Вставить».') + '</p><textarea id="pBoxT" class="inp" rows="6" placeholder="Сюда текст лога" style="width:100%;min-height:140px;font:12px monospace"></textarea><div class="row-actions"><button class="btn primary" data-m="pbox">Разобрать</button><button class="btn" data-m="pboxx">Отмена</button></div></div>';
+  var ta = document.getElementById('pBoxT'); ta.addEventListener('paste', function () { setTimeout(function () { if (ta.value.trim().length > 200) { var v = ta.value; pasteBox(false); pasteLogText(v); } }, 0); }); setTimeout(function () { try { ta.focus(); } catch (e) {} }, 50);
+}

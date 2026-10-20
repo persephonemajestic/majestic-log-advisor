@@ -323,6 +323,8 @@ document.addEventListener('paste', function (e) {
   var tg = e.target && e.target.tagName; if (tg === 'INPUT' || tg === 'TEXTAREA') return;
   var cd = e.clipboardData; if (!cd) return;
   if (cd.files && cd.files.length) { readFiles(cd.files); return; }
-  var tx = (cd.getData('text/plain') || '').trim(); if (/^https:\/\/\S+$/i.test(tx) && window.nativeApp && window.nativeApp.fetchUrl) { status('Скачиваю по ссылке…'); loadUrl(tx); }
+  var tx = (cd.getData('text/plain') || '').trim(); if (/^https:\/\/\S+$/i.test(tx) && window.nativeApp && window.nativeApp.fetchUrl) { status('Скачиваю по ссылке…'); loadUrl(tx); return; }
+  /* целый лог, вставленный текстом (Ctrl+V или «Вставить» на телефоне) */
+  if (tx.length > 200 && pasteKind(tx)) { e.preventDefault(); pasteLogText(tx); }
 });
 

@@ -825,6 +825,10 @@ html.mob .fi .rm, html.mob .fi .ej, html.mob .fi .pinb { opacity: .55; min-width
 html.mob .drop { margin: 12px 0 0; padding: 18px 14px; border-radius: 14px; border-style: solid; background: var(--accent-soft); border-color: var(--accent-line, var(--accent)); color: var(--muted); font-size: 13px; text-align: center; }
 html.mob .drop b { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--accent); font-size: 17px; margin-bottom: 4px; }
 html.mob .drop b svg { width: 22px; height: 22px; }
+.mpaste { display: none; }
+html.mob .mpaste { display: block; width: 100%; margin: 10px 0 0; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); color: var(--muted); font: inherit; font-size: 12.5px; text-align: center; cursor: pointer; }
+html.mob .mpaste b { display: block; color: var(--ink); font-size: 16px; margin-bottom: 3px; }
+html.mob .mpaste:active { background: var(--accent-soft); }
 /* разбор */
 html.mob .main { display: block; padding: 12px max(12px, env(safe-area-inset-left, 0px)) 28px max(12px, env(safe-area-inset-right, 0px)); max-width: none; }
 html.mob #view > * + * { margin-top: 12px; }
@@ -3326,7 +3330,7 @@ var STRU = { ok: 'Успех', bad: 'Сбой', warn: 'Внимание', unk: '
 var SRCRU = { guide: 'из руководства', obs: 'по наблюдению в логах', infer: 'вывод, в руководстве нет', web: 'по открытым источникам', user: 'ваше правило', team: 'правило команды' };
 var SRCTIP = { team: 'Общее правило команды из файла rules.json в репозитории проекта', user: 'Правило, которое добавили вы или коллега через «Добавить решение»', guide: 'Правило взято из документа «Руководство по диагностике ошибок и работе с логами»', obs: 'Строка встречается в успешных заходах загруженных логов, поэтому считается шумом', web: 'Случая нет в руководстве. Объяснение собрано по справкам Rockstar, форумам RAGE и cfx.re и реальным логам. Проверяйте его', infer: 'Этого случая нет в руководстве. Объяснение построено по логам и общим признакам, проверяйте его' };
 var PSTEPS_UI = [['admin', 'Администратор'], ['pirate', 'Очистка файлов'], ['backup', 'Резервная копия'], ['patch', 'Патч игры'], ['job', 'Процесс игры'], ['inject', 'Внедрение'], ['injected', 'Клиент внедрён'], ['entry', 'Запуск клиента'], ['finished', 'Готово'], ['window', 'Окно игры']];
-var SAMPLE = null, APP_VERSION = '2026-10-19.131';
+var SAMPLE = null, APP_VERSION = '2026-10-20.1';
 var ROW = 20, KBKEY = 'majestic-log-advisor.kb.v1';
 
 var $ = function (s) { return document.querySelector(s); };
@@ -4527,6 +4531,25 @@ function walkEntries(ents) {
     });
   }
   return Promise.all(ents.map(one)).then(function () { return files; });
+}
+
+
+/* Лог, вставленный текстом (скопирован из Discord или из файла): тип по содержимому, имя main.log / client.log */
+function pasteKind(tx) {
+  var t = String(tx || ''), ls = t.slice(0, 200000).split(/\r?\n/), br = 0;
+  for (var i = 0; i < ls.length && i < 400; i++) if (/^\[\d/.test(ls[i])) br++;
+  if (evLike(t)) return 'event';
+  return br >= 3 ? LA.detectKind(ls, '') : '';
+}
+async function pasteLogText(tx, src) {
+  tx = String(tx || '').replace(/^\uFEFF/, '');
+  if (!tx.trim()) { status('Буфер пуст: сначала скопируйте лог.'); return false; }
+  var k = pasteKind(tx);
+  if (!k) { status('Это не похоже на лог игры: в Discord нажмите на файл лога → «Поделиться» → «Скопировать» и вставьте ещё раз.'); return false; }
+  if (k === 'event') { await ingestSys([], [{ name: 'event.txt', text: tx }]); return true; }
+  var nm = k + '.log', f = new File([tx], nm, { type: 'text/plain' });
+  status('Вставлен ' + nm + (src ? ' (' + src + ')' : '') + ', разбираю…'); await readFiles([f]);
+  return true;
 }
 /* ---------- Отрисовка ---------- */
 function active() { return S.files.find(function (f) { return f.id === S.active; }) || null; }
@@ -7556,6 +7579,8 @@ function mobApply() {
   /* iPhone в Safari: одна подсказка, как поставить на экран «Домой» (иначе Safari может со временем стереть код устройства) */
   if (WEB && IOS && !navigator.standalone && !lsGet('mla.a2hs') && !document.getElementById('mHint')) { var sd = document.querySelector('.side'), sq = document.querySelector('.side-q'); if (sd && sq) { var hn = document.createElement('div'); hn.id = 'mHint'; hn.className = 'mhint'; hn.innerHTML = '<div><b>Установите как приложение</b>Нажмите «Поделиться» <span class="ios-share" aria-hidden="true"></span> внизу Safari → «На экран „Домой“».</div><button type="button" data-m="a2hs" aria-label="Скрыть подсказку">×</button>'; sq.insertAdjacentElement('afterend', hn); } }
   var d = document.getElementById('drop'); if (d && !d.getAttribute('data-m')) { d.setAttribute('data-m', '1'); d.innerHTML = '<b>' + MI.add + 'Выбрать файлы</b>main.log, client.log, zip, дамп или журнал Windows'; }
+  /* iPhone: в Discord «Поделиться» → «Скопировать» кладёт в буфер весь текст лога — вставляем его сразу, без скачивания файла */
+  if (d && !document.getElementById('mPaste')) { var pb = document.createElement('button'); pb.id = 'mPaste'; pb.type = 'button'; pb.className = 'mpaste'; pb.setAttribute('data-m', 'paste'); pb.innerHTML = '<b>Вставить лог из Discord</b><span>В Discord нажмите на файл → «Поделиться» → «Скопировать», затем сюда</span>'; d.insertAdjacentElement('afterend', pb); }
 }
 function mobScr(scr, fromPop) {
   var was = MS.scr; MS.scr = scr; document.documentElement.setAttribute('data-ms', scr);
@@ -7570,6 +7595,9 @@ function mobClick(e) {
   var k = t.getAttribute('data-m');
   if (k === 'back') { e.preventDefault(); mobScr('list'); }
   else if (k === 'add') { e.preventDefault(); $('#fileIn').click(); }
+  else if (k === 'paste') { e.preventDefault(); pasteFromClipboard(); }
+  else if (k === 'pbox') { e.preventDefault(); var ta = document.getElementById('pBoxT'); var v = ta ? ta.value : ''; pasteBox(false); pasteLogText(v); }
+  else if (k === 'pboxx') { e.preventDefault(); pasteBox(false); }
   else if (k === 'tab') {
     e.preventDefault(); var tab = t.getAttribute('data-t');
     if (tab === 'more') return mSheet(true);
@@ -7672,6 +7700,21 @@ document.addEventListener('click', function (e) {
   if (t.getAttribute('data-m') === 'lfilt') { MS.filt = !MS.filt; var fl = document.getElementById('mlFilt'); if (fl) fl.hidden = !MS.filt; t.classList.toggle('on', MS.filt); t.setAttribute('aria-expanded', String(MS.filt)); }
   else { S.sel = -1; var f = active(); if (f) { drawRows(); drawInspector(f); } }
 });
+
+/* ---- Вставка лога текстом (буфер обмена) ---- */
+function pasteFromClipboard() {
+  var cb = navigator.clipboard;
+  if (!cb || !cb.readText) return pasteBox(true);
+  cb.readText().then(function (tx) { if (String(tx || '').trim()) pasteLogText(tx); else pasteBox(true, 'Буфер пуст: сначала в Discord нажмите на файл → «Поделиться» → «Скопировать».'); }, function () { pasteBox(true); });
+}
+/* запасной путь, если браузер не дал прочитать буфер: поле, куда вставляют долгим нажатием */
+function pasteBox(on, msg) {
+  var b = document.getElementById('pBox');
+  if (!on) { if (b) b.remove(); return; }
+  if (!b) { b = document.createElement('div'); b.id = 'pBox'; b.className = 'panel'; document.body.appendChild(b); }
+  b.innerHTML = '<div class="box" role="dialog" aria-label="Вставить лог"><b>Вставить лог</b><p class="hint" style="margin:0">' + esc(msg || 'Нажмите и удерживайте поле ниже → «Вставить».') + '</p><textarea id="pBoxT" class="inp" rows="6" placeholder="Сюда текст лога" style="width:100%;min-height:140px;font:12px monospace"></textarea><div class="row-actions"><button class="btn primary" data-m="pbox">Разобрать</button><button class="btn" data-m="pboxx">Отмена</button></div></div>';
+  var ta = document.getElementById('pBoxT'); ta.addEventListener('paste', function () { setTimeout(function () { if (ta.value.trim().length > 200) { var v = ta.value; pasteBox(false); pasteLogText(v); } }, 0); }); setTimeout(function () { try { ta.focus(); } catch (e) {} }, 50);
+}
 /* ---------- События ---------- */
 document.addEventListener('click', function (ev) {
   var t = ev.target.closest('[data-act]'); if (!t) return;
@@ -7997,7 +8040,9 @@ document.addEventListener('paste', function (e) {
   var tg = e.target && e.target.tagName; if (tg === 'INPUT' || tg === 'TEXTAREA') return;
   var cd = e.clipboardData; if (!cd) return;
   if (cd.files && cd.files.length) { readFiles(cd.files); return; }
-  var tx = (cd.getData('text/plain') || '').trim(); if (/^https:\/\/\S+$/i.test(tx) && window.nativeApp && window.nativeApp.fetchUrl) { status('Скачиваю по ссылке…'); loadUrl(tx); }
+  var tx = (cd.getData('text/plain') || '').trim(); if (/^https:\/\/\S+$/i.test(tx) && window.nativeApp && window.nativeApp.fetchUrl) { status('Скачиваю по ссылке…'); loadUrl(tx); return; }
+  /* целый лог, вставленный текстом (Ctrl+V или «Вставить» на телефоне) */
+  if (tx.length > 200 && pasteKind(tx)) { e.preventDefault(); pasteLogText(tx); }
 });
 /* ---------- Примеры ---------- */
 var SAMPLE_MAIN = String.raw`[2026-07-29 12:55:00.100] [info]  [ (game)              ] game.play: zombie process sweep { killedCount: 0, killed: [] }
