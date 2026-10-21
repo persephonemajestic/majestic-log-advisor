@@ -36,7 +36,7 @@ async function ingestSys(files, texts) {
       if (/\.zip$/i.test(fl.name)) { var z = dumpsFirst(await unzipFile(fl), function (x) { return x.name; }), got = 0; for (var zi = 0; zi < z.length; zi++) if (z[zi].bin) { parts.push(await sysPart(z[zi].name, SysDiag.bufReader(z[zi].bin))); z[zi].bin = null; got++; } if (!got) status('В архиве ' + fl.name + ' нет .dmp или .evtx.'); }
       else if (SYS_RE.test(fl.name)) parts.push(await sysPart(fl.name, SysDiag.fileReader(fl)));
       else parts.push(await sysPart(fl.name, null, await fl.text()));
-    } catch (e) { status('Не удалось прочитать ' + fl.name + ': ' + (e && e.message || 'ошибка')); }
+    } catch (e) { status(e && e.user ? e.user : 'Не удалось прочитать ' + fl.name + ': ' + (e && e.message || 'ошибка')); }
   }
   for (i = 0; i < texts.length; i++) { try { parts.push(await sysPart(texts[i].name, null, texts[i].text)); } catch (e) { status('Не удалось прочитать ' + texts[i].name + ': ' + (e && e.message || 'ошибка')); } }
   if (!parts.length) return;
@@ -56,9 +56,10 @@ function openSysOnly() {
   S.sysOnly = S.sysOnly || { label: 'Дамп без лога', sys: null };
   $('#panelHost').innerHTML = '<div class="panel" data-act="closePanel"><div class="box" role="dialog" id="sysOnlyBox" aria-label="Разбор дампа без лога" data-act="noop" style="max-width:880px;width:100%;max-height:90vh;overflow:auto"><b>Разбор дампа или журнала без лога</b><p class="hint" style="margin:4px 0 8px">Перетащите сюда .dmp, .evtx, events.txt или zip краш-отчёта. Лог не нужен.</p><section id="sysBox">' + sysHtml(S.sysOnly) + '</section><div class="row-actions"><button class="btn sm" data-act="closePanel">Закрыть</button></div></div></div>';
 }
+var READ_ERRS = [];
 async function readFiles(list, onlyLogs, opts) {
   if (sysOnlyOn()) { await ingestSys(Array.prototype.slice.call(list), []); return; }
-  var arr = Array.prototype.slice.call(list), items = [], sysFiles = [], sysTexts = [];
+  var arr = Array.prototype.slice.call(list), items = [], sysFiles = [], sysTexts = [], e0 = READ_ERRS.length;
   if (onlyLogs) arr = arr.filter(function (x) { return /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i.test(x.name); });
   if (!arr.length) { status('В выбранном нет файлов .log, .txt, .zip, .dmp или .evtx.'); return; }
   for (var i = 0; i < arr.length; i++) {
@@ -66,6 +67,10 @@ async function readFiles(list, onlyLogs, opts) {
     try {
       if (SYS_RE.test(arr[i].name)) { sysFiles.push(arr[i]); continue; }
       if (/\.zip$/i.test(arr[i].name)) {
+        /* «zip», который на самом деле дамп или лог с неверным расширением — читаем как есть */
+        var hd = sniffBuf(new Uint8Array(await arr[i].slice(0, 4096).arrayBuffer()));
+        if (hd.kind === 'dmp') { sysFiles.push(new File([arr[i]], arr[i].name.replace(/\.zip$/i, '.dmp'))); continue; }
+        if (hd.kind === 'text') { var tz = await arr[i].text(); items.push({ name: arr[i].name.replace(/\.zip$/i, '.log'), size: arr[i].size, text: tz }); continue; }
         SYS_NEAR = 0; var z = dumpsFirst(await unzipFile(arr[i]), function (x) { return x.name; }), zl = z.filter(function (x) { return !x.bin; }), sysObj = null;
         if (!z.length) status('В архиве ' + arr[i].name + ' нет .log, .txt или .dmp.');
         for (var zi = 0; zi < z.length; zi++) if (z[zi].bin) { try { sysObj = mergeSys(sysObj, await sysPart(z[zi].name, SysDiag.bufReader(z[zi].bin))); } catch (e) { status('Не удалось прочитать ' + z[zi].name + ' из архива: ' + (e && e.message || 'ошибка')); } z[zi].bin = null; }
@@ -78,8 +83,9 @@ async function readFiles(list, onlyLogs, opts) {
         if (/\.xml$/i.test(arr[i].name)) { status('Файл ' + arr[i].name + ' не похож на журнал событий Windows.'); continue; }
         var it0 = { name: arr[i].name, size: arr[i].size, text: tx }, rp = arr[i].webkitRelativePath || '', pp = rp.split('/'); if (pp.length > 1) it0.group = { id: 'd:' + pp[0], name: pp[0], type: 'dir' }; items.push(it0);
       }
-    } catch (e) { status('Не удалось прочитать ' + arr[i].name); }
+    } catch (e) { var em = (e && e.user) || ('Не удалось прочитать ' + arr[i].name); READ_ERRS.push(em); status(em); }
   }
+  var myErrs = READ_ERRS.slice(e0); if (myErrs.length && !items.length && !sysFiles.length && !sysTexts.length) showReadProblem(myErrs);
   if (items.length) await addTexts(items, opts && opts.forceGroup ? { forceGroup: opts.forceGroup } : undefined);
   if (sysFiles.length || sysTexts.length) await ingestSys(sysFiles, sysTexts);
 }
@@ -115,4 +121,11 @@ async function pasteLogText(tx, src) {
   var nm = k + '.log', f = new File([tx], nm, { type: 'text/plain' });
   status('Вставлен ' + nm + (src ? ' (' + src + ')' : '') + ', разбираю…'); await readFiles([f]);
   return true;
+}
+
+/* Файл не открылся: окно с причиной и готовой просьбой игроку (короткое уведомление внизу легко пропустить) */
+function showReadProblem(errs) {
+  var ask = 'Здравствуйте! Файл, который вы прислали, не открывается: вместо архива пришла веб-страница или повреждённый файл. Пришлите, пожалуйста, его ещё раз — сам файл архива, а не ссылку.';
+  $('#panelHost').innerHTML = '<div class="panel" data-act="closePanel"><div class="box" id="readProb" role="dialog" aria-label="Файл не открылся"><b>Файл не открылся</b>' + errs.map(function (x) { return '<p style="margin:0">' + esc(x) + '</p>'; }).join('') + '<div class="row-actions"><button class="btn primary" id="readProbAsk">Скопировать просьбу игроку</button><button class="btn" data-act="closePanel">Закрыть</button></div></div></div>';
+  $('#readProbAsk').addEventListener('click', function () { copyText(ask, 'Просьба игроку', 'Скопируйте текст и отправьте игроку.', 'Просьба скопирована'); });
 }

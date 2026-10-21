@@ -29,7 +29,7 @@ async function flushExt() {
     var files = items.map(function (x) { return new File([x.data], x.name, { lastModified: Date.now() }); });
     /* дампы и журналы событий открываются отдельно: к логу этого же тикета, а если логов тикета нет — в окне «Только дамп» */
     var sysF = files.filter(function (x) { return /\.(dmp|mdmp|evtx)$/i.test(x.name); }); files = files.filter(function (x) { return sysF.indexOf(x) < 0; });
-    var before = {}; S.files.forEach(function (f) { before[f.id] = 1; });
+    var before = {}; S.files.forEach(function (f) { before[f.id] = 1; }); READ_ERRS = [];
     if (files.length) await readFiles(files, false, { forceGroup: { id: gid, name: name, type: 'case' } });
     if (sysF.length) {
       var inCase = S.files.filter(function (f) { return f.group && f.group.id === gid && !f.sample; });
@@ -38,7 +38,9 @@ async function flushExt() {
     }
     S.files.forEach(function (f) { if (!before[f.id] && f.group && f.group.id === gid && !S.kb.tags[f.hash]) S.kb.tags[f.hash] = name; });
     savePlayer(gid, name, pl, S.files.filter(function (f) { return f.group && f.group.id === gid; }).map(function (f) { return f.hash; })); saveKB();
-    status('Из Discord (' + name + '): ' + items.map(function (x) { return x.name; }).join(', ') + '.');
+    var errs = READ_ERRS.splice(0);
+    if (errs.length) { if (!document.querySelector('#panelHost #readProb')) status('Из Discord (' + name + '): ' + errs.join(' ')); }
+    else status('Из Discord (' + name + '): ' + items.map(function (x) { return x.name; }).join(', ') + '.');
   }
   render();
 }

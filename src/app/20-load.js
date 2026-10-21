@@ -81,7 +81,7 @@ function applyAll() { S.kbv = (S.kbv || 0) + 1; S.files.forEach(function (f) { L
 async function unzipFile(file) {
   var buf = new Uint8Array(await file.arrayBuffer()), dv = new DataView(buf.buffer), out = [], e = -1, i;
   for (i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { e = i; break; }
-  if (e < 0) throw new Error('zip');
+  if (e < 0) { var er = new Error('zip'); er.user = notZipMsg(file.name, buf); er.sniff = sniffBuf(buf); throw er; }
   var n = dv.getUint16(e + 10, true), off = dv.getUint32(e + 16, true);
   for (var k = 0; k < n; k++) {
     if (dv.getUint32(off, true) !== 0x02014b50) break;
@@ -98,4 +98,26 @@ async function unzipFile(file) {
     out.push({ name: name.split('/').pop(), size: text.length, text: text });
   }
   return out;
+}
+
+/* Что на самом деле лежит в файле, если это не архив: игроки присылают переименованные файлы или скачанную вместо файла веб-страницу */
+function sniffBuf(buf) {
+  var b = buf || new Uint8Array(0), h = '';
+  try { h = new TextDecoder('utf-8').decode(b.subarray(0, 4096)); } catch (e) {}
+  if (!b.length) return { kind: 'empty' };
+  if (b[0] === 0x4d && b[1] === 0x44 && b[2] === 0x4d && b[3] === 0x50) return { kind: 'dmp' };
+  if (b[0] === 0x52 && b[1] === 0x61 && b[2] === 0x72 && b[3] === 0x21) return { kind: 'rar' };
+  if (b[0] === 0x37 && b[1] === 0x7a && b[2] === 0xbc && b[3] === 0xaf) return { kind: '7z' };
+  if (b[0] === 0x50 && b[1] === 0x4b) return { kind: 'brokenzip' };
+  if (/^\s*(<!doctype html|<html|<head|<\?xml[^>]*>\s*<html)/i.test(h)) { var t = ''; try { t = (new TextDecoder('utf-8').decode(b.subarray(0, 200000)).match(/<title[^>]*>([^<]{1,80})<\/title>/i) || [])[1] || ''; } catch (e) {} return { kind: 'html', title: t.trim() }; }
+  if (/^\[\d/m.test(h)) return { kind: 'text' };
+  return { kind: 'other' };
+}
+function notZipMsg(name, buf) {
+  var s = sniffBuf(buf), n = name || 'файл';
+  if (s.kind === 'html') return n + ' — не архив, а веб-страница' + (s.title ? ' «' + s.title + '»' : '') + (/vk/i.test(s.title) ? ' (страница входа ВКонтакте)' : '') + ': у игрока вместо файла скачалась страница. Дампа и логов в нём нет — попросите игрока прислать сам архив ещё раз (из папки игры, а не по ссылке из браузера).';
+  if (s.kind === 'empty') return n + ' пустой (0 байт) — попросите игрока прислать архив ещё раз.';
+  if (s.kind === 'rar' || s.kind === '7z') return n + ' — это архив ' + (s.kind === 'rar' ? 'RAR' : '7z') + ' с другим расширением, его нельзя открыть здесь. Попросите игрока запаковать в обычный .zip или прислать файлы без архива.';
+  if (s.kind === 'brokenzip') return n + ' — архив повреждён или скачан не до конца. Попросите игрока прислать его ещё раз.';
+  return n + ' — не архив zip, и внутри нет логов или дампа. Попросите игрока прислать файл ещё раз.';
 }

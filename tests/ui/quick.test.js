@@ -58,5 +58,7 @@ const H = require('./helpers'), { ok } = H, fs = require('fs'), path = require('
   ok(pf && pf.body === 'Удалите файл {файл}. Ник: Ivan_Petrov', 'подстановки: {ник} заполнен из тикета, {файл} без данных остался меткой (' + (pf && pf.body) + ')');
   const t9 = await ask(13, 'ticket.txt', [...Buffer.from('после запуска всё темно и ничего не видно, помогите пожалуйста')], { mode: 'text', guild: MJ, noai: true });
   ok(t9.tpl && t9.tpl.more === false || t9.tpl.more === true, 'быстрый подбор без ИИ отвечает и сообщает, нужно ли уточнение ИИ');
+  const rz = await ask(90, 'majestic_release_1.23.24_steam_0x1.zip', [...Buffer.from('<!DOCTYPE html>\n<html><head><title>VK ID</title></head><body></body></html>')], {});
+  ok(rz && rz.ok && /веб-страница/.test(rz.headline) && rz.warnings[0] && /ещё раз/.test(rz.warnings[0].ask), '«zip», который на деле веб-страница: в Discord причина и просьба игроку');
   await H.done(b, errs);
 })();
