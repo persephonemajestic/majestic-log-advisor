@@ -122,6 +122,25 @@ async function authApi(p, req, env, ctx) {
   if (p === '/v1/auth/tgoff' && req.method === 'POST') { await tgUnlink(env, u); return json({ ok: true, user: userView(u) }); }
   if (p === '/v1/auth/ib') return json({ ok: true, tg: !!u.tg, ib: u.ib || 0 });
   if (p === '/v1/auth/inbox') return json({ ok: true, files: await inboxList(env, u.k) });
+  /* анализатор разобрал файл из Telegram — короткий диагноз уходит в бот ответом на этот файл (один раз, с какого бы устройства ни пришёл) */
+  if (p === '/v1/auth/inbox/diag' && req.method === 'POST') {
+    const id = String(b.id || ''); if (!IB_ID.test(id) || !u.tg) return json({ ok: false }, 400);
+    const l = await env.ACCESS.list({ prefix: 'if:' + u.k + ':' + id }), it = l.keys.find((x) => x.name === 'if:' + u.k + ':' + id);
+    if (!it) return json({ ok: false, error: 'gone' }, 404);
+    if (await env.ACCESS.get('ird:' + u.k + ':' + id)) return json({ ok: true, dup: true });
+    await env.ACCESS.put('ird:' + u.k + ':' + id, '1', { expirationTtl: IB_TTL });
+    const m = it.metadata || {}, t = (x, n) => tgEsc(String(x || '').slice(0, n)), ic = { bad: '🔴', warn: '🟡', ok: '🟢' }[b.status] || '⚪';
+    const steps = (Array.isArray(b.steps) ? b.steps : []).slice(0, 5).map((x, i) => (i + 1) + '. ' + t(x, 300)).join('\n');
+    const also = (Array.isArray(b.also) ? b.also : []).slice(0, 4).map((x) => '• ' + t(x, 200)).join('\n');
+    let text = '🔎 <b>' + t(m.n || b.name, 120) + '</b>\n' + ic + ' <b>' + t(b.headline || 'Разбор готов', 300) + '</b>';
+    if (b.cause && String(b.headline || '').indexOf(String(b.cause).trim()) < 0) text += '\n\n<b>Причина:</b> ' + t(b.cause, 900);
+    if (steps) text += '\n\n<b>Что сделать:</b>\n' + steps;
+    if (also) text += '\n\n<b>Ещё в архиве:</b>\n' + also;
+    /* ответ — блоком кода: в Telegram он копируется одним нажатием и вставляется в Discord как есть (с **жирным**) */
+    if (b.reply) text += '\n\n<b>Ответ игроку</b> (нажмите, чтобы скопировать):\n<pre>' + t(b.reply, 1800) + '</pre>';
+    const r = await tgApi(env, 'sendMessage', Object.assign({ chat_id: u.tg, text: text.slice(0, 4000), parse_mode: 'HTML', disable_web_page_preview: true }, m.m ? { reply_parameters: { message_id: m.m, allow_sending_without_reply: true } } : {}));
+    return json({ ok: !!(r && r.ok) });
+  }
   if (p === '/v1/auth/inbox/get') {
     const id = String(new URL(req.url).searchParams.get('id') || '');
     if (!IB_ID.test(id)) return json({ ok: false }, 400);
@@ -148,9 +167,9 @@ async function inboxList(env, k) {
   do { const l = await env.ACCESS.list({ prefix: 'if:' + k + ':', cursor }); for (const x of l.keys) { const m = x.metadata || {}; out.push({ id: x.name.split(':').pop(), name: m.n || 'file', size: m.s || 0, at: m.at || 0 }); } cursor = l.list_complete ? null : l.cursor; } while (cursor);
   return out.sort((a, c) => a.at - c.at);
 }
-async function inboxPut(env, u, name, bytes) {
+async function inboxPut(env, u, name, bytes, mid) {
   const id = Date.now().toString(36) + hex(rnd(4)), at = Date.now();
-  await env.ACCESS.put('if:' + u.k + ':' + id, bytes, { expirationTtl: IB_TTL, metadata: { n: name.slice(0, 120), s: bytes.byteLength, at } });
+  await env.ACCESS.put('if:' + u.k + ':' + id, bytes, { expirationTtl: IB_TTL, metadata: { n: name.slice(0, 120), s: bytes.byteLength, at, m: mid || 0 } });
   u.ib = at; await userPut(env, u);
   return id;
 }
@@ -204,8 +223,8 @@ async function tgStaff(env, msg, cid, isAdminChat) {
       if (!bytes) { await tgSayStaff(env, cid, 'Не получилось скачать файл из Telegram. Отправьте ещё раз.'); return true; }
     } else { name = logKind + '.log'; bytes = new TextEncoder().encode(text).buffer; }
     if (!bytes.byteLength) { await tgSayStaff(env, cid, 'Файл пустой.'); return true; }
-    const id = await inboxPut(env, u, name, bytes);
-    await tgSayStaff(env, cid, '📥 <b>' + tgEsc(name) + '</b> (' + kbSize(bytes.byteLength) + ') — отправлен в анализатор. Откроется на компьютере и телефоне, где вы вошли как <b>' + tgEsc(u.login) + '</b>.', [[['🗑 Удалить', 'f:del:' + id]]]);
+    const id = await inboxPut(env, u, name, bytes, msg.message_id);
+    await tgSayStaff(env, cid, '📥 <b>' + tgEsc(name) + '</b> (' + kbSize(bytes.byteLength) + ') — отправлен в анализатор. Откроется на компьютере и телефоне, где вы вошли как <b>' + tgEsc(u.login) + '</b>.' + (/\.(dmp|mdmp|evtx|xml)$/i.test(name) ? '' : ' Диагноз придёт сюда, как только анализатор его разберёт.'), [[['🗑 Удалить', 'f:del:' + id]]]);
     return true;
   }
   if (isAdminChat) return false;

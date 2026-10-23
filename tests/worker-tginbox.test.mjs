@@ -50,7 +50,15 @@ await cb(500, 'u:ok:Petya'); ok(sent.filter((x) => x.m === 'answerCallbackQuery'
 await msg(500, { document: { file_id: 'F1', file_name: 'client.log', file_size: 60 } });
 u = JSON.parse(kv.get('u:petya')); let list = (await call('/v1/auth/inbox', null, S)).j;
 ok(list.ok && list.files.length === 1 && list.files[0].name === 'client.log' && u.ib > 0 && /отправлен в анализатор/.test(last().body.text), 'лог от бота лежит во входящих аккаунта, бот ответил');
-const ib = (await call('/v1/auth/ib', null, S)).j; ok(ib.ok && ib.tg === true && ib.ib === u.ib, 'лёгкая проверка «есть ли новые файлы»');
+const fid = list.files[0].id;
+ok(/Диагноз придёт сюда/.test(last().body.text), 'бот обещает прислать диагноз');
+await msg(500, { message_id: 41, document: { file_id: 'F1', file_name: 'client.log', file_size: 60 } }); const fid2 = (await call('/v1/auth/inbox', null, S)).j.files.pop().id;
+let dg = await call('/v1/auth/inbox/diag', { id: fid2, status: 'bad', headline: 'Краш <script>', cause: 'Моды', steps: ['Убрать моды'], reply: 'Здравствуйте! Уберите моды.' }, S);
+let dm = last(); ok(dg.j.ok && /🔎 <b>client\.log<\/b>/.test(dm.body.text) && /🔴 <b>Краш &lt;script&gt;<\/b>/.test(dm.body.text) && /Причина:<\/b> Моды/.test(dm.body.text) && /1\. Убрать моды/.test(dm.body.text) && /<pre>Здравствуйте! Уберите моды\.<\/pre>/.test(dm.body.text) && dm.body.reply_parameters.message_id === 41 && dm.body.chat_id === '500', 'диагноз из анализатора приходит в бот ответом на файл, текст экранирован');
+const n0 = sent.length; dg = await call('/v1/auth/inbox/diag', { id: fid2, headline: 'x' }, S); ok(dg.j.dup && sent.length === n0, 'второе устройство диагноз не дублирует');
+ok((await call('/v1/auth/inbox/diag', { id: fid2, headline: 'x' }, { 'X-Session': (await call('/v1/auth/register', { login: 'Kolya', pass: 'Kot4ik-Murzik9', dev: 'x' })).j.token })).j.ok === false, 'чужой аккаунт диагноз не шлёт');
+await cb(500, 'f:del:' + fid2);
+const ib = (await call('/v1/auth/ib', null, S)).j; ok(ib.ok && ib.tg === true && ib.ib >= u.ib, 'лёгкая проверка «есть ли новые файлы»');
 const g = await call('/v1/auth/inbox/get?id=' + list.files[0].id, null, S);
 ok(g.s === 200 && new TextDecoder().decode(g.ab) === FILES['docs/client.log'] && decodeURIComponent(g.h.get('x-mla-name')) === 'client.log', 'файл отдаётся целиком');
 const reg2 = await call('/v1/auth/register', { login: 'Vasya', pass: 'Kot4ik-Murzik9', dev: 'x' }); await admin({ action: 'userSet', login: 'Vasya', st: 'ok' });

@@ -196,6 +196,18 @@ async function ibBytes(id) {
   if (x && typeof x === 'object' && typeof x.byteLength === 'number') return new Uint8Array(x.buffer ? x.buffer.slice(x.byteOffset || 0, (x.byteOffset || 0) + x.byteLength) : x);
   return typeof x === 'string' ? { text: x } : null;
 }
+/* короткий диагноз по каждому файлу — обратно в бот (дампы и журналы Windows не разбираются коротко, их пропускаем) */
+async function ibDiag(files, ids) {
+  if (typeof quickAnalyze !== 'function') return;
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i]; if (/\.(dmp|mdmp|evtx|xml)$/i.test(f.name)) continue;
+    try {
+      var r = await quickAnalyze({ name: f.name, data: new Uint8Array(await f.arrayBuffer()), meta: { mode: 'full', noai: true } });
+      if (!r || r.ok === false) continue;
+      await accReq('/v1/auth/inbox/diag', { id: ids[i], name: f.name, status: r.status, headline: r.headline, cause: r.cause, steps: r.steps || [], reply: r.reply || '', also: r.also || [] });
+    } catch (e) {}
+  }
+}
 async function ibPoll(force) {
   if (!ACC || IB.busy || !ACCS.user || ACCS.user.st !== 'ok') return;
   if (!ACCS.user.tg && !(ACCS.tgWait && Date.now() - ACCS.tgWait < 20 * 60000) && !force) return;
@@ -206,18 +218,18 @@ async function ibPoll(force) {
     var st = ibState(), first = !st; st = st || { at: 0, ids: {} };
     if (!r.ib || r.ib <= st.at) { if (first) lsSet(IB_KEY, JSON.stringify(st)); return; }
     var l = await accReq('/v1/auth/inbox'); if (!l || !l.ok) return;
-    var files = [], names = [], old = 0, now = Date.now();
+    var files = [], names = [], ids = [], old = 0, now = Date.now();
     for (var i = 0; i < l.files.length; i++) {
       var f = l.files[i]; if (st.ids[f.id]) continue;
       /* новое устройство не тянет всё за сутки — только свежее (10 минут) */
       if (first && now - f.at > 10 * 60000) { st.ids[f.id] = f.at; old++; continue; }
       var bt = await ibBytes(f.id); if (!bt) continue;
       if (bt.text != null) { if (!/\.(log|txt)$/i.test(f.name)) { status('Чтобы открыть ' + f.name + ' из Telegram, перезапустите приложение (нужно обновление).'); continue; } bt = new TextEncoder().encode(bt.text); }
-      files.push(new File([bt], f.name, { lastModified: f.at })); names.push(f.name); st.ids[f.id] = f.at;
+      files.push(new File([bt], f.name, { lastModified: f.at })); names.push(f.name); ids.push(f.id); st.ids[f.id] = f.at;
     }
     st.at = r.ib; for (var k in st.ids) if (now - st.ids[k] > 2 * 86400000) delete st.ids[k];
     lsSet(IB_KEY, JSON.stringify(st));
-    if (files.length) { await readFiles(files); status('Из Telegram: ' + names.join(', ') + '.'); try { if (window.nativeApp && window.nativeApp.flash) window.nativeApp.flash(); } catch (e) {} }
+    if (files.length) { await readFiles(files); status('Из Telegram: ' + names.join(', ') + '.'); try { if (window.nativeApp && window.nativeApp.flash) window.nativeApp.flash(); } catch (e) {} ibDiag(files, ids); }
   } catch (e) {} finally { IB.busy = false; }
 }
 /* файлы, которыми поделились из Discord или «Файлов» на Android (share target), лежат в кэше service worker */

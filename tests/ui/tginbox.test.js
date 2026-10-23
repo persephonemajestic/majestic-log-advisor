@@ -49,10 +49,13 @@ const api = async (path, body, h) => { const res = await W.fetch(new Request('ht
   const code = await p.evaluate(() => { const c = document.querySelector('#tgAcc code'); return c ? c.textContent.replace('/start ', '').trim() : ''; });
   ok(/^s_[a-z0-9]{10}$/.test(code) && await p.evaluate(() => /t\.me\/mla_bot\?start=s_/.test(window.__opened || '')), 'показана ссылка на бота с кодом, бот открывается');
   await hook({ message: { chat: { id: 500, type: 'private' }, text: '/start ' + code } });
-  await hook({ message: { chat: { id: 500, type: 'private' }, document: { file_id: 'F', file_name: 'client.log', file_size: LOG.length } } });
+  await hook({ message: { chat: { id: 500, type: 'private' }, message_id: 77, document: { file_id: 'F', file_name: 'client.log', file_size: LOG.length } } });
   await p.evaluate(() => window.dispatchEvent(new Event('focus'))); await p.waitForTimeout(2000);
   ok(await p.evaluate(() => /client\.log/.test(document.querySelector('.side').textContent)), 'файл из Telegram сам появился в анализаторе');
   ok(await p.evaluate(() => /Из Telegram: client\.log/.test(document.querySelector('#status').textContent)), 'сообщение «Из Telegram: client.log»');
+  await p.waitForTimeout(1500); const dg = sent.filter((x) => x.m === 'sendMessage' && /🔎/.test(x.b.text || '')).pop();
+  if (process.env.SHOWDG) console.log(dg && dg.b.text);
+  ok(dg && dg.b.chat_id === '500' && /client\.log/.test(dg.b.text) && /Ответ игроку/.test(dg.b.text), 'анализатор отправил диагноз обратно в бот');
   ok(await p.evaluate(() => /Telegram привязан/.test((document.querySelector('#tgAcc') || document.body).textContent)), 'в «Аккаунте» видно, что Telegram привязан');
   const cnt = () => p.evaluate(() => (document.querySelector('.side').textContent.match(/client\.log/g) || []).length);
   const c1 = await cnt(); await p.evaluate(() => window.dispatchEvent(new Event('focus'))); await p.waitForTimeout(1200);
