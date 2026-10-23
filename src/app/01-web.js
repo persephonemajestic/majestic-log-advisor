@@ -90,6 +90,7 @@ function accOk(user, legacy) {
   if (!was) { status('Доступ открыт' + (user ? ': ' + user.login : '') + '. Добавьте лог кнопкой «+».'); try { loadTeam(false); checkNews(); fetchShared(); pulse(); tplFetch(); } catch (e) {} }
   if (user && user.must) setTimeout(function () { openAccount('Вы вошли с временным паролем от администратора. Задайте свой пароль.'); }, 300);
   try { if (typeof mobSync === 'function') mobSync(); } catch (e) {}
+  if (user && user.st === 'ok') setTimeout(function () { ibPoll(true); }, 1500);
 }
 async function accCheck(quiet) {
   var me = await accReq('/v1/auth/me');
@@ -124,7 +125,7 @@ function openAccount(note) {
   if (note) h += '<div class="alertbox"><b>' + esc(note) + '</b></div>';
   if (u) h += '<p style="margin:0">Вы вошли как <b>' + esc(u.login) + '</b>. Этот аккаунт работает и на компьютере, и на телефоне.</p>' +
     '<h4 style="margin:6px 0 0">Сменить пароль</h4><form id="accPw" class="wg-f" novalidate><label>Текущий пароль<input id="apOld" type="password" autocomplete="current-password"></label><label>Новый пароль<input id="apNew" type="password" autocomplete="new-password"></label><label>Повторите новый пароль<input id="apNew2" type="password" autocomplete="new-password" aria-describedby="apNew2e"><span class="wg-err" id="apNew2e" role="alert"></span></label>' + pwRulesHtml('apRules') + '<button class="btn primary" type="submit" disabled>Сменить пароль</button><p class="hint" id="apMsg" role="status" aria-live="polite" style="margin:0"></p></form>' +
-    '<div class="row-actions"><button class="btn" type="button" data-wg="logoutAsk">Выйти из аккаунта</button><button class="btn ghost" type="button" data-act="closePanel">Закрыть</button></div>';
+    tgAccHtml(u) + '<div class="row-actions"><button class="btn" type="button" data-wg="logoutAsk">Выйти из аккаунта</button><button class="btn ghost" type="button" data-act="closePanel">Закрыть</button></div>';
   else h += '<p style="margin:0">Сейчас вы заходите по коду этого ' + (WEB ? 'телефона' : 'компьютера') + '. Войдите в аккаунт или зарегистрируйтесь — тогда один и тот же доступ будет и на компьютере, и на телефоне, и вход не будет слетать.</p>' +
     '<div class="row-actions"><button class="btn primary" type="button" data-wg="opengate">Войти или зарегистрироваться</button><button class="btn ghost" type="button" data-act="closePanel">Закрыть</button></div>';
   $('#panelHost').innerHTML = h + '</div></div>';
@@ -155,6 +156,8 @@ async function webStart() {
     else if (k === 'logout') accLogout();
     else if (k === 'logoutAsk') { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Точно выйти?'; return; } accLogout(); }
     else if (k === 'close') { ACCS.closable = false; accGate('ok'); }
+    else if (k === 'tglink') { b.disabled = true; var lr = await accReq('/v1/auth/tg', {}); b.disabled = false; var bx = $('#tgAcc'); if (!lr || !lr.ok) { if (bx) bx.querySelector('.hint').textContent = (lr && lr.error) || 'Нет связи с сервером.'; return; } ACCS.tgWait = Date.now(); if (bx) bx.innerHTML = tgLinkHtml(lr); try { window.open(lr.link, '_blank'); } catch (e2) {} }
+    else if (k === 'tgoff') { if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Точно отвязать?'; return; } var orr = await accReq('/v1/auth/tgoff', {}); if (orr && orr.ok) { ACCS.user = orr.user; var bx2 = $('#tgAcc'); if (bx2) bx2.outerHTML = tgAccHtml(ACCS.user); status('Telegram отвязан.'); } }
     else if (k === 'opengate') { $('#panelHost').innerHTML = ''; ACCS.closable = true; ACCS.mode = 'login'; accGate('login'); }
   });
   document.addEventListener('submit', function (e) { if (e.target.id === 'wgForm') { e.preventDefault(); accSubmit(); } else if (e.target.id === 'accPw') { e.preventDefault(); accPassSubmit(); } });
@@ -167,6 +170,55 @@ async function webStart() {
   await accCheck();
   /* пока окно входа открыто в ожидании подтверждения — тихо проверяем раз в 15 секунд */
   setInterval(function () { var g = document.getElementById('webGate'); if (g && !document.hidden && !g.querySelector('#wgForm')) accCheck(true); }, 15000);
+  /* файлы из Telegram: проверяем раз в 30 секунд, пока окно открыто, и сразу при возврате в окно */
+  setInterval(function () { if (!document.hidden) ibPoll(); }, 30000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) ibPoll(); });
+  window.addEventListener('focus', function () { ibPoll(); });
+}
+/* ---------- Файлы через Telegram ----------
+   Сотрудник привязывает бота в «Аккаунте», пересылает боту лог — файл лежит на сервере сутки, анализатор забирает его сам.
+   Какие файлы уже забраны, помнит каждое устройство (mla.ib), поэтому файл появляется и на компьютере, и на телефоне. */
+var IB = { busy: false }, IB_KEY = 'mla.ib';
+function tgAccHtml(u) {
+  if (!u) return '';
+  return '<div id="tgAcc" class="tgacc"><h4 style="margin:6px 0 0">Логи через Telegram</h4>' + (u.tg
+    ? '<p class="hint" style="margin:0">Telegram привязан. Пересылайте боту логи из Discord («Поделиться» → Telegram) — они сами появятся здесь и на телефоне.</p><div class="row-actions"><button class="btn sm" type="button" data-wg="tglink">Привязать заново</button><button class="btn sm ghost" type="button" data-wg="tgoff">Отвязать</button></div>'
+    : '<p class="hint" style="margin:0">Привяжите Telegram — и пересылайте боту логи из Discord одной кнопкой («Поделиться» → Telegram). Файлы сами появятся в анализаторе на компьютере и на телефоне.</p><div class="row-actions"><button class="btn sm primary" type="button" data-wg="tglink">Привязать Telegram</button></div>') + '</div>';
+}
+function tgLinkHtml(r) {
+  return '<h4 style="margin:6px 0 0">Логи через Telegram</h4><p style="margin:0">Откройте бота <a href="' + esc(r.link) + '" target="_blank" rel="noopener">@' + esc(r.bot) + '</a> и нажмите «Старт» (Start). Если бот не открылся, отправьте ему сообщение:</p><p style="margin:0"><code class="mono">/start ' + esc(r.code) + '</code></p><p class="hint" style="margin:0">Ссылка действует 15 минут.</p>';
+}
+function ibState() { try { var o = JSON.parse(lsGet(IB_KEY) || 'null'); if (o && typeof o === 'object' && o.ids) return o; } catch (e) {} return null; }
+async function ibBytes(id) {
+  if (WEB) { try { var h = { 'X-HWID': webDev() }, t = lsGet(SES_KEY); if (t) h['X-Session'] = t; var r = await fetch('/v1/auth/inbox/get?id=' + encodeURIComponent(id) + '&t=' + Date.now(), { cache: 'no-store', headers: h }); return r.ok ? new Uint8Array(await r.arrayBuffer()) : null; } catch (e) { return null; } }
+  if (!window.nativeApp || !window.nativeApp.gatedFetch) return null;
+  var x = await window.nativeApp.gatedFetch('/v1/auth/inbox/get', { query: { id: id }, bin: true });
+  if (x && typeof x === 'object' && typeof x.byteLength === 'number') return new Uint8Array(x.buffer ? x.buffer.slice(x.byteOffset || 0, (x.byteOffset || 0) + x.byteLength) : x);
+  return typeof x === 'string' ? { text: x } : null;
+}
+async function ibPoll(force) {
+  if (!ACC || IB.busy || !ACCS.user || ACCS.user.st !== 'ok') return;
+  if (!ACCS.user.tg && !(ACCS.tgWait && Date.now() - ACCS.tgWait < 20 * 60000) && !force) return;
+  IB.busy = true;
+  try {
+    var r = await accReq('/v1/auth/ib'); if (!r || !r.ok) return;
+    if (!!r.tg !== !!ACCS.user.tg) { ACCS.user.tg = !!r.tg; var bx = $('#tgAcc'); if (bx) bx.outerHTML = tgAccHtml(ACCS.user); if (r.tg) { ACCS.tgWait = 0; status('Telegram привязан: пересылайте боту логи — они появятся здесь.'); } }
+    var st = ibState(), first = !st; st = st || { at: 0, ids: {} };
+    if (!r.ib || r.ib <= st.at) { if (first) lsSet(IB_KEY, JSON.stringify(st)); return; }
+    var l = await accReq('/v1/auth/inbox'); if (!l || !l.ok) return;
+    var files = [], names = [], old = 0, now = Date.now();
+    for (var i = 0; i < l.files.length; i++) {
+      var f = l.files[i]; if (st.ids[f.id]) continue;
+      /* новое устройство не тянет всё за сутки — только свежее (10 минут) */
+      if (first && now - f.at > 10 * 60000) { st.ids[f.id] = f.at; old++; continue; }
+      var bt = await ibBytes(f.id); if (!bt) continue;
+      if (bt.text != null) { if (!/\.(log|txt)$/i.test(f.name)) { status('Чтобы открыть ' + f.name + ' из Telegram, перезапустите приложение (нужно обновление).'); continue; } bt = new TextEncoder().encode(bt.text); }
+      files.push(new File([bt], f.name, { lastModified: f.at })); names.push(f.name); st.ids[f.id] = f.at;
+    }
+    st.at = r.ib; for (var k in st.ids) if (now - st.ids[k] > 2 * 86400000) delete st.ids[k];
+    lsSet(IB_KEY, JSON.stringify(st));
+    if (files.length) { await readFiles(files); status('Из Telegram: ' + names.join(', ') + '.'); try { if (window.nativeApp && window.nativeApp.flash) window.nativeApp.flash(); } catch (e) {} }
+  } catch (e) {} finally { IB.busy = false; }
 }
 /* файлы, которыми поделились из Discord или «Файлов» на Android (share target), лежат в кэше service worker */
 async function webShared() {

@@ -20,7 +20,7 @@ let bad = 0; const ok = (c, m) => { if (!c) bad++; console.log((c ? 'PASS ' : 'F
 let r = await admin({ action: 'tgLink' }); const wh = sent.find((x) => x.m === 'setWebhook'); secret = wh && wh.body.secret_token;
 ok(r.ok && /^\d{6}$/.test(r.code) && r.bot === 'mla_test_bot' && /\/tg\/hook$/.test(wh.body.url) && secret, 'привязка: веб-хук с секретом и код из 6 цифр');
 ok((await hook({ message: { chat: { id: 1 }, text: '/start' } }, 'wrong')).s === 403, 'запрос не от Telegram (без секрета) отклоняется');
-await msg('/start', 555); ok(/закрытый бот/.test(last('sendMessage').body.text) && !kv.get('tg:chat'), 'чужой человек: «закрытый бот», ничего не привязано');
+await msg('/start', 555); ok(/Привязать Telegram/.test(last('sendMessage').body.text) && !kv.get('tg:chat') && !/Ждут доступа/.test(JSON.stringify(last('sendMessage').body.reply_markup || {})), 'чужой человек: подсказка привязать свой аккаунт, без админских кнопок');
 await msg('/start 000000'); ok(/не подошёл/.test(last('sendMessage').body.text), 'неверный код не привязывает');
 for (let i = 0; i < 10; i++) await msg('/start 11111' + i, 600 + i);
 ok(!kv.get('tg:code'), 'после 10 неверных кодов код привязки сгорает');

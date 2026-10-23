@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, clipboard, Menu, shell, net, native
 const fs = require('fs');
 const path = require('path');
 
-const SHELL_VERSION = '2026-10-20.1';
+const SHELL_VERSION = '2026-10-24.1';
 const APPDIR = global.APP_DIR || __dirname;
 const bundled = () => path.join(APPDIR, 'index.html');
 const overrideFile = () => path.join(app.getPath('userData'), 'index-override.html');
@@ -442,5 +442,5 @@ ipcMain.handle('gated-fetch', async (e, p, opts) => {
   const q = opts.query && typeof opts.query === 'object' ? '&' + Object.keys(opts.query).map((k) => encodeURIComponent(k) + '=' + encodeURIComponent(String(opts.query[k]).slice(0, 200))).join('&') : '';
   const init = { cache: 'no-store', headers: gatedHeaders() };
   if (opts.body != null) { init.method = 'POST'; init.body = JSON.stringify(opts.body); if (init.body.length > 4500000) return null; init.headers = Object.assign({}, init.headers, { 'content-type': 'application/json' }); }
-  try { const r = await net.fetch(WORKER + p + '?t=' + Date.now() + q, init); return r.ok ? await r.text() : null; } catch (err) { return null; }
+  try { const r = await net.fetch(WORKER + p + '?t=' + Date.now() + q, init); if (!r.ok) return null; return opts.bin ? new Uint8Array(await r.arrayBuffer()) : await r.text(); } catch (err) { return null; }
 });

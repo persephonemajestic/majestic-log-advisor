@@ -68,7 +68,7 @@ async function sessionsEnd(env, u, keep) { for (const sh of u.ss || []) if (sh !
 async function rlHit(env, k, ttl) { let n = 0; try { n = parseInt(await env.ACCESS.get(k), 10) || 0; } catch (e) {} await env.ACCESS.put(k, String(n + 1), { expirationTtl: ttl }); return n + 1; }
 async function rlGet(env, k) { try { return parseInt(await env.ACCESS.get(k), 10) || 0; } catch (e) { return 0; } }
 const ipOf = (req) => String(req.headers.get('CF-Connecting-IP') || 'x').slice(0, 64);
-const userView = (u) => ({ login: u.login, st: u.st, must: !!u.must });
+const userView = (u) => ({ login: u.login, st: u.st, must: !!u.must, tg: !!u.tg, ib: u.ib || 0 });
 async function authApi(p, req, env, ctx) {
   let b = {}; if (req.method === 'POST') { try { b = await req.json(); } catch (e) {} }
   if (p === '/v1/auth/register' && req.method === 'POST') {
@@ -109,7 +109,125 @@ async function authApi(p, req, env, ctx) {
     await setPw(u, String(b.pass)); u.must = false; await sessionsEnd(env, u, ses.sh); await userPut(env, u);
     return json({ ok: true, user: userView(u) });
   }
+  /* Telegram: привязка чата к аккаунту и файлы, присланные боту (хранятся сутки, видны только этому аккаунту) */
+  const u = ses.user;
+  if (u.st !== 'ok') return json({ ok: false, error: 'Доступ к анализатору ещё не выдан.' });
+  if (p === '/v1/auth/tg' && req.method === 'POST') {
+    if (!env.TG_TOKEN) return json({ ok: false, error: 'Бот ещё не подключён администратором.' });
+    const bot = await tgBotName(env); if (!bot) return json({ ok: false, error: 'Бот не отвечает. Попробуйте позже.' });
+    const AB = 'abcdefghijkmnpqrstuvwxyz23456789', r = rnd(10); let code = ''; for (let i = 0; i < 10; i++) code += AB[r[i] % AB.length];
+    await env.ACCESS.put('tl:' + code, u.k, { expirationTtl: 900 });
+    return json({ ok: true, bot, code: 's_' + code, link: 'https://t.me/' + bot + '?start=s_' + code });
+  }
+  if (p === '/v1/auth/tgoff' && req.method === 'POST') { await tgUnlink(env, u); return json({ ok: true, user: userView(u) }); }
+  if (p === '/v1/auth/ib') return json({ ok: true, tg: !!u.tg, ib: u.ib || 0 });
+  if (p === '/v1/auth/inbox') return json({ ok: true, files: await inboxList(env, u.k) });
+  if (p === '/v1/auth/inbox/get') {
+    const id = String(new URL(req.url).searchParams.get('id') || '');
+    if (!IB_ID.test(id)) return json({ ok: false }, 400);
+    const v = await env.ACCESS.getWithMetadata('if:' + u.k + ':' + id, { type: 'arrayBuffer' });
+    if (!v || !v.value) return json({ ok: false, error: 'Файл уже удалён.' }, 404);
+    return new Response(v.value, { headers: { 'content-type': 'application/octet-stream', 'x-mla-name': encodeURIComponent((v.metadata && v.metadata.n) || 'file.log'), ...NOSTORE } });
+  }
   return json({ ok: false, error: 'Неизвестный запрос' }, 404);
+}
+/* ---------- Файлы через Telegram ----------
+   tl:<код> — логин, ждёт /start s_<код> в боте (15 минут); tu:<id чата> — логин; u.tg — id чата.
+   if:<логин>:<id> — сам файл (до 20 МБ — предел Telegram для ботов), метаданные { n, s, at }, хранится сутки. u.ib — время последнего файла. */
+const IB_ID = /^[a-z0-9]{6,24}$/, IB_EXT = /\.(log|txt|zip|dmp|mdmp|evtx|xml)$/i, IB_TTL = 86400, IB_MAX = 20 * 1048576;
+async function tgBotName(env) {
+  let n = ''; try { n = (await env.ACCESS.get('tg:me')) || ''; } catch (e) {}
+  if (n) return n;
+  const r = await tgApi(env, 'getMe', {}); n = (r && r.ok && r.result && r.result.username) || '';
+  if (n) await env.ACCESS.put('tg:me', n, { expirationTtl: 7 * 86400 });
+  return n;
+}
+async function tgUnlink(env, u) { if (u.tg) { try { await env.ACCESS.delete('tu:' + u.tg); } catch (e) {} } u.tg = null; await userPut(env, u); }
+async function inboxList(env, k) {
+  const out = []; let cursor;
+  do { const l = await env.ACCESS.list({ prefix: 'if:' + k + ':', cursor }); for (const x of l.keys) { const m = x.metadata || {}; out.push({ id: x.name.split(':').pop(), name: m.n || 'file', size: m.s || 0, at: m.at || 0 }); } cursor = l.list_complete ? null : l.cursor; } while (cursor);
+  return out.sort((a, c) => a.at - c.at);
+}
+async function inboxPut(env, u, name, bytes) {
+  const id = Date.now().toString(36) + hex(rnd(4)), at = Date.now();
+  await env.ACCESS.put('if:' + u.k + ':' + id, bytes, { expirationTtl: IB_TTL, metadata: { n: name.slice(0, 120), s: bytes.byteLength, at } });
+  u.ib = at; await userPut(env, u);
+  return id;
+}
+/* лог, присланный текстом: строки вида [2026-…] — main.log, [12:00:…] — client.log */
+function logTextKind(t) {
+  const ls = String(t || '').split(/\r?\n/).slice(0, 400); let a = 0, b = 0;
+  for (const l of ls) { if (/^\[\d{4}-\d\d-\d\d /.test(l)) a++; else if (/^\[\d\d:\d\d:\d\d/.test(l)) b++; }
+  return a + b < 3 ? '' : a >= b ? 'main' : 'client';
+}
+const kbSize = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ';
+const TG_STAFF = { keyboard: [[{ text: '📥 Мои файлы' }, { text: '❓ Как отправлять' }], [{ text: '🔌 Отвязать Telegram' }]], resize_keyboard: true, is_persistent: true };
+const TG_STAFF_HELP = '<b>Как отправлять логи в анализатор</b>\n• В Discord нажмите на файл лога → «Поделиться» → Telegram → этот бот. С компьютера — перешлите файл или перетащите его сюда.\n• Можно прислать и текст лога (скопированный через «Поделиться» → «Скопировать»).\n• Файл сам появится в анализаторе на компьютере и на телефоне, где вы вошли в свой аккаунт.\n\nПринимаются .log, .txt, .zip, .dmp, .evtx до 20 МБ. Файлы хранятся сутки и видны только вам.';
+const tgSayStaff = (env, cid, text, rows) => tgApi(env, 'sendMessage', Object.assign({ chat_id: cid, text: String(text).slice(0, 4000), parse_mode: 'HTML', disable_web_page_preview: true }, rows ? { reply_markup: kb(rows) } : { reply_markup: TG_STAFF }));
+/* сообщение сотрудника: привязка, файл, кнопки. Возвращает true, если сообщение обработано здесь */
+async function tgStaff(env, msg, cid, isAdminChat) {
+  const text = String(msg.text || '').trim();
+  const link = /^(?:\/start\s+)?s_([a-z0-9]{10})$/.exec(text);
+  if (link) {
+    if (msg.chat.type !== 'private') { await tgSayStaff(env, cid, 'Привязывайте бота в личном чате с ним.'); return true; }
+    const k = await env.ACCESS.get('tl:' + link[1]), u = k ? await userGet(env, k) : null;
+    if (!u) { await tgSayStaff(env, cid, 'Код не подошёл или устарел. В анализаторе откройте «Аккаунт» → «Привязать Telegram» ещё раз.'); return true; }
+    await env.ACCESS.delete('tl:' + link[1]);
+    if (u.tg && u.tg !== cid) { try { await env.ACCESS.delete('tu:' + u.tg); } catch (e) {} }
+    const old = await env.ACCESS.get('tu:' + cid); if (old && old !== u.k) { const ou = await userGet(env, old); if (ou && ou.tg === cid) { ou.tg = null; await userPut(env, ou); } }
+    u.tg = cid; await userPut(env, u); await env.ACCESS.put('tu:' + cid, u.k);
+    await tgSayStaff(env, cid, '✅ Telegram привязан к аккаунту <b>' + tgEsc(u.login) + '</b>.\n\n' + TG_STAFF_HELP);
+    return true;
+  }
+  const k = await env.ACCESS.get('tu:' + cid);
+  const doc = msg.document, logKind = !doc && text.length > 200 ? logTextKind(text) : '';
+  const fileLike = !!(doc || msg.photo || msg.video || logKind);
+  if (!k) {
+    if (isAdminChat && !fileLike) return false;
+    await tgSayStaff(env, cid, 'Это бот анализатора логов Majestic. Чтобы отправлять сюда логи, откройте в анализаторе «Аккаунт» → «Привязать Telegram».');
+    return true;
+  }
+  const u = await userGet(env, k);
+  if (!u || u.tg !== cid) { await env.ACCESS.delete('tu:' + cid); if (isAdminChat && !fileLike) return false; await tgSayStaff(env, cid, 'Привязка устарела. В анализаторе откройте «Аккаунт» → «Привязать Telegram».'); return true; }
+  if (u.st !== 'ok') { await tgSayStaff(env, cid, 'Доступ к анализатору у аккаунта <b>' + tgEsc(u.login) + '</b> закрыт — файлы не принимаются.'); return true; }
+  if (fileLike) {
+    if (msg.photo || msg.video) { await tgSayStaff(env, cid, 'Скриншоты и видео анализатор отсюда не принимает — пришлите сам лог (.log, .zip, .dmp) файлом.'); return true; }
+    if ((await rlHit(env, 'tf:' + u.k, 3600)) > 60) { await tgSayStaff(env, cid, 'Слишком много файлов за час. Подождите немного.'); return true; }
+    let name, bytes;
+    if (doc) {
+      name = String(doc.file_name || 'file').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 120);
+      if (!IB_EXT.test(name)) { await tgSayStaff(env, cid, 'Файл <b>' + tgEsc(name) + '</b> не похож на лог. Принимаются .log, .txt, .zip, .dmp, .evtx.'); return true; }
+      if ((doc.file_size || 0) > IB_MAX) { await tgSayStaff(env, cid, 'Файл больше 20 МБ — Telegram не отдаёт ботам такие файлы. Откройте его в анализаторе с компьютера.'); return true; }
+      const f = await tgApi(env, 'getFile', { file_id: doc.file_id }), fp = f && f.ok && f.result && f.result.file_path;
+      if (!fp) { await tgSayStaff(env, cid, 'Не получилось скачать файл из Telegram. Отправьте ещё раз.'); return true; }
+      try { const r = await fetch('https://api.telegram.org/file/bot' + env.TG_TOKEN + '/' + fp); if (r.ok) bytes = await r.arrayBuffer(); } catch (e) {}
+      if (!bytes) { await tgSayStaff(env, cid, 'Не получилось скачать файл из Telegram. Отправьте ещё раз.'); return true; }
+    } else { name = logKind + '.log'; bytes = new TextEncoder().encode(text).buffer; }
+    if (!bytes.byteLength) { await tgSayStaff(env, cid, 'Файл пустой.'); return true; }
+    const id = await inboxPut(env, u, name, bytes);
+    await tgSayStaff(env, cid, '📥 <b>' + tgEsc(name) + '</b> (' + kbSize(bytes.byteLength) + ') — отправлен в анализатор. Откроется на компьютере и телефоне, где вы вошли как <b>' + tgEsc(u.login) + '</b>.', [[['🗑 Удалить', 'f:del:' + id]]]);
+    return true;
+  }
+  if (isAdminChat) return false;
+  if (text === '📥 Мои файлы') {
+    const l = await inboxList(env, u.k);
+    if (!l.length) await tgSayStaff(env, cid, 'Файлов нет. Пришлите лог — он появится в анализаторе.');
+    else await tgSayStaff(env, cid, '<b>Файлы за сутки</b> (' + l.length + '):\n' + l.slice(-15).reverse().map((x) => '• ' + tgEsc(x.name) + ' — ' + kbSize(x.size) + ', ' + new Date(x.at).toLocaleTimeString('ru-RU', { timeZone: 'Asia/Yekaterinburg', hour: '2-digit', minute: '2-digit' })).join('\n'), [[['🗑 Удалить все', 'f:all']]]);
+  } else if (text === '🔌 Отвязать Telegram') await tgSayStaff(env, cid, 'Отвязать Telegram от аккаунта <b>' + tgEsc(u.login) + '</b>? Файлы отсюда перестанут попадать в анализатор.', [[['🔌 Да, отвязать', 't:off'], ['Отмена', 't:no']]]);
+  else await tgSayStaff(env, cid, TG_STAFF_HELP);
+  return true;
+}
+async function tgStaffCb(env, cq, cid, data) {
+  const ans = (t) => tgApi(env, 'answerCallbackQuery', { callback_query_id: cq.id, text: t || '' });
+  const edit = (t) => tgApi(env, 'editMessageText', { chat_id: cid, message_id: cq.message.message_id, text: t, parse_mode: 'HTML' });
+  const k = await env.ACCESS.get('tu:' + cid), u = k ? await userGet(env, k) : null;
+  if (!u || u.tg !== cid) { await ans('Telegram не привязан'); return; }
+  const md = /^f:del:([a-z0-9]{6,24})$/.exec(data);
+  if (md) { await env.ACCESS.delete('if:' + u.k + ':' + md[1]); await ans('Удалён'); await edit('🗑 Файл удалён.'); }
+  else if (data === 'f:all') { const l = await inboxList(env, u.k); for (const x of l) await env.ACCESS.delete('if:' + u.k + ':' + x.id); await ans('Удалено: ' + l.length); await edit('🗑 Файлы удалены (' + l.length + ').'); }
+  else if (data === 't:off') { await tgUnlink(env, u); await ans('Отвязано'); await edit('🔌 Telegram отвязан от аккаунта <b>' + tgEsc(u.login) + '</b>. Привязать снова можно в анализаторе: «Аккаунт» → «Привязать Telegram».'); await tgApi(env, 'sendMessage', { chat_id: cid, text: 'Готово.', reply_markup: { remove_keyboard: true } }); }
+  else if (data === 't:no') { await ans('Отменено'); await edit('Отвязка отменена.'); }
+  else await ans('');
 }
 function same(a, b) { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
 function isAdmin(req, env) { const t = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, '').trim(), p = String(env.ADMIN_PASS || '').trim(); return p.length > 0 && t.length > 0 && same(t, p); }
@@ -234,6 +352,8 @@ async function tgHook(req, env, ctx) {
   const chat = await tgChat(env), msg = up.message, cq = up.callback_query;
   if (msg && msg.chat) {
     const cid = String(msg.chat.id), text = String(msg.text || '').trim();
+    /* сотрудники: привязка своего аккаунта и файлы в анализатор; админские кнопки им недоступны */
+    if (!/^(?:\/start\s+)?\d{6}$/.test(text) && (/^(\/start\s+)?s_/.test(text) || cid !== chat || msg.document || msg.photo || msg.video || text.length > 200)) { if (await tgStaff(env, msg, cid, !!chat && cid === chat)) return json({ ok: true }); }
     /* привязка: /start 123456 или просто код из админки */
     const code = (/^(?:\/start\s+)?(\d{6})$/.exec(text) || [])[1];
     if (code && msg.chat.type === 'private') {
@@ -242,7 +362,7 @@ async function tgHook(req, env, ctx) {
       else { if ((await rlHit(env, 'tg:bad', 900)) >= 10) await env.ACCESS.delete('tg:code'); await tgSay(env, 'Код не подошёл или устарел. Получите новый в админке: «Telegram-бот» → «Привязать».', null, cid); }
       return json({ ok: true });
     }
-    if (!chat || cid !== chat) { if (/^\/start/.test(text)) await tgSay(env, 'Это закрытый бот. Чтобы привязать его, отправьте код из админки.', null, cid); return json({ ok: true }); }
+    if (!chat || cid !== chat) { await tgSayStaff(env, cid, 'Это бот анализатора логов Majestic. Чтобы отправлять сюда логи, откройте в анализаторе «Аккаунт» → «Привязать Telegram».'); return json({ ok: true }); }
     let cmd = (/^\/(\w+)(?:@\w+)?\s*([\s\S]*)$/.exec(text) || []);
     if (TG_BTN[text]) cmd = [text, TG_BTN[text], ''];
     /* кнопка «Объявление»: следующее сообщение — текст объявления */
@@ -266,6 +386,7 @@ async function tgHook(req, env, ctx) {
   }
   if (cq && cq.message) {
     const cid = String(cq.message.chat.id), data = String(cq.data || ''), ans = (t) => tgApi(env, 'answerCallbackQuery', { callback_query_id: cq.id, text: t || '' });
+    if (/^(f|t):/.test(data)) { await tgStaffCb(env, cq, cid, data); return json({ ok: true }); }
     if (!chat || cid !== chat) { await ans('Нет доступа'); return json({ ok: true }); }
     const edit = (t, rows) => tgApi(env, 'editMessageText', Object.assign({ chat_id: cid, message_id: cq.message.message_id, text: t, parse_mode: 'HTML' }, rows ? { reply_markup: kb(rows) } : {}));
     const mu = /^u:(ok|off|rst|kick):(.+)$/.exec(data), mh = /^h:(ok|no):(.+)$/.exec(data), mr = /^r:del:(.+)$/.exec(data), mn = /^n:(cancel|del)(?::(.+))?$/.exec(data);
@@ -295,7 +416,7 @@ async function tgHook(req, env, ctx) {
   }
   return json({ ok: true });
 }
-const TG_HELP = '<b>Кнопки внизу</b>\n⏳ Ждут доступа — новые пользователи с кнопками «Выдать доступ»\n👥 Пользователи — все, с кнопками доступа, сброса пароля и сеансов\n📊 Сводка — логи, частые проблемы, ИИ за сегодня\n🐞 Баг-репорты — последние отчёты со скриншотами\n📢 Объявление — бот попросит текст и опубликует его команде\n\nРегистрации, баг-репорты, массовые проблемы и сводка в 20:00 приходят сами.';
+const TG_HELP = '<b>Кнопки внизу</b>\n⏳ Ждут доступа — новые пользователи с кнопками «Выдать доступ»\n👥 Пользователи — все, с кнопками доступа, сброса пароля и сеансов\n📊 Сводка — логи, частые проблемы, ИИ за сегодня\n🐞 Баг-репорты — последние отчёты со скриншотами\n📢 Объявление — бот попросит текст и опубликует его команде\n\nРегистрации, баг-репорты, массовые проблемы и сводка в 20:00 приходят сами.\n\n<b>Файлы от сотрудников</b>\nКаждый в анализаторе: «Аккаунт» → «Привязать Telegram». Потом пересылает боту логи — они появляются у него в анализаторе. Админские кнопки сотрудникам недоступны.';
 function genPass() { const AB = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789', r = rnd(12); let pw = ''; for (let i = 0; i < 12; i++) pw += AB[r[i] % AB.length]; if (!/\d/.test(pw)) pw = pw.slice(0, 11) + '7'; if (!/[a-z]/i.test(pw)) pw = 'k' + pw.slice(1); return pw; }
 
 export default {
